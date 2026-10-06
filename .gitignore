@@ -1,11 +1,4 @@
 data/
 .env
-.env.*
-!.env.example
 *.log
 node_modules/
-backups/
-*.bundle
-*.tar
-*.tar.gz
-.DS_Store

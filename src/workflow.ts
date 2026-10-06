@@ -86,7 +86,7 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
   if(role==='primary'&&value.acceptance!==undefined)plan.acceptance=acceptance(value.acceptance);
   if(value.needsVerification===true)needsVerification=true;
   if(value.summary)finalSummary=String(value.summary).slice(0,2000);
-  if(value.action==='blocked')throw Error(value.blockedReason||'Požadavek vyžaduje nepodporovanou funkci.');
+  if(value.action==='blocked'){const blocked=new Error(value.blockedReason||'Požadavek vyžaduje nepodporovanou funkci.');(blocked as any).agentResponse=!!value.blockedReason;throw blocked;}
   if(value.action==='history'){
    if(role!=='primary'||!options.history||++historyRounds>2)throw Error('Historie pro tuto úlohu není dostupná nebo překročila limit dotazů.');
    historyResults.push(await options.history(value.historyQuery));continue;
@@ -201,7 +201,7 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
      await project.git(['fetch',path,'main']);await project.git(['merge','--ff-only','FETCH_HEAD']);
      plan.summary=finalSummary;
      emit({stage:'test',status:'completed',message:'Automatické kontroly prošly.'});
-     emit({stage:'build',status:'completed',message:finalSummary||'Úprava webu dokončena.',model:client.model,provider:client.provider,usage:result.usage});
+     emit({stage:'build',status:'completed',message:finalSummary||'Úprava webu dokončena.',agentResponse:!!finalSummary,model:client.model,provider:client.provider,usage:result.usage});
      emit({stage:'ready',message:'Návrh je připravený. Můžeš jej publikovat.',commit,baseCommit});
      completion={commit,baseCommit,scope,resolvedRequest,memory:changeMemory(original,files,finalSummary),plan,imageResults,review:null,tests:{passed:true,errors:[],browserTests,static:tests,browser:{...browser,screenshots:undefined},publication,analysis:verified}};return completion;
     }

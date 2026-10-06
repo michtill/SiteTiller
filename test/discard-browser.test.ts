@@ -1,0 +1,34 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {mkdtemp,rm,writeFile,readFile} from 'node:fs/promises';import {join} from 'node:path';import {tmpdir} from 'node:os';import {fileURLToPath} from 'node:url';import {spawn} from 'node:child_process';import {scryptSync} from 'node:crypto';
+import {Project} from '../src/project.ts';import {initialTeam,initialImages} from '../src/team.ts';
+test('discard requires current confirmation, preserves publications, clears drafts, and unchanged trees cannot publish',async()=>{
+ const data=await mkdtemp(join(tmpdir(),'aiwe-discard-'));let child:any,browser:any;
+ try{
+  const project=new Project(join(data,'project'));await project.init(null);
+  const html=(text:string)=>'<!doctype html><html><head><title>'+text+'</title><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><h1>'+text+'</h1></body></html>';
+  await project.write({'site/index.html':html('Published')});const published=await project.commit('Published');
+  await project.write({'site/index.html':html('Draft')});const draft=await project.commit('Draft');
+  const password='fixture-password-aiwe',salt='salt',release={id:'release-8',number:8,commit:published,publishedAt:'2026-10-06T12:00:00Z',previousCommit:null,description:'Public release',summary:''};
+  await writeFile(join(data,'config.json'),JSON.stringify({password:{salt,hash:scryptSync(password,salt,64).toString('hex')},providers:{openai:{key:''},anthropic:{key:''}},roles:initialTeam(),imageModels:initialImages(),agentArchitecture:3,automaticReasoningPolicy:1,publishedCommit:published,releases:[release],publishedThrough:0,requests:[{id:'draft',prompt:'Unpublished edit',commit:draft,status:'ready',sequence:1},{id:'failed',prompt:'Failed attempt',status:'failed',sequence:2}],pendingRelease:{number:9,commit:draft},conversationMemory:[{id:'published-context',prompt:'Published context'}]}));
+  await writeFile(join(data,'events.json'),JSON.stringify([{jobId:'draft',kind:'edit',stage:'ready',commit:draft},{jobId:'failed',kind:'edit',stage:'failed',message:'Failed attempt'}]));
+  const port=20100+Math.floor(Math.random()*150),origin='http://127.0.0.1:'+port;
+  child=spawn(process.execPath,[fileURLToPath(new URL('./fixtures/provider-server.mjs',import.meta.url))],{env:{...process.env,AIWE_DATA_DIR:data,HOST:'127.0.0.1',PORT:String(port),AIWE_ORIGIN:origin,AIWE_PUBLISH_URL:'http://127.0.0.1:1/publish'},stdio:'ignore'});
+  let ready=false;for(let i=0;i<100;i++){try{if((await fetch(origin+'/health')).ok){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,100));}assert.ok(ready);
+  const login=await fetch(origin+'/api/login',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({password})}),cookie=login.headers.get('set-cookie')!.split(';')[0];
+  const post=(path:string,input:any)=>fetch(origin+'/api/'+path,{method:'POST',headers:{Origin:origin,Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify(input)});
+  const state=async()=>await(await fetch(origin+'/api/state',{headers:{Cookie:cookie}})).json() as any;
+  assert.equal((await post('discard',{expectedHead:published,expectedPublishedCommit:published})).status,400);assert.equal(await project.head(),draft);
+  assert.equal((await post('discard',{expectedHead:draft,expectedPublishedCommit:draft})).status,400);assert.equal(await project.head(),draft);
+  const {chromium}=await import('playwright');browser=await chromium.launch({...(process.env.AIWE_BROWSER_EXECUTABLE?{executablePath:process.env.AIWE_BROWSER_EXECUTABLE}:{}),headless:true});const page=await browser.newPage();await page.context().addCookies([{name:'aiwe',value:cookie.slice(5),url:origin}]);await page.goto(origin);
+  await page.locator('#history-toggle').click();await page.locator('.publication-card strong').waitFor();assert.equal(await page.locator('.publication-card strong').textContent(),'Verze 8 – AKTUÁLNÍ');assert.equal(await page.locator('#publish').isDisabled(),false);assert.equal(await page.locator('#publish').isVisible(),true);assert.equal(await page.locator('#discard-drafts').count(),0);
+  await page.locator('#history .publication-card').click();await page.getByRole('button',{name:'Nebudeme nic měnit',exact:true}).waitFor();await page.frameLocator('#preview').getByRole('heading',{name:'Published',exact:true}).waitFor();assert.equal(await project.head(),draft);
+  await page.locator('#restore-preview').click();assert.equal(await page.locator('#restore-clear-previous').isChecked(),true);assert.equal(await page.locator('#restore-clear-label').textContent(),'Odstranit všechny rozpracované úpravy');await page.locator('#cancel-restore').click();assert.equal(await project.head(),draft);assert.equal((await state()).requests.length,2);
+  assert.equal((await post('discard',{expectedHead:draft,expectedPublishedCommit:published})).status,200);await page.reload();await page.locator('#timeline').waitFor();await page.waitForFunction(()=>document.querySelector('#publish')?.hasAttribute('hidden'));
+  const after=await state();assert.equal(after.contentChanged,false);assert.equal(after.hasUnpublishedWork,false);assert.equal(after.publishedCommit,published);assert.deepEqual(after.releases,[release]);assert.equal(after.requests.length,0);assert.equal(after.events.length,0);assert.equal(after.job,null);assert.ok(!after.history.some((h:any)=>h.commit===draft));assert.equal(await page.locator('#publish').isDisabled(),true);assert.equal(await page.locator('#publish').isHidden(),true);assert.equal(await page.locator('#discard-drafts').count(),0);assert.equal(await page.locator('.preview-active').count(),0);
+  const config=JSON.parse(await readFile(join(data,'config.json'),'utf8'));assert.equal(config.pendingRelease,null);assert.equal(config.requestSequence,2);assert.equal(config.conversationMemory[0].id,'published-context');assert.equal((await fetch(origin+'/preview/versions/'+draft+'/')).status,404);
+  assert.equal((await post('publish',{commit:after.head})).status,400);assert.equal((await state()).busy,false);
+  assert.equal((await post('restore',{commit:published,expectedHead:after.head})).status,200);const restored=await state();assert.notEqual(restored.head,after.head);assert.equal(restored.contentChanged,false);assert.equal((await post('publish',{commit:restored.head})).status,400);
+  assert.equal((await post('discard',{expectedHead:restored.head,expectedPublishedCommit:published})).status,200);assert.equal((await state()).hasUnpublishedWork,false);
+ }finally{await browser?.close();if(child&&child.exitCode===null){const exited=new Promise(r=>child.once('exit',r));child.kill();await exited;}await rm(data,{recursive:true,force:true,maxRetries:5,retryDelay:200});}
+});
+

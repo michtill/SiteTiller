@@ -1,0 +1,48 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,rm,writeFile,readFile} from 'node:fs/promises';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
+import {fileURLToPath} from 'node:url';
+import {spawn,execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import {scryptSync} from 'node:crypto';
+import {Project} from '../src/project.ts';
+const exec=promisify(execFile);
+test('only verified publishing numbers a release, retries reuse the intent, and successive releases bucket all history',async()=>{
+ const data=await mkdtemp(join(tmpdir(),'aiwe-publish-api-'));const children:any[]=[];
+ try{
+  const project=new Project(join(data,'project'));await project.init(fileURLToPath(new URL('../seed',import.meta.url)));const base=await project.head();
+  const production=join(data,'production.git');await exec('git',['clone','--bare',project.root,production]);
+  const roles={primary:{provider:'openai',model:'gpt-design'},ui:{provider:'anthropic',model:'claude-build'},verify:{provider:'openai',model:'gpt-test'},escalation:{provider:'anthropic',model:'claude-review'}};
+  const password='test-password-for-aiwe',salt='test-salt';await writeFile(join(data,'config.json'),JSON.stringify({password:{salt,hash:scryptSync(password,salt,64).toString('hex')},slots:[],providers:{openai:{key:''},anthropic:{key:''}},roles,agentArchitecture:3,automaticReasoningPolicy:1,imageModels:{precise:'gpt-image-2.5-sunburst',fast:'gpt-image-2.5-flare',cheap:'gpt-image-2'},requests:[],reviewedThrough:0,lastReviewCommit:base,reviewedCommits:[],approvedCommit:null,publishedCommit:base}));
+  const port=18800+Math.floor(Math.random()*200),publisherPort=19000+Math.floor(Math.random()*200),origin='http://127.0.0.1:'+port,publisherURL='http://127.0.0.1:'+publisherPort+'/publish';
+  const env={...process.env,AIWE_DATA_DIR:data,HOST:'127.0.0.1',PORT:String(port),AIWE_ORIGIN:origin,OPENAI_API_KEY:'fake-openai',ANTHROPIC_API_KEY:'fake-claude',AIWE_TEST_CAPTURE:join(data,'capture.json'),AIWE_PUBLISH_URL:publisherURL,AIWE_PUBLISH_TOKEN:'test-token'};
+  children.push(spawn(process.execPath,[fileURLToPath(new URL('./fixtures/provider-server.mjs',import.meta.url))],{env,stdio:'ignore'}));
+  let ready=false;for(let i=0;i<60;i++){try{if((await fetch(origin+'/health')).ok){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,100));}assert.ok(ready);
+  let cookie='';const post=(path:string,input:any)=>fetch(origin+'/api/'+path,{method:'POST',headers:{Origin:origin,Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify(input)});
+  const login=await post('login',{password});cookie=login.headers.get('set-cookie')!.split(';')[0];
+  const pixels='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZuoAAAAASUVORK5CYII=';
+  const upload=await post('images',{name:'test.png',data:pixels});assert.equal(upload.status,201);const image:any=await upload.json();
+  assert.equal((await fetch(origin+'/api/images/'+image.id)).status,401);
+  const privateImage=await fetch(origin+'/api/images/'+image.id,{headers:{Cookie:cookie}});assert.ok(Buffer.from(await privateImage.arrayBuffer()).equals(Buffer.from(pixels,'base64')));
+  const preview=await(await fetch(origin+'/preview/')).text(),embedded=await(await fetch(origin+'/preview/?embedded=1')).text();assert.ok(preview.includes('AIWE · TESTOVACÍ'));assert.ok(!embedded.includes('AIWE · TESTOVACÍ'));
+  const state=async()=>await (await fetch(origin+'/api/state',{headers:{Cookie:cookie}})).json() as any;
+  const wait=async()=>{for(let i=0;i<100;i++){const s=await state();if(!s.busy)return s;await new Promise(r=>setTimeout(r,100));}throw Error('Job timeout');};
+  const edit=async(prompt:string,use='reference')=>{assert.equal((await post('run',{prompt,attachments:[{id:image.id,use,comment:'Test image'}]})).status,202);let s=await wait();assert.equal(s.job.status,'ready');return s;};
+  let s=await edit('First release change');const first=s.head;assert.ok(!Object.keys(await project.files()).some(name=>name.endsWith(image.id)));assert.equal(s.requests[0].progress.at(-1).stage,'ready');assert.equal(s.requests[0].models.primary.model,'gpt-design');assert.equal(s.reviewRuns.length,0);
+  assert.equal((await post('publish',{commit:first})).status,400);s=await state();assert.equal(s.releases.length,1);assert.equal(s.releases[0].legacy,true);assert.equal(s.job.status,'failed');assert.equal(s.busy,false);assert.equal(s.events.at(-1).stage,'failed');assert.ok(s.job.error);
+  const pending=JSON.parse(await readFile(join(data,'config.json'),'utf8')).pendingRelease;assert.equal(pending.number,1);assert.equal(pending.commit,first);
+  children.push(spawn(process.execPath,[fileURLToPath(new URL('../src/publisher.ts',import.meta.url))],{env:{...env,PORT:String(publisherPort),AIWE_PRODUCTION_GIT:production,AIWE_PRODUCTION_URL:''},stdio:'ignore'}));
+  ready=false;for(let i=0;i<60;i++){try{if((await fetch(publisherURL)).status===401){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,100));}assert.ok(ready);
+  const published:any=await (await post('publish',{commit:first,description:'První veřejná verze'})).json();assert.equal(published.ok,true);assert.equal(published.release.description,'První veřejná verze');assert.equal(published.release.number,1);assert.equal(published.release.id,pending.id);assert.equal(await project.git(['rev-parse','refs/tags/aiwe/published/v1']),first);s=await state();assert.equal(s.requests.length,0);assert.ok(!s.events.some((e:any)=>e.kind==='edit'));const compacted=JSON.parse(await readFile(join(data,'config.json'),'utf8'));assert.ok(compacted.conversationMemory.length);assert.ok(!JSON.stringify(compacted.conversationMemory).includes('progress'));
+  s=await edit('Second release change','website');const second=s.head;assert.equal(s.releaseGroups[0].changes.length,1);
+  assert.ok((await project.binary(second,'site/assets/'+image.id)).equals(Buffer.from(pixels,'base64')));
+  const asset=await fetch(origin+'/preview/assets/'+image.id);assert.equal(asset.headers.get('content-type'),'image/png');assert.ok(Buffer.from(await asset.arrayBuffer()).equals(Buffer.from(pixels,'base64')));
+  const publishedAgain:any=await (await post('publish',{commit:second})).json();assert.equal(publishedAgain.release.number,2);assert.equal(publishedAgain.release.previousCommit,first);
+  s=await state();assert.equal(s.releaseGroups[0].changes.length,0);assert.deepEqual(s.releaseGroups.slice(1,3).map((g:any)=>g.changes.map((c:any)=>c.commit)),[[second],[first]]);
+  assert.deepEqual(s.releaseGroups.flatMap((g:any)=>g.changes.map((c:any)=>c.commit)),s.history.map((c:any)=>c.commit));
+  const {stdout}=await exec('git',['--git-dir='+production,'rev-parse','main']);assert.equal(stdout.trim(),second);
+  assert.equal((await post('restore',{commit:first,expectedHead:second})).status,200);s=await state();const restored=s.head;assert.equal(s.approvedCommit,null);const restoredRelease:any=await(await post('publish',{commit:restored})).json();assert.equal(restoredRelease.release.number,3);s=await state();assert.equal(s.publishedCommit,restored);assert.equal(s.job.tests.restoration.identical,true);assert.equal(s.reviewRuns.length,0);assert.equal(JSON.parse(await readFile(join(data,'config.json'),'utf8')).pendingRelease,null);
+ }finally{for(const child of children){if(child.exitCode===null){const exited=new Promise(r=>child.once('exit',r));child.kill();await exited;}}await rm(data,{recursive:true,force:true});}
+});

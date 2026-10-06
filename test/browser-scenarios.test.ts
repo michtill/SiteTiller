@@ -1,0 +1,17 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {mkdtemp,rm} from 'node:fs/promises';import {join} from 'node:path';import {tmpdir} from 'node:os';import {browserChecks} from '../src/checks.ts';import {validateBrowserTests} from '../src/browser-scenarios.ts';
+test('browser scenarios produce actual basket and keyboard evidence and fail incorrect totals',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'aiwe-cart-test-'));
+ try{
+  const files={'site/index.html':'<!doctype html><html><head><title>Cart</title><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><select id="weight"><option value="200">0.2 kg</option><option value="500">0.5 kg</option></select><button id="add">Add</button><button id="remove">Remove</button><output id="total">0</output><script>let total=0;const update=()=>document.getElementById("total").textContent=String(total);document.getElementById("add").onclick=()=>{total+=Number(document.getElementById("weight").value);update()};document.getElementById("remove").onclick=()=>{total-=Number(document.getElementById("weight").value);update()};</script></body></html>'};
+  const scenarios=[{name:'Basket and keyboard',path:'site/index.html',steps:[{action:'select',selector:'#weight',value:'200'},{action:'click',selector:'#add'},{action:'expectText',selector:'#total',equals:'200'},{action:'select',selector:'#weight',value:'500'},{action:'focus',selector:'#add'},{action:'expectFocused',selector:'#add'},{action:'press',selector:'#add',key:'Enter'},{action:'expectText',selector:'#total',equals:'700'},{action:'click',selector:'#remove'},{action:'expectText',selector:'#total',equals:'200'}]}];
+  const result=await browserChecks(root,files,scenarios);assert.equal(result.passed,true);assert.equal(result.scenarios.length,2);assert.equal(result.scenarios[0].steps[7].actual,'700');assert.equal(result.scenarios[1].steps.every((s:any)=>s.passed),true);
+  const wrong=structuredClone(scenarios);wrong[0].steps[7].equals='900';const fail=await browserChecks(root,files,wrong);assert.equal(fail.passed,false);assert.equal(fail.scenarios[0].steps[7].actual,'700');assert.ok(fail.errors.some(e=>e.includes('Basket and keyboard')));
+  assert.throws(()=>validateBrowserTests([{name:'Unsafe',path:'../config.json',steps:[{action:'expectText',selector:'body',equals:'x'}]}],files));assert.throws(()=>validateBrowserTests([{name:'No assertion',path:'site/index.html',steps:[{action:'click',selector:'#add'}]}],files));
+ }finally{await rm(root,{recursive:true,force:true});}
+});
+test('attribute checks accept substring and equals forms while numeric input values become text',()=>{
+ const files={'site/index.html':'html'};
+ const scenarios=[{name:'Image and quantity',path:'site/index.html',steps:[{action:'fill',selector:'input',value:2},{action:'expectValue',selector:'input',equals:2},{action:'expectAttribute',selector:'img',attribute:'src',contains:'assets/'},{action:'expectAttribute',selector:'img',attribute:'alt',equals:'Céčka'}]}];
+ const normalized=validateBrowserTests(scenarios,files);assert.equal(normalized[0].steps[0].value,'2');assert.equal(normalized[0].steps[1].value,'2');assert.equal(normalized[0].steps[3].value,'Céčka');
+ assert.throws(()=>validateBrowserTests([{name:'Broken',path:'site/index.html',steps:[{action:'expectAttribute',selector:'img',attribute:'src'}]}],files),/value nebo text contains/);
+});

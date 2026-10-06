@@ -1,0 +1,28 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {mkdtemp,rm,writeFile,mkdir,readFile} from 'node:fs/promises';import {join} from 'node:path';import {tmpdir} from 'node:os';
+import {editImage,imageModel,imageIssues} from '../src/image-editor.ts';import {decodeImage} from '../src/images.ts';import {Project} from '../src/project.ts';import {workflow} from '../src/workflow.ts';import {defaults} from '../src/core.ts';
+const input='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZuoAAAAASUVORK5CYII=';
+const output='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVQIHWP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC';
+test('image adapter sends multipart bytes, returns a new content-addressed asset, and sanitizes failures',async()=>{
+  let captured:any;const result=await editImage('private-key','gpt-image-1.5',{data:input,mime:'image/png'},'Remove the small logo',async(url:any,options:any)=>{captured={url,...options};return new Response(JSON.stringify({data:[{b64_json:output}]}));});
+  assert.equal(captured.url,'https://api.openai.com/v1/images/edits');assert.equal(captured.headers.Authorization,'Bearer private-key');assert.equal(captured.body.get('model'),'gpt-image-1.5');assert.equal(captured.body.get('input_fidelity'),'high');assert.deepEqual(Buffer.from(await captured.body.get('image[]').arrayBuffer()),Buffer.from(input,'base64'));assert.match(result.id,/^[a-f0-9]{64}\.png$/);assert.notEqual(result.id,decodeImage({data:input}).id);
+  await assert.rejects(editImage('private-key','gpt-image-1.5',{data:input,mime:'image/png'},'Retouch',async()=>new Response('private-key',{status:401})),e=>String(e).includes('401')&&!String(e).includes('private-key'));
+  await assert.rejects(editImage('key','gpt-image-1.5',{data:input,mime:'image/png'},'Retouch',async()=>new Response(JSON.stringify({data:[{b64_json:input}]}))),/nezměněný/);
+  assert.equal(imageModel([{provider:'openai',id:'gpt-image-1.5'}]),'gpt-image-1.5');assert.equal(imageModel([]),null);assert.equal(imageIssues('unavailable',[]).length,1);assert.equal(imageIssues('none',[]).length,0);
+});
+test('pixel editing preserves original bytes, commits a distinct asset and reference atomically, and restores cleanly',async()=>{
+  const root=await mkdtemp(join(tmpdir(),'aiwe-image-edit-'));try{
+    const project=new Project(join(root,'project'));await project.init(new URL('../seed',import.meta.url).pathname.replace(/^\/([A-Z]:)/,'$1'));
+    const source='site/assets/original.png';await mkdir(join(project.root,'site/assets'),{recursive:true});await writeFile(join(project.root,source),Buffer.from(input,'base64'));const original=await project.files();original['site/index.html']=original['site/index.html'].replace('</body>','<img src="assets/original.png" alt="Test image"></body>');await project.write(original);const base=await project.commit('Image fixture');
+    let call=0;let resultPath='';const model:any=async(_slot:any,_instruction:any,data:any)=>{call++;if(call===1){assert.equal(data.capabilities.imageEditing,true);return {value:{action:'image',summary:'Retouch',imageEdits:[{source,prompt:'Remove logo',target:'site/assets/retouched.png',format:'png'}]}};}if(call===2){resultPath=data.imageResults[0].path;assert.ok(data._images.some((i:any)=>i.data===output));return {value:{action:'implement',files:[{path:'site/index.html',content:data.files['site/index.html'].replace('assets/original.png',resultPath.slice(5))}]}};}assert.ok(data._images.some((i:any)=>i.path===source&&i.data===input));return {value:{status:'PASS',requiredFixes:[]}};};
+    const slots=[{provider:'openai' as const,key:'test',...defaults.openai}];const imageCall:any=async()=>({...decodeImage({data:output}),data:output,usage:{}});
+    const result=await workflow(project,slots,'Remove logo',join(root,'drafts'),()=>{},model,undefined,[],{model:'gpt-image-1.5',call:imageCall,check:(async()=>({passed:true,errors:[],checks:[],screenshots:[]})) as any});
+    assert.deepEqual(await readFile(join(project.root,source)),Buffer.from(input,'base64'));assert.deepEqual(await readFile(join(project.root,resultPath)),Buffer.from(output,'base64'));assert.ok((await project.files())['site/index.html'].includes(resultPath.slice(5)));assert.equal(result.imageResults.length,1);assert.equal(resultPath,'site/assets/retouched.png');
+    await project.restore(base,result.commit);assert.deepEqual(await readFile(join(project.root,source)),Buffer.from(input,'base64'));assert.ok(!(await project.files())[resultPath]);
+    const stable=await project.head();const plan:any=async()=>({value:{action:'image',imageEdits:[{source,prompt:'Remove logo',target:'site/assets/retouched.png',format:'png'}]}});
+    await assert.rejects(workflow(project,slots,'Retouch',join(root,'drafts'),()=>{},plan,undefined,[],{model:'gpt-image-1.5',call:(async()=>{throw Error('Image provider failed');}) as any}),/Image provider failed/);assert.equal(await project.head(),stable);
+    await assert.rejects(workflow(project,slots,'Retouch',join(root,'drafts'),()=>{},plan),/OpenAI/);assert.equal(await project.head(),stable);
+    const forbidden:any=async()=>({value:{action:'image',imageEdits:[{source:'site/assets/reference.png',prompt:'Use reference'}]}});
+    await assert.rejects(workflow(project,slots,'Edit reference',join(root,'drafts'),()=>{},forbidden,undefined,[{id:'reference.png',use:'reference',data:input,mime:'image/png'}],{model:'gpt-image-1.5',call:imageCall}),/není součástí/);assert.equal(await project.head(),stable);
+  }finally{await rm(root,{recursive:true,force:true});}
+});

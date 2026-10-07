@@ -45,6 +45,7 @@ services:
       SITETILLER_DATA_DIR: /data
       SITETILLER_PUBLISH_TOKEN: ${SITETILLER_PUBLISH_TOKEN:-}
       SITETILLER_PRODUCTION_GIT: /production/repository.git
+      SITETILLER_PRODUCTION_SNAPSHOT: ${SITETILLER_PRODUCTION_SNAPSHOT:-0}
       SITETILLER_PRODUCTION_DIRECTORY: /production/www
       SITETILLER_PRODUCTION_URL: ${SITETILLER_PRODUCTION_URL:-http://production/}
     volumes: ["sitetiller_data:/data:ro", "sitetiller_production:/production"]

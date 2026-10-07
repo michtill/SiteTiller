@@ -1,4 +1,5 @@
 import {deploySite} from '../deploy/site-release.mjs';
+import {productionSnapshot} from './production-snapshot.ts';
 import {hostingPolicyProblems} from './site-policy.ts';
 import {staticChecks} from './checks.ts';
 import http from 'node:http';
@@ -34,16 +35,18 @@ http.createServer(async(req,res)=>{const json=(status:number,value:any)=>{res.wr
     if(process.env.SITETILLER_PRODUCTION_URL){stage='policy';const hosted=await fetch(process.env.SITETILLER_PRODUCTION_URL,{signal:AbortSignal.timeout(10000),cache:'no-store'});if(!hosted.ok)throw Error('Production hosting unavailable');const problems=hostingPolicyProblems(hosted.headers.get('content-security-policy'));if(problems.length)throw Error('Incompatible production CSP');}
     stage='git';const before=(await run(['ls-remote',remote,'refs/heads/main'])).stdout.split(/\s/)[0];
     await run(['fetch',remote,'main']);
-    await run(['merge-base','--is-ancestor','FETCH_HEAD',commit]);
+    if((await run(['rev-parse','FETCH_HEAD'])).stdout.trim()!==before)throw Error('Production Git changed during preparation');
+    const deployedCommit=process.env.SITETILLER_PRODUCTION_SNAPSHOT==='1'?await productionSnapshot(new Project(temp),commit,before):commit;
+    await run(['merge-base','--is-ancestor','FETCH_HEAD',deployedCommit]);
     // No force push. Freeze explicit SHA so later draft changes cannot be released.
-    await run(['push',remote,commit+':refs/heads/main']);
+    await run(['push',remote,deployedCommit+':refs/heads/main']);
     if(process.env.SITETILLER_PRODUCTION_DIRECTORY){stage='export';await deploySite(project,commit,process.env.SITETILLER_PRODUCTION_DIRECTORY);}
     // A previous push may have succeeded while its deploy hook failed. Retry the
     // existing, fixed production hook when Git already contains this exact SHA.
-    if(before===commit&&process.env.SITETILLER_RETRY_DEPLOY_HOOK==='1'){
-      stage='hook';await new Promise<void>((resolve,reject)=>{const child=execFile('php',[join(remote,'hooks/post-receive')],{timeout:45000,maxBuffer:100000},error=>error?reject(Error('Deployment hook failed')):resolve());child.stdin!.end(commit+' '+commit+' refs/heads/main\n');});
+    if(before===deployedCommit&&process.env.SITETILLER_RETRY_DEPLOY_HOOK==='1'){
+      stage='hook';await new Promise<void>((resolve,reject)=>{const child=execFile('php',[join(remote,'hooks/post-receive')],{timeout:45000,maxBuffer:100000},error=>error?reject(Error('Deployment hook failed')):resolve());child.stdin!.end(deployedCommit+' '+deployedCommit+' refs/heads/main\n');});
     }
-    const {stdout}=await run(['ls-remote',remote,'refs/heads/main']);if(!stdout.startsWith(commit))throw new Error('Remote commit mismatch');
+    const {stdout}=await run(['ls-remote',remote,'refs/heads/main']);if(!stdout.startsWith(deployedCommit))throw new Error('Remote commit mismatch');
     if(process.env.SITETILLER_PRODUCTION_URL){
       stage='verify';const expectedFiles=await project.committedFiles(commit);let verified=false;const deadline=Date.now()+90000;
       while(Date.now()<deadline){

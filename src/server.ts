@@ -22,7 +22,7 @@ import {addRequest,pendingRequests} from './journal.ts';
 import {recentConversation,searchConversation,hydrateRecentMemory} from './memory.ts';
 import {initialReleases,publicationIntent,completePublication,groupHistory} from './releases.ts';
 try {process.loadEnvFile('.env');} catch {}
-const root=resolve(fileURLToPath(new URL('..',import.meta.url))), data=resolve(process.env.AIWE_DATA_DIR || join(root,'data'));
+const root=resolve(fileURLToPath(new URL('..',import.meta.url))), data=resolve(process.env.SITETILLER_DATA_DIR || join(root,'data'));
 await mkdir(data,{recursive:true});
 async function load(name:string,fallback:any) {try{return JSON.parse(await readFile(join(data,name),'utf8'));}catch(e:any){if(e.code==='ENOENT')return fallback;throw e;}}
 async function save(name:string,value:any) {const p=join(data,name);await writeFile(p+'.tmp',JSON.stringify(value,null,2),{mode:name==='config.json'?0o640:0o600});await rename(p+'.tmp',p);}
@@ -39,7 +39,7 @@ config.roles=config.roles||initialTeam();config.imageModels=config.imageModels||
 if(!config.automaticReasoningPolicy){config.previousReasoningSettings=structuredClone(config.roles);config.roles.primary.reasoningEffort='auto';config.roles.ui.reasoningEffort='auto';config.roles.verify.reasoningEffort='auto';config.automaticReasoningPolicy=1;await save('config.json',config);}
 function providerKeys(){return Object.fromEntries(['openai','anthropic'].map(provider=>[provider,config.providers[provider]?.key?unseal(config.providers[provider].key,key):(provider==='openai'?process.env.OPENAI_API_KEY:process.env.ANTHROPIC_API_KEY)||''])) as {openai:string;anthropic:string};}
 function activeSlots():Slot[]{const keys=providerKeys();return (['openai','anthropic'] as const).map(provider=>({provider,key:keys[provider],...defaults[provider]}));}
-const project=new Project(join(data,'project')); await project.init(process.env.AIWE_INITIAL_SITE==='seed'?join(root,'seed'):null);
+const project=new Project(join(data,'project')); await project.init(process.env.SITETILLER_INITIAL_SITE==='seed'?join(root,'seed'):null);
 const sessions=new Map<string,number>(), failures=new Map<string,{count:number,time:number}>();
 let job:any=await load('last-job.json',null), busy=false;
 if(job?.status==='running')job={...job,status:'failed',error:'Úloha byla přerušena restartem. Náhled zůstal zachován.'};
@@ -50,7 +50,7 @@ config.reviewedThrough=config.reviewedThrough||0;
 if(!config.requests){
   config.requests=[];config.reviewedThrough=0;config.lastReviewCommit=config.approvedCommit||config.publishedCommit||await project.git(['rev-list','--max-parents=0','HEAD']);
   const history=await project.git(['log','--reverse','--format=%H%x09%s',config.lastReviewCommit+'..HEAD']);
-  for(const line of history.split('\n').filter(Boolean)){const [commit,...message]=line.split('\t');const text=message.join('\t');if(text.startsWith('AIWE: '))addRequest(config,{id:randomBytes(8).toString('hex'),prompt:job?.commit===commit&&job?.prompt?job.prompt:text.slice(6),commit,status:'legacy'});}
+  for(const line of history.split('\n').filter(Boolean)){const [commit,...message]=line.split('\t');const text=message.join('\t');if(text.startsWith('SiteTiller: '))addRequest(config,{id:randomBytes(8).toString('hex'),prompt:job?.commit===commit&&job?.prompt?job.prompt:text.slice('SiteTiller: '.length),commit,status:'legacy'});}
   if(job?.prompt&&!config.requests.some((r:any)=>r.prompt===job.prompt)&&job.commit!==config.lastReviewCommit)addRequest(config,{id:randomBytes(8).toString('hex'),prompt:job.prompt,commit:job.commit||null,status:job.status});
   await save('config.json',config);
 }
@@ -58,14 +58,14 @@ const cleanedHistory=closePublishedHistory(config,events);events=cleanedHistory.
 if(cleanedHistory.removed&&job?.kind==='edit'&&!config.requests.some((r:any)=>r.id===job.id)){job={id:job.id,kind:'publish',status:'ready',commit:config.publishedCommit};await save('last-job.json',job);}
 await save('config.json',config);await save('events.json',events);
 const PORT=Number(process.env.PORT||8080), HOST=process.env.HOST||'127.0.0.1';
-const publicOrigin=process.env.AIWE_ORIGIN||`http://127.0.0.1:${PORT}`;
+const publicOrigin=process.env.SITETILLER_ORIGIN||`http://127.0.0.1:${PORT}`;
 function response(res:http.ServerResponse,status:number,body:any) {res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(body));}
 async function body(req:http.IncomingMessage,limit=1000000) {let bytes=0,text='';for await(const part of req){bytes+=part.length;if(bytes>limit)throw new Error('Příliš velký požadavek.');text+=part;}return JSON.parse(text||'{}');}
-function auth(req:http.IncomingMessage) {const token=req.headers.cookie?.match(/(?:^|;\s*)aiwe=([a-f0-9]+)/)?.[1];return !!token && (sessions.get(token)||0)>Date.now();}
+function auth(req:http.IncomingMessage) {const token=req.headers.cookie?.match(/(?:^|;\s*)sitetiller=([a-f0-9]+)/)?.[1];return !!token && (sessions.get(token)||0)>Date.now();}
 function sameOrigin(req:http.IncomingMessage) {return req.headers.origin===publicOrigin;}
-function login(res:http.ServerResponse) {const token=randomBytes(32).toString('hex');sessions.set(token,Date.now()+8*3600000);res.setHeader('Set-Cookie',`aiwe=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${publicOrigin.startsWith('https:')?'; Secure':''}`);}
+function login(res:http.ServerResponse) {const token=randomBytes(32).toString('hex');sessions.set(token,Date.now()+8*3600000);res.setHeader('Set-Cookie',`sitetiller=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${publicOrigin.startsWith('https:')?'; Secure':''}`);}
 function hashPassword(p:string,salt:string) {return scryptSync(p,salt,64).toString('hex');}
-function state() {return {name:'AI Web Editor',version:'0.19.1',agentArchitecture:3,imageModels:config.imageModels,configured:!!config.password,providers:Object.entries(providerKeys()).map(([provider,key])=>({provider,hasKey:!!key})),roles:config.roles,requests:config.requests,reviewRuns:config.reviewRuns||[],job,events,busy,pendingCount:pendingRequests(config.requests,config.reviewedThrough).length,lastReviewCommit:config.lastReviewCommit,approvedCommit:config.approvedCommit,publishedCommit:config.publishedCommit,releases:config.releases,previewUrl:process.env.AIWE_PREVIEW_URL||'/preview/',publishConfigured:!!process.env.AIWE_PUBLISH_URL};}
+function state() {return {name:'SiteTiller',version:'0.20.0',agentArchitecture:3,imageModels:config.imageModels,configured:!!config.password,providers:Object.entries(providerKeys()).map(([provider,key])=>({provider,hasKey:!!key})),roles:config.roles,requests:config.requests,reviewRuns:config.reviewRuns||[],job,events,busy,pendingCount:pendingRequests(config.requests,config.reviewedThrough).length,lastReviewCommit:config.lastReviewCommit,approvedCommit:config.approvedCommit,publishedCommit:config.publishedCommit,releases:config.releases,previewUrl:process.env.SITETILLER_PREVIEW_URL||'/preview/',publishConfigured:!!process.env.SITETILLER_PUBLISH_URL};}
 let historyCache:any=null;
 async function historyState(){const head=await project.head(),signature=head+JSON.stringify([config.releases,config.draftBaseCommit,config.requests.map((r:any)=>[r.id,r.commit,r.status,r.sequence])]);if(historyCache?.signature!==signature){const history=visibleVersionHistory(await project.history(null),config),files=await project.committedFiles(head),projectTitle=files['site/index.html']?.match(/<title>(.*?)<\/title>/s)?.[1]?.slice(0,100)||'Nový web';historyCache={publishableCommits:await publishableSteps(project,config,head),signature,history,projectTitle,groups:groupHistory(history,config.releases)};}return {...await draftState(project,config,head),head,publishableCommits:historyCache.publishableCommits,projectTitle:historyCache.projectTitle,history:historyCache.history,releaseGroups:historyCache.groups};}
 async function imageInputs(items:any[]){return Promise.all(items.map(async i=>({...i,data:(await readFile(join(data,'uploads',i.id))).toString('base64')})));}
@@ -103,7 +103,7 @@ const server=http.createServer(async(req,res)=>{try{
       else if(password.length>256||!timingSafeEqual(Buffer.from(hashPassword(password,config.password.salt),'hex'),Buffer.from(config.password.hash,'hex'))){failures.set(ip,{count:(prev?.count||0)+1,time:Date.now()});return response(res,401,{error:'Nesprávné heslo.'});}
       failures.delete(ip);login(res);return response(res,200,{ok:true});
     }
-    if(!auth(req))return response(res,401,{error:'Přihlas se do AIWE.'});
+    if(!auth(req))return response(res,401,{error:'Přihlas se do SiteTiller.'});
     if(path==='/api/state'&&req.method==='GET')return response(res,200,{...state(),...await historyState()});
     if(path==='/api/models'&&(req.method==='GET'||req.method==='POST')){
       const input=req.method==='POST'?await body(req):{};
@@ -205,7 +205,7 @@ const server=http.createServer(async(req,res)=>{try{
       if(input.createSubversion!==undefined&&typeof input.createSubversion!=='boolean')throw Error('Neplatná volba publikování.');if(input.createSubversion&&(!config.releases.at(-1)||config.releases.at(-1).legacy||input.expectedReleaseId!==config.releases.at(-1).id||input.expectedPublishedCommit!==config.publishedCommit))throw Error('Aktuální publikovaná verze se změnila. Obnovte seznam verzí.');
       if(input.description!==undefined&&(typeof input.description!=='string'||input.description.length>2000))throw Error('Popis verze může mít nejvýše 2000 znaků.');
       const target=await publicationTarget(project,config,input.commit,input.expectedHead,input.stepId);if(busy)throw Error('Počkej na dokončení úlohy.');
-      if(!process.env.AIWE_PUBLISH_URL)throw new Error('Produkční Git zatím není připojen.');
+      if(!process.env.SITETILLER_PUBLISH_URL)throw new Error('Produkční Git zatím není připojen.');
       busy=true;job={id:randomBytes(8).toString('hex'),kind:'publish',status:'running'};await save('last-job.json',job);await emit({stage:'publish',status:'running',message:'Provádím technickou kontrolu před publikováním.'});try{
         config.approvedCommit=null;config.technicalApproval=null;await save('config.json',config);
         const restored=config.requests.findLast((r:any)=>r.commit===input.commit&&r.restoredFrom);
@@ -214,20 +214,20 @@ const server=http.createServer(async(req,res)=>{try{
         config.approvedCommit=input.commit;config.technicalApproval={commit:input.commit,head:target.head,checkedAt:new Date().toISOString(),tests};await save('config.json',config);
         await emit({stage:'publish',status:'running',message:'Technické kontroly prošly. Nasazuji vybranou verzi.'});
         config.pendingRelease=publicationIntent(config.releases,config.pendingRelease||null,input.commit,input.description?.trim(),publicationSummary(config.requests.filter((r:any)=>r.sequence<=target.through)),input.createSubversion===true);await save('config.json',config);
-        const result=await fetch(process.env.AIWE_PUBLISH_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+process.env.AIWE_PUBLISH_TOKEN},body:JSON.stringify({commit:input.commit}),signal:AbortSignal.timeout(180000)});
+        const result=await fetch(process.env.SITETILLER_PUBLISH_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+process.env.SITETILLER_PUBLISH_TOKEN},body:JSON.stringify({commit:input.commit}),signal:AbortSignal.timeout(180000)});
         if(!result.ok){const failure:any=await result.json().catch(()=>({}));throw new Error(failure.error||'Publikační služba nepotvrdila nasazení.');}
         const confirmation:any=await result.json();if(confirmation.ok!==true||confirmation.commit!==input.commit)throw new Error('Publikační služba potvrdila jinou verzi.');
         const completed=await completePublication(project,config.releases,config.pendingRelease);
         config.releases=completed.releases;config.pendingRelease=null;config.publishedCommit=input.commit;config.draftBaseCommit=input.commit;config.reviewedThrough=target.through;config.lastReviewCommit=input.commit;config.publishedThrough=config.reviewedThrough;const closed=closePublishedHistory(config,events);events=closed.events;await eventWrites;await save('events.json',events);await save('config.json',config);await emit({stage:'published',message:'Verze '+completed.release.number+(completed.release.minor!==undefined?'.'+completed.release.minor:'')+' byla publikována.',commit:input.commit,release:completed.release,kind:'publish'});job={...job,status:'ready',commit:input.commit};await save('last-job.json',job);return response(res,200,{ok:true,release:completed.release});
       }catch(e:any){config.approvedCommit=null;config.technicalApproval=null;await save('config.json',config);job={...job,status:'failed',error:e.name==='TimeoutError'?'Publikování vypršelo. Git mohl být aktualizován; ověř stav a opakuj publikování.':e.message};await save('last-job.json',job);await emit({stage:'failed',message:job.error});throw Error(job.error);}finally{busy=false;}
     }
-    if(path==='/api/logout'&&req.method==='POST'){res.setHeader('Set-Cookie','aiwe=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');const token=req.headers.cookie?.match(/aiwe=([a-f0-9]+)/)?.[1];if(token){sessions.delete(token);}return response(res,200,{ok:true});}
+    if(path==='/api/logout'&&req.method==='POST'){res.setHeader('Set-Cookie','sitetiller=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');const token=req.headers.cookie?.match(/sitetiller=([a-f0-9]+)/)?.[1];if(token){sessions.delete(token);}return response(res,200,{ok:true});}
     return response(res,404,{error:'Nenalezeno.'});
   }
   if(req.method!=='GET'&&req.method!=='HEAD')return response(res,405,{error:'Nepovolená metoda.'});
   const asset=path==='/'?'index.html':path.slice(1);if(!['index.html','app.js','theme.js','i18n.js','translations.js','presentation.js','messages.js','style.css'].includes(asset))return response(res,404,{error:'Nenalezeno.'});
   res.setHeader('Content-Security-Policy',"default-src 'self'; style-src 'self'; script-src 'self'; frame-src 'self' https:; img-src 'self' blob: data:; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
-  res.setHeader('X-Robots-Tag','noindex, nofollow');res.writeHead(200,{'Content-Type':mime[extname(asset)],'Cache-Control':'no-store'});const assetBody=await readFile(join(root,'public',asset));res.end(asset==='index.html'?assetBody.toString().replace('<html lang="cs">','<html lang="'+(process.env.AIWE_UI_LANGUAGE==='en'?'en':'cs')+'">'):assetBody);
+  res.setHeader('X-Robots-Tag','noindex, nofollow');res.writeHead(200,{'Content-Type':mime[extname(asset)],'Cache-Control':'no-store'});const assetBody=await readFile(join(root,'public',asset));res.end(asset==='index.html'?assetBody.toString().replace('<html lang="cs">','<html lang="'+(process.env.SITETILLER_UI_LANGUAGE==='en'?'en':'cs')+'">'):assetBody);
 }catch(e:any){response(res,400,{error:e.message||'Požadavek nelze dokončit.'});}});
-server.listen(PORT,HOST,()=>console.log(`AIWE listening on ${HOST}:${PORT}`));
+server.listen(PORT,HOST,()=>console.log(`SiteTiller listening on ${HOST}:${PORT}`));
 

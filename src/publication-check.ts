@@ -11,7 +11,7 @@ export async function checkPublication(project:Project,commit:string,restoredFro
   const actualTree=await project.git(['rev-parse',commit+':site']),expectedTree=await project.git(['rev-parse',restoredFrom+':site']);
   restoration={restoredFrom,actualTree,expectedTree,identical:actualTree===expectedTree};if(!restoration.identical)throw Error('Obnovené soubory neodpovídají vybrané verzi.');
  }
- const root=await mkdtemp(join(tmpdir(),'aiwe-publication-check-'));
+ const root=await mkdtemp(join(tmpdir(),'sitetiller-publication-check-'));
  try{
   for(const [path,content] of Object.entries(files)){await mkdir(join(root,path,'..'),{recursive:true});await writeFile(join(root,path),raster(path)?await project.binary(commit,path):content);}
   const browser=await browserCheck(root,files);

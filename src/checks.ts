@@ -32,7 +32,7 @@ export async function browserChecks(root:string,files:Record<string,string>,brow
  await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
  let browser:any;
  try{
-  browser=await chromium.launch({headless:true,...(process.env.AIWE_BROWSER_EXECUTABLE?{executablePath:process.env.AIWE_BROWSER_EXECUTABLE}:{})});
+  browser=await chromium.launch({headless:true,...(process.env.SITETILLER_BROWSER_EXECUTABLE?{executablePath:process.env.SITETILLER_BROWSER_EXECUTABLE}:{})});
   const origin='http://127.0.0.1:'+(server.address() as any).port;
   const pages=Object.keys(files).filter(p=>p.endsWith('.html'));
   if(pages.length>20)throw Error('Browser check supports at most 20 pages per request.');

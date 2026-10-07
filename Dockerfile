@@ -8,6 +8,6 @@ COPY --chown=node:node src ./src
 COPY --chown=node:node public ./public
 COPY --chown=node:node seed ./seed
 USER node
-ENV HOST=0.0.0.0 PORT=8080 AIWE_DATA_DIR=/data AIWE_BROWSER_EXECUTABLE=/usr/bin/chromium XDG_CACHE_HOME=/tmp/aiwe-cache XDG_CONFIG_HOME=/tmp/aiwe-config
+ENV HOST=0.0.0.0 PORT=8080 SITETILLER_DATA_DIR=/data SITETILLER_BROWSER_EXECUTABLE=/usr/bin/chromium XDG_CACHE_HOME=/tmp/sitetiller-cache XDG_CONFIG_HOME=/tmp/sitetiller-config
 EXPOSE 8080
 CMD ["node", "src/server.ts"]

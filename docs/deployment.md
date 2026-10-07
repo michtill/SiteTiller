@@ -2,11 +2,11 @@
 
 ## Origins and environment
 
-Use separate origins, for example `studio.example.com`, `draft.example.com` and `www.example.com`. HTTPS must be terminated by your reverse proxy. Set `AIWE_ORIGIN` to the exact studio origin (scheme, hostname and port). Set `AIWE_PREVIEW_URL` to the dedicated draft origin, including a trailing slash. Proxy those hosts to ports 8080 and 8081 respectively. The preview service serves its routes from `/`.
+Use separate origins, for example `studio.example.com`, `draft.example.com` and `www.example.com`. HTTPS must be terminated by your reverse proxy. Set `SITETILLER_ORIGIN` to the exact studio origin (scheme, hostname and port). Set `SITETILLER_PREVIEW_URL` to the dedicated draft origin, including a trailing slash. Proxy those hosts to ports 8080 and 8081 respectively. The preview service serves its routes from `/`.
 
 Do not expose the publisher port. It is an internal bearer-token endpoint and should only be reachable by the studio service. Keep the studio CSP restrictive; the production/preview CSP is a separate policy for user-authored websites.
 
-`.env.example` lists the supported settings. The checked-in Compose file uses loopback-bound ports. Changing `AIWE_BIND_ADDRESS` to `0.0.0.0` exposes them on the network; only do that behind appropriate firewall/TLS controls.
+`.env.example` lists the supported settings. The checked-in Compose file uses loopback-bound ports. Changing `SITETILLER_BIND_ADDRESS` to `0.0.0.0` exposes them on the network; only do that behind appropriate firewall/TLS controls.
 
 ## Included production hosting
 
@@ -14,7 +14,7 @@ The optional `publish` profile supplies an internal publisher, a fixed bare Git 
 
 1. Start `web` and `preview` as in the README and finish administrator setup.
 2. Prepare the website you want to initialize as production. **Initialization publishes the current draft as the production baseline.** It is an explicit one-time operation, not a model action.
-3. Generate a private random publication token, e.g. `openssl rand -hex 32`, and save it in `.env` as `AIWE_PUBLISH_TOKEN`. Set `AIWE_PUBLISH_URL=http://publisher:8080/publish`. Keep `AIWE_PRODUCTION_URL=http://production/` for container-local verification, or use your public production URL if it is reachable from the container with the supplied CSP.
+3. Generate a private random publication token, e.g. `openssl rand -hex 32`, and save it in `.env` as `SITETILLER_PUBLISH_TOKEN`. Set `SITETILLER_PUBLISH_URL=http://publisher:8080/publish`. Keep `SITETILLER_PRODUCTION_URL=http://production/` for container-local verification, or use your public production URL if it is reachable from the container with the supplied CSP.
 4. Build the publisher and initialize the production volume:
 
 ```sh
@@ -36,7 +36,7 @@ The publisher pushes the approved SHA without force-pushing, writes that snapsho
 
 ## Existing Git-based hosting
 
-If your host deploys a static Git repository already, use a separately configured publisher with a fixed `AIWE_PRODUCTION_GIT`, `AIWE_PRODUCTION_URL` and publication token. Mount only the necessary fixed repository or a narrowly scoped credential. Leave `AIWE_PRODUCTION_DIRECTORY` unset if the hosting Git hook handles deployment. The edited website must reside under `site/` and production must share ancestry with the draft Git history. An unrelated production repository cannot be overwritten via force-push.
+If your host deploys a static Git repository already, use a separately configured publisher with a fixed `SITETILLER_PRODUCTION_GIT`, `SITETILLER_PRODUCTION_URL` and publication token. Mount only the necessary fixed repository or a narrowly scoped credential. Leave `SITETILLER_PRODUCTION_DIRECTORY` unset if the hosting Git hook handles deployment. The edited website must reside under `site/` and production must share ancestry with the draft Git history. An unrelated production repository cannot be overwritten via force-push.
 
 Import an existing site **before the first editor startup** by preparing the private data volume's `project` Git repository with a `main` branch and `site/` directory. Do not use imported website content as agent instructions. Back up the existing production target first. Do not point a fresh instance at another site's production Git.
 
@@ -44,7 +44,7 @@ For VPS Center, `deploy/vpsc-compose.yml` is a studio/preview template with exte
 
 ## Multiple websites
 
-Use a separate checkout/configuration per site. Choose distinct `AIWE_INSTANCE`, hostnames and exposed ports. Compose prefixes volumes and networks with the project name, avoiding accidental shared drafts. Never share `aiwe_data` between different websites. Settings, uploads, credentials and publication history belong to that instance.
+Use a separate checkout/configuration per site. Choose distinct `SITETILLER_INSTANCE`, hostnames and exposed ports. Compose prefixes volumes and networks with the project name, avoiding accidental shared drafts. Never share `sitetiller_data` between different websites. Settings, uploads, credentials and publication history belong to that instance.
 
 ## Backups and recovery
 

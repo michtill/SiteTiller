@@ -28,7 +28,7 @@ test('lead can delegate a missing-evidence repair after the first verifier failu
  };
  const result=await workflow(p,slots,'Update',join(root,'drafts'),()=>{},model,undefined,[],{check:checked});assert.equal(result.tests.browserTests.length,1);assert.deepEqual(seen,['gpt-6.1-sol','gpt-6-luna','gpt-6.1-sol','claude-sonnet-5-5','gpt-6-luna']);
 }));
-async function fixture(run:(p:Project,root:string)=>Promise<void>){const root=await mkdtemp(join(tmpdir(),'aiwe-flow-'));try{const p=new Project(join(root,'project'));await p.init(new URL('../seed',import.meta.url).pathname.replace(/^\/([A-Z]:)/,'$1'));await run(p,root);}finally{await rm(root,{recursive:true,force:true});}}
+async function fixture(run:(p:Project,root:string)=>Promise<void>){const root=await mkdtemp(join(tmpdir(),'sitetiller-flow-'));try{const p=new Project(join(root,'project'));await p.init(new URL('../seed',import.meta.url).pathname.replace(/^\/([A-Z]:)/,'$1'));await run(p,root);}finally{await rm(root,{recursive:true,force:true});}}
 test('simple edit uses one Web Lead call and deterministic checks; missing optional providers do not block',async()=>fixture(async(p,root)=>{
  const before=await p.head(),calls:string[]=[];const model:any=async(client:any,_:any,input:any)=>{calls.push(client.model);assert.equal(client.reasoningEffort,'low');assert.ok(input.manifest.files.length);assert.ok(!JSON.stringify(input).includes('fake'));return {value:{action:'implement',summary:'Barva změněna.',files:[{path:'site/style.css',content:input.files['site/style.css']+'\n/* simple */'}],model:'attacker',skipTests:true}};};
  const result=await workflow(p,[slots[0]],'Change button colour',join(root,'drafts'),()=>{},model,undefined,[],{check:checked});

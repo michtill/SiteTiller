@@ -1,7 +1,7 @@
 import {english} from './translations.js';
 export function normalizeLocale(value){return value==='en'?'en':'cs';}
-let saved;try{saved=globalThis.localStorage?.getItem('aiwe-language');}catch{}
+let saved;try{saved=globalThis.localStorage?.getItem('sitetiller-language');}catch{}
 export const locale=normalizeLocale(saved||globalThis.document?.documentElement.lang);
 export function t(value,language=locale){const text=String(value??'');if(language!=='en')return text;if(Object.hasOwn(english,text))return english[text];if(Object.hasOwn(english,text.trim()))return text.replace(text.trim(),english[text.trim()]);return text.replace(/^Verze (\d+(?:\.\d+)?) byla publikována\.$/,'Version $1 was published.').replace(/^Verze (\d+(?:\.\d+)?) publikována$/,'Version $1 published').replace(/^Poskytovatel ([\w-]+) vrátil HTTP (\d+)\. Ověř klíč, model a kredit\.$/,'Provider $1 returned HTTP $2. Check the key, model, and credits.');}
 export function translateDocument(){if(!globalThis.document)return;document.documentElement.lang=locale;const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);while(walker.nextNode()){const n=walker.currentNode;if(!n.parentElement.closest('script,style'))n.textContent=t(n.textContent);}for(const el of document.querySelectorAll('[title],[aria-label],[placeholder]'))for(const attr of ['title','aria-label','placeholder'])if(el.hasAttribute(attr))el.setAttribute(attr,t(el.getAttribute(attr)));}
-if(globalThis.window)window.aiweTranslate=t;
+if(globalThis.window)window.sitetillerTranslate=t;

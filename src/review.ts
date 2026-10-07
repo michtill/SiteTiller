@@ -10,7 +10,7 @@ export async function reviewChanges(project:Project,client:ReturnTypeClient,requ
  const files=await project.committedFiles(commit),original=await project.committedFiles(baseCommit);
  const browser=await browserCheck(project.root,files);
  if(!browser.passed)throw Error('Revize zastavena: '+browser.errors.join('; '));
- const publication={mode:'review-only',publishInvoked:false,publishedCommit:publicationState?.publishedCommit??null,source:'AIWE host review job; publishing is a separate explicit operation'};
+ const publication={mode:'review-only',publishInvoked:false,publishedCommit:publicationState?.publishedCommit??null,source:'SiteTiller host review job; publishing is a separate explicit operation'};
  const currentImages=await websiteImages(project,commit,files),baselineImages=await websiteImages(project,baseCommit,original);
  const diff=[...new Set([...Object.keys(files),...Object.keys(original)])].filter(path=>files[path]!==original[path]).map(path=>({path,before:original[path]||null,after:files[path]||null}));
  emit({stage:'review',status:'running',message:'Ověřuji finální stav vůči požadavkům od poslední revize.',provider:client.provider,model:client.model});

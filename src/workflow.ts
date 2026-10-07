@@ -184,7 +184,7 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
     await cp(project.root,path,{recursive:true});const draft=new Project(path);await draft.writeSnapshot(files);
     for(const image of [...images.filter(i=>i.use==='website'),...generated].filter(i=>Object.hasOwn(files,'site/assets/'+i.id))){await mkdir(join(path,'site/assets'),{recursive:true});await writeFile(join(path,'site/assets',image.id),Buffer.from(image.data,'base64'));}
     browser=await(options.check||browserChecks)(path,files,browserTests);
-    const currentPublication=options.publication?.(),publication={mode:'isolated-unpublished-draft',publishInvoked:false,baselinePublishedCommit:initialPublication?.publishedCommit??null,publishedCommit:currentPublication?.publishedCommit??null,unchanged:initialPublication?.publishedCommit===currentPublication?.publishedCommit,source:'AIWE host workflow and captured application publication state; publication endpoint is separate and locked while the edit runs'};
+    const currentPublication=options.publication?.(),publication={mode:'isolated-unpublished-draft',publishInvoked:false,baselinePublishedCommit:initialPublication?.publishedCommit??null,publishedCommit:currentPublication?.publishedCommit??null,unchanged:initialPublication?.publishedCommit===currentPublication?.publishedCommit,source:'SiteTiller host workflow and captured application publication state; publication endpoint is separate and locked while the edit runs'};
     if(browser.passed&&needsVerification){
      assertAvailable(team,'verify',options);const verifier={...clientFor(team,keys,'verify'),...(requestedEffort?{reasoningEffort:requestedEffort}:team.verify.reasoningEffort==='auto'?{reasoningEffort:effort}:{})};
      emit({stage:'verify',status:'running',message:'Ověřuji splnění zadání.',model:verifier.model,provider:verifier.provider});
@@ -196,7 +196,7 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
     }
     if(browser.passed&&(!needsVerification||verified?.status==='PASS')){
      if(await project.head()!==baseCommit)throw Error('Projekt se mezitím změnil.');
-     const commit=await draft.commit('AIWE: '+prompt.replace(/\s+/g,' ').slice(0,110));
+     const commit=await draft.commit('SiteTiller: '+prompt.replace(/\s+/g,' ').slice(0,110));
      if(await project.head()!==baseCommit)throw Error('Projekt se mezitím změnil.');
      await project.git(['fetch',path,'main']);await project.git(['merge','--ff-only','FETCH_HEAD']);
      plan.summary=finalSummary;

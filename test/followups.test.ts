@@ -29,7 +29,7 @@ test('retry in create scope can read historical source without inheriting old te
  const result=await workflow(p,slots,'Try again',join(root,'drafts'),()=>{},model,undefined,[],{mode:'create',conversation,check:checked});assert.equal(result.scope,'create');assert.ok(!(await p.files())['site/menu.html']);
 }));
 const html=(title:string,body:string)=>'<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+title+'</title></head><body>'+body+'</body></html>';
-async function fixture(run:(p:Project,root:string)=>Promise<void>){const root=await mkdtemp(join(tmpdir(),'aiwe-followup-'));try{const p=new Project(join(root,'project'));await p.init(new URL('../seed',import.meta.url).pathname.replace(/^\/([A-Z]:)/,'$1'));await run(p,root);}finally{await rm(root,{recursive:true,force:true});}}
+async function fixture(run:(p:Project,root:string)=>Promise<void>){const root=await mkdtemp(join(tmpdir(),'sitetiller-followup-'));try{const p=new Project(join(root,'project'));await p.init(new URL('../seed',import.meta.url).pathname.replace(/^\/([A-Z]:)/,'$1'));await run(p,root);}finally{await rm(root,{recursive:true,force:true});}}
 test('"Ještě trochu" follows the last applied CSS target and passes resolved intent to the verifier',async()=>fixture(async(p,root)=>{
  const first:any=async(_:any,__:any,input:any)=>({value:{action:'implement',summary:'Tlačítko je tmavší.',files:[{path:'site/style.css',content:input.files['site/style.css'].replace('.button{background:var(--acid)','.button{background:#444')}]}});
  const result=await workflow(p,slots,'Ztmav tlačítko',join(root,'drafts'),()=>{},first,undefined,[],{check:checked});
@@ -94,7 +94,7 @@ test('agents cannot delete unread files, binary originals or files outside the w
  }
 }));
 test('new project initialization needs no imported website, and repeated initialization preserves existing content',async()=>{
- const root=await mkdtemp(join(tmpdir(),'aiwe-blank-'));try{
+ const root=await mkdtemp(join(tmpdir(),'sitetiller-blank-'));try{
   const p=new Project(root);await p.init(null);const original=await p.head();assert.ok((await p.files())['site/index.html'].includes('Nový web'));assert.equal((await p.test()).passed,true);
   await p.write({'site/index.html':html('My site','<h1>My site</h1>')});const changed=await p.commit('Create');await p.init(null);assert.equal(await p.head(),changed);assert.notEqual(original,changed);
  }finally{await rm(root,{recursive:true,force:true});}

@@ -5,13 +5,13 @@ services:
       target: studio
     ports: ["8080"]
     environment:
-      AIWE_ORIGIN: ${AIWE_ORIGIN}
-      AIWE_PREVIEW_URL: ${AIWE_PREVIEW_URL}
-      AIWE_PUBLISH_URL: ${AIWE_PUBLISH_URL}
-      AIWE_PUBLISH_TOKEN: ${AIWE_PUBLISH_TOKEN}
+      SITETILLER_ORIGIN: ${SITETILLER_ORIGIN}
+      SITETILLER_PREVIEW_URL: ${SITETILLER_PREVIEW_URL}
+      SITETILLER_PUBLISH_URL: ${SITETILLER_PUBLISH_URL}
+      SITETILLER_PUBLISH_TOKEN: ${SITETILLER_PUBLISH_TOKEN}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-    volumes: ["aiwe_data:/data"]
+    volumes: ["sitetiller_data:/data"]
     read_only: true
     tmpfs: ["/tmp:size=128m"]
     cap_drop: ["ALL"]
@@ -31,7 +31,7 @@ services:
       target: studio
     command: ["node", "src/preview.ts"]
     ports: ["8080"]
-    volumes: ["aiwe_data:/data:ro"]
+    volumes: ["sitetiller_data:/data:ro"]
     read_only: true
     tmpfs: ["/tmp:size=8m"]
     cap_drop: ["ALL"]
@@ -41,4 +41,4 @@ services:
     pids_limit: 24
     restart: unless-stopped
 volumes:
-  aiwe_data:
+  sitetiller_data:

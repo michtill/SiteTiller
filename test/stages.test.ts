@@ -13,7 +13,7 @@ import {pendingRequests} from '../src/journal.ts';
 import type {Team} from '../src/team.ts';
 const team:Team={primary:{provider:'openai',model:'gpt-design'},ui:{provider:'anthropic',model:'claude-build'},verify:{provider:'openai',model:'gpt-test'},escalation:{provider:'anthropic',model:'claude-review'}};
 test('cumulative review includes every request and rejects missing or failed per-request checks',async()=>{
- const root=await mkdtemp(join(tmpdir(),'aiwe-review-'));try{
+ const root=await mkdtemp(join(tmpdir(),'sitetiller-review-'));try{
   const project=new Project(join(root,'project'));await project.init(fileURLToPath(new URL('../seed',import.meta.url)));const base=await project.head();
   const requests=[{id:'one',sequence:1,prompt:'Change title'},{id:'two',sequence:2,prompt:'Change colour'}];let captured:any;
   const client={provider:'anthropic' as const,key:'B',model:'claude-review',...defaults.anthropic};

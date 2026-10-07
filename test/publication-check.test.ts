@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {mkdtemp,rm} from 'node:fs/promises';import {join} from 'node:path';import {tmpdir} from 'node:os';import {Project} from '../src/project.ts';import {checkPublication} from '../src/publication-check.ts';
 test('technical publication checks reject stale, invalid and broken candidates without an AI approval',async()=>{
- const root=await mkdtemp(join(tmpdir(),'aiwe-pub-check-test-'));
+ const root=await mkdtemp(join(tmpdir(),'sitetiller-pub-check-test-'));
  try{
   const p=new Project(root);await p.init(null);const initial=await p.head();let calls=0;const browser:any=async()=>{calls++;return {passed:true,errors:[],checks:[],screenshots:[]};};
   const checked=await checkPublication(p,initial,initial,browser);assert.equal(checked.restoration.identical,true);assert.equal(checked.commit,initial);

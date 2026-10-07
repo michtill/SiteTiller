@@ -2,15 +2,15 @@ import test from 'node:test';import assert from 'node:assert/strict';
 import {mkdtemp,rm,writeFile,readFile} from 'node:fs/promises';import {join} from 'node:path';import {tmpdir} from 'node:os';import {fileURLToPath} from 'node:url';import {spawn} from 'node:child_process';import {scryptSync} from 'node:crypto';
 import {Project} from '../src/project.ts';import {initialTeam,initialImages} from '../src/team.ts';
 test('conversation survives restart; new-site creation replaces only draft content and supports preview navigation and exact rollback',async()=>{
- const data=await mkdtemp(join(tmpdir(),'aiwe-context-api-'));let child:any;
+ const data=await mkdtemp(join(tmpdir(),'sitetiller-context-api-'));let child:any;
  try{
   const project=new Project(join(data,'project'));await project.init(fileURLToPath(new URL('../seed',import.meta.url)));const base=await project.head(),original=await project.files();
-  const password='fixture-password-aiwe',salt='salt',trace=join(data,'trace.jsonl');
+  const password='fixture-password-sitetiller',salt='salt',trace=join(data,'trace.jsonl');
   await writeFile(join(data,'config.json'),JSON.stringify({password:{salt,hash:scryptSync(password,salt,64).toString('hex')},slots:[],providers:{openai:{key:''},anthropic:{key:''}},roles:initialTeam(),imageModels:initialImages(),agentArchitecture:3,requests:[],reviewedThrough:0,lastReviewCommit:base,reviewedCommits:[],approvedCommit:null,publishedCommit:base}));
   const port=19400+Math.floor(Math.random()*200),origin='http://127.0.0.1:'+port;
   let cookie='';const post=(path:string,input:any)=>fetch(origin+'/api/'+path,{method:'POST',headers:{Origin:origin,Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify(input)});
   const start=async()=>{
-   child=spawn(process.execPath,[fileURLToPath(new URL('./fixtures/provider-server.mjs',import.meta.url))],{env:{...process.env,AIWE_DATA_DIR:data,HOST:'127.0.0.1',PORT:String(port),AIWE_ORIGIN:origin,OPENAI_API_KEY:'fixture-openai',ANTHROPIC_API_KEY:'fixture-claude',AIWE_TEST_CAPTURE:join(data,'capture.json'),AIWE_TEST_TRACE:trace},stdio:'ignore'});
+   child=spawn(process.execPath,[fileURLToPath(new URL('./fixtures/provider-server.mjs',import.meta.url))],{env:{...process.env,SITETILLER_DATA_DIR:data,HOST:'127.0.0.1',PORT:String(port),SITETILLER_ORIGIN:origin,OPENAI_API_KEY:'fixture-openai',ANTHROPIC_API_KEY:'fixture-claude',SITETILLER_TEST_CAPTURE:join(data,'capture.json'),SITETILLER_TEST_TRACE:trace},stdio:'ignore'});
    let ready=false;for(let i=0;i<200;i++){try{if((await fetch(origin+'/health')).ok){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,100));}assert.ok(ready);
    const login=await post('login',{password});assert.equal(login.status,200);cookie=login.headers.get('set-cookie')!.split(';')[0];
   };

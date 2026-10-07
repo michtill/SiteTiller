@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {Project} from '../src/project.ts';
 test('restore preserves history and exact bytes, removes newer assets, rejects stale/invalid targets',async()=>{
- const root=await mkdtemp(join(tmpdir(),'aiwe-restore-'));
+ const root=await mkdtemp(join(tmpdir(),'sitetiller-restore-'));
  try{
   const project=new Project(join(root,'project'));await project.init(fileURLToPath(new URL('../seed',import.meta.url)));
   const base=await project.head(),original=await readFile(join(project.root,'site/style.css'),'utf8');

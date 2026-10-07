@@ -120,7 +120,7 @@ $('replace-current-release').addEventListener('change',()=>{const checked=$('rep
 
 
 
-translateDocument();$('interface-language').value=locale;$('interface-language').addEventListener('change',()=>{try{localStorage.setItem('aiwe-language',$('interface-language').value);sessionStorage.setItem('aiwe-unsent-prompt',$('prompt').value);}catch{}location.reload();});try{const savedAttachments=sessionStorage.getItem('aiwe-unsent-attachments');if(savedAttachments){attachments=JSON.parse(savedAttachments);renderAttachments();sessionStorage.removeItem('aiwe-unsent-attachments');}const unsent=sessionStorage.getItem('aiwe-unsent-prompt');if(unsent!==null){$('prompt').value=unsent;sessionStorage.removeItem('aiwe-unsent-prompt');}}catch{}
+translateDocument();$('interface-language').value=locale;$('interface-language').addEventListener('change',()=>{try{localStorage.setItem('sitetiller-language',$('interface-language').value);sessionStorage.setItem('sitetiller-unsent-prompt',$('prompt').value);}catch{}location.reload();});try{const savedAttachments=sessionStorage.getItem('sitetiller-unsent-attachments');if(savedAttachments){attachments=JSON.parse(savedAttachments);renderAttachments();sessionStorage.removeItem('sitetiller-unsent-attachments');}const unsent=sessionStorage.getItem('sitetiller-unsent-prompt');if(unsent!==null){$('prompt').value=unsent;sessionStorage.removeItem('sitetiller-unsent-prompt');}}catch{}
 
 
 

@@ -8,14 +8,14 @@ import {spawn} from 'node:child_process';
 import {scryptSync} from 'node:crypto';
 import {Project} from '../src/project.ts';
 test('restore API authenticates, rejects stale requests and requires a new cumulative review',async()=>{
- const data=await mkdtemp(join(tmpdir(),'aiwe-restore-api-'));let child:any;
+ const data=await mkdtemp(join(tmpdir(),'sitetiller-restore-api-'));let child:any;
  try{
   const project=new Project(join(data,'project'));await project.init(fileURLToPath(new URL('../seed',import.meta.url)));
   const base=await project.head(),files=await project.files();await project.write({'site/style.css':files['site/style.css']+'\n/* new */'});const changed=await project.commit('New version');
-  const password='test-password-for-aiwe',salt='test-salt';
+  const password='test-password-for-sitetiller',salt='test-salt';
   await writeFile(join(data,'config.json'),JSON.stringify({password:{salt,hash:scryptSync(password,salt,64).toString('hex')},slots:[],approvedCommit:changed,publishedCommit:base,reviewedCommits:[base]}));
   const port=18200+Math.floor(Math.random()*200),origin='http://127.0.0.1:'+port;
-  child=spawn(process.execPath,[fileURLToPath(new URL('../src/server.ts',import.meta.url))],{env:{...process.env,AIWE_DATA_DIR:data,HOST:'127.0.0.1',PORT:String(port),AIWE_ORIGIN:origin},stdio:'ignore'});
+  child=spawn(process.execPath,[fileURLToPath(new URL('../src/server.ts',import.meta.url))],{env:{...process.env,SITETILLER_DATA_DIR:data,HOST:'127.0.0.1',PORT:String(port),SITETILLER_ORIGIN:origin},stdio:'ignore'});
   let ready=false;for(let i=0;i<40;i++){try{if((await fetch(origin+'/health')).ok){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,100));}assert.ok(ready);
   const post=(path:string,input:any,cookie='',requestOrigin=origin)=>fetch(origin+'/api/'+path,{method:'POST',headers:{Origin:requestOrigin,Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify(input)});
   assert.equal((await post('restore',{commit:base,expectedHead:changed})).status,401);

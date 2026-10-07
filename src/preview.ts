@@ -6,7 +6,7 @@ import http from 'node:http';
 import { extname } from 'node:path';
 import { Project } from './project.ts';
 import {resolveSiteFile} from './core.ts';
-const project=new Project((process.env.AIWE_DATA_DIR||'/data')+'/project');
+const project=new Project((process.env.SITETILLER_DATA_DIR||'/data')+'/project');
 const mime:any={'.html':'text/html; charset=utf-8','.css':'text/css','.js':'text/javascript','.svg':'image/svg+xml','.txt':'text/plain','.json':'application/json'};
 http.createServer(async(req,res)=>{try{
   res.setHeader('X-Robots-Tag','noindex, nofollow, noarchive');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Cache-Control','no-store');

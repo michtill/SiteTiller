@@ -17,7 +17,7 @@ export class Project {
     try { await lstat(join(this.root,'.git')); } catch {
       if(seed===null){
         await this.git(['init','-b','main']);
-        await this.write({'site/index.html':'<!doctype html><html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nový web</title></head><body><main><h1>Nový web</h1><p>Vytvořte web zadáním požadavku v AIWE.</p></main></body></html>'});
+        await this.write({'site/index.html':'<!doctype html><html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nový web</title></head><body><main><h1>Nový web</h1><p>Vytvořte web zadáním požadavku v SiteTiller.</p></main></body></html>'});
       }else try {
         await lstat(join(seed,'..','seed.bundle'));
         await this.git(['-c','core.autocrlf=false','clone','-b','main',join(seed,'..','seed.bundle'),'.']);
@@ -27,7 +27,7 @@ export class Project {
         await this.git(['init','-b','main']);
       }
       await this.git(['config','core.autocrlf','false']);
-      await this.git(['config','user.name','AI Web Editor']); await this.git(['config','user.email','aiwe@localhost']);
+      await this.git(['config','user.name','SiteTiller']); await this.git(['config','user.email','sitetiller@localhost']);
       await this.git(['add','.']);
       if(await this.git(['status','--porcelain']))await this.git(['commit','-m','Import existing website']);
     }

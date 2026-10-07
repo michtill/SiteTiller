@@ -1,5 +1,8 @@
 .git
 .env
+.env.*
+!.env.example
 data
+.volumes
 node_modules
 test

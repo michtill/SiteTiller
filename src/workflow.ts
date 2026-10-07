@@ -107,7 +107,7 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
   if(value.summary)finalSummary=String(value.summary).slice(0,2000);
   if(value.action==='answer'){
    if(role!=='primary'||staged||generated.length||typeof value.summary!=='string'||!value.summary.trim()||value.files?.length||value.deleteFiles?.length||value.imageEdits?.length)throw Error('Odpověď nesmí měnit web.');
-   emit({stage:'build',status:'completed',message:finalSummary,agentResponse:true,model:client.model,provider:client.provider});emit({stage:'ready',message:finalSummary});
+   emit({stage:'answer',status:'completed',message:finalSummary,agentResponse:true,model:client.model,provider:client.provider});emit({stage:'ready'});
    return {conversationOnly:true,commit:null,baseCommit,scope,resolvedRequest,memory:{summary:finalSummary},plan:{summary:finalSummary},imageResults:[],tests:null,review:null};
   }
   if(value.action==='blocked'){const blocked=new Error(value.blockedReason||'Požadavek vyžaduje nepodporovanou funkci.');(blocked as any).agentResponse=!!value.blockedReason;throw blocked;}
@@ -182,6 +182,7 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
    safeSitePath(project.root,item.path);if(raster(item.path)||typeof item.content!=='string'||Buffer.byteLength(item.content)>300000)throw Error('Neplatný textový soubor.');
    if(original[item.path]&&scope!=='create'&&!observed.has(item.path))throw Error('Agent nesmí měnit soubor, který nenačetl: '+item.path);
   }
+  if(value.files.length||deletes.length)emit({stage:'build',status:'running',message:'Upravuji web.',provider:client.provider,model:client.model});
   for(const path of deletes){delete files[path];delete context[path];}
   for(const item of value.files){
    files[item.path]=item.content;context[item.path]=item.content;

@@ -1,4 +1,5 @@
 export const english={
+  "Zobrazená verze": "Displayed version",
   "Uložit jako verzi": "Save as a version",
   "Číslo verze": "Version number",
   "Stav načtený ze skutečného webu": "State imported from the live website",

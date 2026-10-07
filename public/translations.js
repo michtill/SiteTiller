@@ -1,4 +1,5 @@
 export const english={
+  "Stávající kroky úprav se odstraní. Uložené verze zůstanou zachované.": "Existing editing steps are removed. Saved versions are preserved.",
   "Ověřeno ": "Checked ",
   "Zobrazená verze": "Displayed version",
   "Uložit jako verzi": "Save as a version",

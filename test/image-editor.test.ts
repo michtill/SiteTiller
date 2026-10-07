@@ -21,7 +21,7 @@ test('pixel editing preserves original bytes, commits a distinct asset and refer
     await project.restore(base,result.commit);assert.deepEqual(await readFile(join(project.root,source)),Buffer.from(input,'base64'));assert.ok(!(await project.files())[resultPath]);
     const stable=await project.head();const plan:any=async()=>({value:{action:'image',imageEdits:[{source,prompt:'Remove logo',target:'site/assets/retouched.png',format:'png'}]}});
     await assert.rejects(workflow(project,slots,'Retouch',join(root,'drafts'),()=>{},plan,undefined,[],{model:'gpt-image-1.5',call:(async()=>{throw Error('Image provider failed');}) as any}),/Image provider failed/);assert.equal(await project.head(),stable);
-    await assert.rejects(workflow(project,slots,'Retouch',join(root,'drafts'),()=>{},plan),/OpenAI/);assert.equal(await project.head(),stable);
+    await assert.rejects(workflow(project,slots,'Retouch',join(root,'drafts'),()=>{},plan,undefined,[],{call:((_key,_model,source,prompt)=>editImage('fixture-key','gpt-image-1.5',source,prompt,async()=>new Response('',{status:502}))) as any}),/OpenAI/);assert.equal(await project.head(),stable);
     const forbidden:any=async()=>({value:{action:'image',imageEdits:[{source:'site/assets/reference.png',prompt:'Use reference'}]}});
     await assert.rejects(workflow(project,slots,'Edit reference',join(root,'drafts'),()=>{},forbidden,undefined,[{id:'reference.png',use:'reference',data:input,mime:'image/png'}],{model:'gpt-image-1.5',call:imageCall}),/není součástí/);assert.equal(await project.head(),stable);
   }finally{await rm(root,{recursive:true,force:true});}

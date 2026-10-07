@@ -1,3 +1,5 @@
+import {compareReality,loadReality} from './reality.ts';
+import {importWebsite,publicUrl} from './web-import.ts';
 import {studioPreviewPolicy} from './site-policy.ts';
 import {publicationTarget,publishableSteps} from './publication-target.ts';
 import {draftState,clearDraftHistory} from './draft-state.ts';
@@ -65,7 +67,9 @@ function auth(req:http.IncomingMessage) {const token=req.headers.cookie?.match(/
 function sameOrigin(req:http.IncomingMessage) {return req.headers.origin===publicOrigin;}
 function login(res:http.ServerResponse) {const token=randomBytes(32).toString('hex');sessions.set(token,Date.now()+8*3600000);res.setHeader('Set-Cookie',`sitetiller=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${publicOrigin.startsWith('https:')?'; Secure':''}`);}
 function hashPassword(p:string,salt:string) {return scryptSync(p,salt,64).toString('hex');}
-function state() {return {name:'SiteTiller',version:'0.21.0',agentArchitecture:3,imageModels:config.imageModels,configured:!!config.password,providers:Object.entries(providerKeys()).map(([provider,key])=>({provider,hasKey:!!key})),roles:config.roles,requests:config.requests,reviewRuns:config.reviewRuns||[],job,events,busy,pendingCount:pendingRequests(config.requests,config.reviewedThrough).length,lastReviewCommit:config.lastReviewCommit,approvedCommit:config.approvedCommit,publishedCommit:config.publishedCommit,releases:config.releases,previewUrl:process.env.SITETILLER_PREVIEW_URL||'/preview/',publishConfigured:!!process.env.SITETILLER_PUBLISH_URL};}
+function state() {return {name:'SiteTiller',version:'0.22.0',siteUrl:siteUrl(),hasDraftSteps:!!config.requests.length,agentArchitecture:3,imageModels:config.imageModels,configured:!!config.password,providers:Object.entries(providerKeys()).map(([provider,key])=>({provider,hasKey:!!key})),roles:config.roles,requests:config.requests,reviewRuns:config.reviewRuns||[],job,events,busy,pendingCount:pendingRequests(config.requests,config.reviewedThrough).length,lastReviewCommit:config.lastReviewCommit,approvedCommit:config.approvedCommit,publishedCommit:config.publishedCommit,releases:config.releases,previewUrl:process.env.SITETILLER_PREVIEW_URL||'/preview/',publishConfigured:!!process.env.SITETILLER_PUBLISH_URL};}
+const realitySnapshots=new Map<string,any>();
+function siteUrl(){return config.siteUrl||process.env.SITETILLER_SITE_URL||'';}
 let historyCache:any=null;
 async function historyState(){const head=await project.head(),signature=head+JSON.stringify([config.releases,config.draftBaseCommit,config.requests.map((r:any)=>[r.id,r.commit,r.status,r.sequence])]);if(historyCache?.signature!==signature){const history=visibleVersionHistory(await project.history(null),config),files=await project.committedFiles(head),projectTitle=files['site/index.html']?.match(/<title>(.*?)<\/title>/s)?.[1]?.slice(0,100)||'Nový web';historyCache={publishableCommits:await publishableSteps(project,config,head),signature,history,projectTitle,groups:groupHistory(history,config.releases)};}return {...await draftState(project,config,head),head,publishableCommits:historyCache.publishableCommits,projectTitle:historyCache.projectTitle,history:historyCache.history,releaseGroups:historyCache.groups};}
 async function imageInputs(items:any[]){return Promise.all(items.map(async i=>({...i,data:(await readFile(join(data,'uploads',i.id))).toString('base64')})));}
@@ -119,7 +123,7 @@ const server=http.createServer(async(req,res)=>{try{
       if(busy)throw new Error('Počkej na dokončení úlohy.');busy=true;try{
       const list=await catalog(keys),resolved=resolvePrimary(input.roles,list.models),issues=unavailable(resolved,list,['primary']);
       if(issues.length)return response(res,400,{error:issues.join('\n')});
-      config.providers=providers;config.roles=input.roles;config.imageModels=input.imageModels;await save('config.json',config);return response(res,200,{ok:true,catalog:list,optionalIssues:[...unavailable(resolved,list,['ui','verify','escalation']),...Object.values(input.imageModels).flatMap((model:any)=>imageIssues(model,list.models))]});
+      if(input.siteUrl!==undefined){if(typeof input.siteUrl!=='string'||input.siteUrl.length>2000)throw Error('Neplatná adresa webu.');config.siteUrl=input.siteUrl.trim()?publicUrl(input.siteUrl.trim()).href:'';realitySnapshots.clear();}config.providers=providers;config.roles=input.roles;config.imageModels=input.imageModels;await save('config.json',config);return response(res,200,{ok:true,catalog:list,optionalIssues:[...unavailable(resolved,list,['ui','verify','escalation']),...Object.values(input.imageModels).flatMap((model:any)=>imageIssues(model,list.models))]});
       }finally{busy=false;}
     }
     if(path==='/api/images'&&req.method==='POST'){
@@ -139,8 +143,32 @@ const server=http.createServer(async(req,res)=>{try{
       const request=addRequest(config,{id:randomBytes(8).toString('hex'),prompt:input.prompt.trim(),mode,reasoningEffort,attachments,models:structuredClone(config.roles),status:'running',baseCommit,createdAt:new Date().toISOString()});
       config.approvedCommit=null;job={id:request.id,kind:'edit',status:'running',prompt:request.prompt,attachments};await save('config.json',config);await save('last-job.json',job);
       await emit({stage:'request',message:request.prompt,attachments});
-      void(async()=>{try{await hydrateRecentMemory(project,priorRequests);for(const prior of priorRequests){const saved=config.requests.find((r:any)=>r.id===prior.id);if(saved&&!saved.memory&&prior.memory)saved.memory=prior.memory;}const result=await workflow(project,activeSlots(),request.prompt,join(data,'drafts'),e=>{void emit(e);},undefined,resolvedTeam,images,{mode,reasoningEffort,conversation:recentConversation(priorRequests,baseCommit),history:query=>searchConversation(priorRequests,query,baseCommit),publication:()=>({publishedCommit:config.publishedCommit||null}),imageModels:config.imageModels,availableModels:list.models});Object.assign(request,{status:'ready',commit:result.commit,scope:result.scope,resolvedRequest:result.resolvedRequest,memory:result.memory,plan:result.plan,imageResults:result.imageResults,tests:result.tests});job={...job,status:'ready',...result};}catch(e:any){request.status='failed';request.error=e.message;request.errorFromAgent=!!e.agentResponse;job={...job,status:'failed',error:e.message};await emit({stage:'failed',message:e.message,agentResponse:!!e.agentResponse});}finally{await save('config.json',config);await save('last-job.json',job);busy=false;}})();
+      void(async()=>{try{await hydrateRecentMemory(project,priorRequests);for(const prior of priorRequests){const saved=config.requests.find((r:any)=>r.id===prior.id);if(saved&&!saved.memory&&prior.memory)saved.memory=prior.memory;}const result=await workflow(project,activeSlots(),request.prompt,join(data,'drafts'),e=>{void emit(e);},undefined,resolvedTeam,images,{mode,reasoningEffort,conversation:recentConversation(priorRequests,baseCommit),history:query=>searchConversation(priorRequests,query,baseCommit),publication:()=>({publishedCommit:config.publishedCommit||null}),imageModels:config.imageModels,availableModels:list.models});Object.assign(request,{status:'ready',commit:result.commit,scope:result.scope,resolvedRequest:result.resolvedRequest,memory:result.memory,plan:result.plan,imageResults:result.imageResults,tests:result.tests});if(result.webImport?.resources)config.realityPaths={...(config.realityPaths||{}),...Object.fromEntries(result.webImport.resources.map((r:any)=>[r.path,r.url]))};job={...job,status:'ready',...result};}catch(e:any){request.status='failed';request.error=e.message;request.errorFromAgent=!!e.agentResponse;job={...job,status:'failed',error:e.message};await emit({stage:'failed',message:e.message,agentResponse:!!e.agentResponse});}finally{await save('config.json',config);await save('last-job.json',job);busy=false;}})();
       return response(res,202,{job});
+    }
+    if(path==='/api/reality/compare'&&req.method==='POST'){
+      if(busy)throw Error('Počkej na dokončení úlohy.');const input=await body(req);if(busy)throw Error('Počkej na dokončení úlohy.');
+      const url=siteUrl();if(!url)throw Error('Nejdřív nastav adresu skutečného webu.');
+      busy=true;try{
+        const head=await project.head();if(input.expectedHead!==head)throw Error('Návrh se mezitím změnil.');
+        if(typeof input.commit!=='string'||!/^[a-f0-9]{40}$/.test(input.commit))throw Error('Neplatná verze.');await project.git(['merge-base','--is-ancestor',input.commit,head]);
+        const snapshot=await importWebsite(publicUrl(url).href),result=await compareReality(project,config,input.commit,snapshot),token=randomBytes(24).toString('hex');
+        for(const [key,value] of realitySnapshots)if(Date.now()-value.created>10*60*1000)realitySnapshots.delete(key);
+        while(realitySnapshots.size>=3)realitySnapshots.delete(realitySnapshots.keys().next().value!);
+        realitySnapshots.set(token,{snapshot,head,url,created:Date.now()});return response(res,200,{...result,token});
+      }finally{busy=false;}
+    }
+    if(path==='/api/reality/load'&&req.method==='POST'){
+      if(busy)throw Error('Počkej na dokončení úlohy.');const input=await body(req);if(busy)throw Error('Počkej na dokončení úlohy.');
+      const cached=realitySnapshots.get(input.token);if(!cached||Date.now()-cached.created>10*60*1000||cached.url!==siteUrl())throw Error('Porovnání již není aktuální. Porovnej web znovu.');
+      if(input.expectedHead!==cached.head||typeof input.clearPrevious!=='boolean')throw Error('Neplatné potvrzení načtení webu.');
+      busy=true;try{
+        const result=await loadReality(project,config,cached.snapshot,cached.head,input.clearPrevious);
+        if(input.clearPrevious||result.first&&!result.request){await eventWrites;events=events.filter(e=>e.kind==='publish');await save('events.json',events);}
+        job=result.request?{id:result.request.id,kind:'edit',status:'ready',commit:result.commit,plan:{summary:result.request.memory.summary},tests:result.request.tests}:null;
+        if(result.request){await emit({stage:'request',jobId:result.request.id,kind:'edit',message:result.request.prompt});await emit({stage:'build',status:'completed',jobId:result.request.id,kind:'edit',message:result.request.memory.summary,commit:result.commit});await emit({stage:'ready',jobId:result.request.id,kind:'edit',commit:result.commit,message:'Web byl načten do návrhu.'});}
+        await save('config.json',config);await save('last-job.json',job);historyCache=null;realitySnapshots.clear();return response(res,200,{ok:true,commit:result.commit,versionZero:result.first});
+      }finally{busy=false;}
     }
     if(path==='/api/review'&&req.method==='POST'){
       if(busy)throw new Error('Počkej na dokončení úlohy.');const input=await body(req);

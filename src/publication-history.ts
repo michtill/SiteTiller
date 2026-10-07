@@ -19,6 +19,6 @@ export function closePublishedHistory(config:any,events:any[]){
 }
 export function publicationSummary(requests:any[]){return requests.filter(r=>r.status==='ready'||r.status==='legacy').slice(-3).map(r=>r.memory?.summary||r.plan?.summary||r.prompt||'').filter(Boolean).join('\n').slice(0,1500);}
 export function visibleVersionHistory(history:any[],config:any){
- const boundary=history.findIndex(h=>h.commit===(config.draftBaseCommit||config.publishedCommit)),published=new Set((config.releases||[]).map((r:any)=>r.commit));
+ const boundary=history.findIndex(h=>h.commit===(config.draftBaseCommit||config.publishedCommit)),published=new Set([...(config.releases||[]).map((r:any)=>r.commit),...(config.requests||[]).filter((r:any)=>['ready','legacy'].includes(r.status)).map((r:any)=>r.commit)]);
  return history.filter((h,i)=>i===0||published.has(h.commit)||boundary<0||i<boundary);
 }

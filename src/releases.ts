@@ -21,7 +21,7 @@ export function groupHistory(history:CommitEntry[],releases:Release[]){
   return groups;
 }
 export async function completePublication(project:any,releases:Release[],intent:Release){
-  if(!intent.tag||!/^sitetiller\/published\/v[1-9]\d*(?:-[rs][1-9]\d*)?$/.test(intent.tag)||! /^[a-f0-9]{40}$/.test(intent.commit))throw new Error('Neplatná publikovaná verze.');
+  if(!intent.tag||!/^sitetiller\/published\/v(?:0|[1-9]\d*)(?:-[rs][1-9]\d*)?$/.test(intent.tag)||! /^[a-f0-9]{40}$/.test(intent.commit))throw new Error('Neplatná publikovaná verze.');
   if(intent.minor!==undefined){const latest=releases.at(-1);if(!latest||latest.number!==intent.number||latest.commit!==intent.previousCommit)throw Error('Aktuální publikovaná verze se změnila. Obnovte seznam verzí.');}
   let existing:string|null=null;
   try{existing=await project.git(['rev-parse','--verify','refs/tags/'+intent.tag+'^{commit}']);}catch{}

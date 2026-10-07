@@ -1,4 +1,7 @@
 export const english={
+  "Obrázky s nejasnými dynamickými odkazy byly zachovány.": "Images with uncertain dynamic references were preserved.",
+  "Uklízím nepoužívané a totožné obrázky.": "Cleaning up unused and identical images.",
+  "Nepoužívané a totožné obrázky byly uklizeny. Vložené originály a starší verze zůstávají zachované.": "Unused and identical images were cleaned up. Uploaded originals and earlier versions are preserved.",
   "Načítám…": "Loading…",
   "Stávající kroky úprav se odstraní. Uložené verze zůstanou zachované.": "Existing editing steps are removed. Saved versions are preserved.",
   "Ověřeno ": "Checked ",

@@ -1,4 +1,5 @@
 import {attachmentPaths} from './attachment-paths.ts';
+import {cleanImages} from './image-cleanup.ts';
 import {importWebsite,requestedUrl} from './web-import.ts';
 import {validateBrowserTests,browserTestContract} from './browser-scenarios.ts';
 import {withRules} from './instructions.ts';
@@ -39,7 +40,7 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
  let scope:Scope=options.mode||'edit';if(!['edit','redesign','create'].includes(scope))throw Error('Neplatný rozsah změny.');
  let files=scope==='create'?Object.fromEntries(Object.entries(original).filter(([path])=>raster(path))):{...original},context=scope==='create'?{}:initialContext(original),role:Role='primary',feedback:any=null,task=prompt,resolvedRequest=prompt,effort:'low'|'medium'|'high'=requestedEffort||(team.primary.reasoningEffort==='auto'?'low':team.primary.reasoningEffort)||'low';
  let needsVerification=scope!=='edit',failures=0,readRounds=0,historyRounds=0,escalationCalls=0,protocolRepairs=0,staged=false,finalSummary='',plan:any={summary:'',steps:[],acceptance:[]};
- let imported:any=null;const importedBinary:Record<string,Buffer>={};let webRounds=0;
+ let imported:any=null,imageCleanup:any=null;const importedBinary:Record<string,Buffer>={};let webRounds=0;
  const observed=new Set(Object.keys(context)),historyResults:any[]=[];
  let browserTests:any[]=[],lastCheckImages:any[]=[];let delegations=0,scenarioRepairs=0,pathRepairs=0;
  const generated:any[]=[],imageResults:any[]=[],seenImages=new Set<string>();
@@ -66,7 +67,19 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
    emit({stage:role==='ui'?'design':'escalation',status:'running',message:role==='ui'?'Provádím větší úpravu webu.':'Posuzuji příčinu chyby a potřebný další krok.',provider:client.provider,model:client.model});
    result=await modelCall(client,role==='ui'?specialistInstruction:escalationInstruction,input);
   }
-  const value=result?.value;if(!value||!['implement','stage','read','history','delegate','escalate','image','web','blocked','verify'].includes(value.action))throw Error('Agent nevrátil platnou akci.');
+  const value=result?.value;if(!value||!['implement','stage','read','history','delegate','escalate','image','web','blocked','verify','cleanup'].includes(value.action))throw Error('Agent nevrátil platnou akci.');
+  if(value.action==='cleanup'){
+   if(!['primary','escalation'].includes(role))throw Error('Úklid může vyžádat pouze Web Lead nebo eskalační model.');
+   const cleaned=await cleanImages(files,async path=>{
+    if(path.endsWith('.svg'))return Buffer.from(files[path]);
+    const generatedImage=[...images.filter(i=>i.use==='website'),...generated].find(i=>'site/assets/'+i.id===path);
+    if(generatedImage)return Buffer.from(generatedImage.data,'base64');
+    return importedBinary[path]||await project.binary(baseCommit,path);
+   });imageCleanup={removed:cleaned.removed,duplicates:cleaned.duplicates,retainedForDynamicReferences:cleaned.retainedForDynamicReferences};files=cleaned.files;context=selectContext(files,Object.keys(context).filter(path=>Object.hasOwn(files,path)));
+   if(cleaned.retainedForDynamicReferences)emit({stage:'test',status:'warning',warnings:['Obrázky s nejasnými dynamickými odkazy byly zachovány.']});
+   value.files=[];value.deleteFiles=[];staged=true;
+   finalSummary=value.summary||'Nepoužívané a totožné obrázky byly uklizeny. Vložené originály a starší verze zůstávají zachované.';
+  }
   if(value.action==='verify'){
    if(role!=='escalation'||(value.files!==undefined&&(!Array.isArray(value.files)||value.files.length))||(value.deleteFiles!==undefined&&(!Array.isArray(value.deleteFiles)||value.deleteFiles.length)))throw Error('Opakování kontroly nesmí měnit soubory a je dostupné pouze při eskalaci.');
    value.files=[];needsVerification=true;
@@ -223,7 +236,7 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
      emit({stage:'test',status:'completed',message:'Automatické kontroly prošly.'});
      emit({stage:'build',status:'completed',message:finalSummary||'Úprava webu dokončena.',agentResponse:!!finalSummary,model:client.model,provider:client.provider,usage:result.usage});
      emit({stage:'ready',message:'Návrh je připravený. Můžeš jej publikovat.',commit,baseCommit});
-     completion={commit,baseCommit,scope,resolvedRequest,memory:changeMemory(original,files,finalSummary),plan,imageResults,webImport:imported?.evidence,review:null,tests:{passed:true,errors:[],browserTests,static:tests,browser:{...browser,screenshots:undefined},publication,analysis:verified,warnings:imported?.evidence.warnings||[]}};return completion;
+     completion={commit,baseCommit,scope,resolvedRequest,memory:changeMemory(original,files,finalSummary),plan,imageResults,webImport:imported?.evidence,review:null,tests:{passed:true,errors:[],browserTests,static:tests,browser:{...browser,screenshots:undefined},publication,analysis:verified,imageCleanup,warnings:imported?.evidence.warnings||[]}};return completion;
     }
    }
   }finally{

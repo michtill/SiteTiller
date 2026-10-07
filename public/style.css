@@ -132,3 +132,5 @@ aside{padding:16px;gap:10px;overflow:hidden;min-height:0}.timeline{max-height:no
 .progress-detail h3{display:flex;align-items:baseline;gap:8px}.progress-detail .actor-label{margin:0;font-weight:400;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.live-progress{width:100%}.live-progress .progress-detail{border-left:0;padding:4px 0}
 
 #settings .settings-heading{font-size:15px;font-weight:700;letter-spacing:0;margin:22px 0 12px}.role-models>.settings-heading{margin:4px 0 0!important}#settings .dialog-head{margin-bottom:18px}
+
+:root{--preview-selection:#d6fa7208}:root[data-theme="light"]{--preview-selection:#648c1810}.progress-group.preview-active,.publication-card.preview-active,.publish-bar.preview-selection{background:var(--preview-selection)}

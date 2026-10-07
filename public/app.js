@@ -131,7 +131,7 @@ function renderPreviewStatus(){
  }else if(selectedPreview){
   title=t('Předchozí krok návrhu');note=t('Vraťte se na tento krok pro další úpravy, nebo přepněte na Aktuální návrh.');
  }else{title=t('Aktuální návrh')+' · '+current.head.slice(0,8);note=t('Zatím nepublikovaná verze.');}
- $('publish-status').classList.toggle('historical-status',!!selectedPreview||!!release&&release.id!==latest?.id);$('publish-status').textContent=title;$('publish-note').textContent=note;
+ $('publish-status').classList.toggle('historical-status',!!selectedPreview||!!release&&release.id!==latest?.id);$('publish-status').closest('.publish-bar').classList.toggle('preview-selection',!!selectedPreview||!!release&&release.id!==latest?.id);$('publish-status').textContent=title;$('publish-note').textContent=note;
 
 }
 

@@ -42,6 +42,18 @@ Import an existing site **before the first editor startup** by preparing the pri
 
 For VPS Center, `deploy/vpsc-compose.yml` is a studio/preview template with externally supplied URLs. Publisher user IDs, Git hooks, proxy mapping and host paths are host-specific and must be configured for that installation. The portable Compose publisher runs as UID/GID 1000; this is not a drop-in replacement for every managed-hosting publisher user.
 
+### VPS Center: a separate installation from GitHub
+
+Create a new Docker Compose application and choose Git cloning from `https://github.com/michtill/SiteTiller.git`. Select a release tag such as `v0.20.0`; the cloning form expects a branch or tag, rather than a raw commit ID. The root Compose file starts only the studio and preview. Its optional production services remain inactive until explicitly enabled outside this studio-only setup.
+
+Allow a 1024 MB application budget so the managed service allocation can retain the studio's 512 MB limit. Set `SITETILLER_ORIGIN=https://edit.example.com`, `SITETILLER_PREVIEW_URL=https://new.example.com/` and `SITETILLER_UI_LANGUAGE=cs` or `en`. Map the `web` service's port 8080 to the editor subdomain and the `preview` service's port 8080 to the preview subdomain. Issue a certificate containing both names and verify that the generated proxy files are included in the active Nginx configuration.
+
+If registering a hosting Git repository, do it before the first application startup. Preserve the GitHub history in that repository so subsequent source updates can fast-forward. Managed runtime data lives under `.volumes/sitetiller_data` and is excluded from both Git and image builds. Preserve the container user's ownership of its files; changing ownership while importing source files can prevent the next startup from reading the encryption key.
+
+Finish administrator setup using the new instance's private bootstrap token. Configure provider credentials in its Settings, or supply valid provider environment variables. Credentials saved in Settings take precedence over environment variables. A parallel installation needs its own data and encryption key; do not copy an existing instance's encrypted configuration directly.
+
+Leave `SITETILLER_PUBLISH_URL` and `SITETILLER_PUBLISH_TOKEN` empty during parallel testing. This lets the new editor create drafts without changing the existing production website. Connect its fixed production target only during an explicit, separately backed-up cutover. Existing editor and preview subdomains can continue running until that cutover is verified.
+
 ## Multiple websites
 
 Use a separate checkout/configuration per site. Choose distinct `SITETILLER_INSTANCE`, hostnames and exposed ports. Compose prefixes volumes and networks with the project name, avoiding accidental shared drafts. Never share `sitetiller_data` between different websites. Settings, uploads, credentials and publication history belong to that instance.

@@ -8,5 +8,6 @@ export function clearDraftHistory(config:any,head:string){
  const through=Math.max(config.requestSequence||0,config.reviewedThrough||0,...(config.requests||[]).map((r:any)=>r.sequence||0));
  config.requestSequence=through;config.reviewedThrough=through;config.publishedThrough=through;
  config.requests=[];config.reviewRuns=[];config.pendingRelease=null;config.approvedCommit=null;config.technicalApproval=null;
+ config.conversationMemory=[];
  config.lastReviewCommit=head;config.draftBaseCommit=head;
 }

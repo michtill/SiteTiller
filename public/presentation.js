@@ -16,6 +16,7 @@ export function compactProgress(events,job=null,busy=false,roles={},requests=[],
  const archivedReviews=reviews.filter(r=>!groups.some(g=>g.id===r.id)).map(r=>({id:r.id,kind:'review',events:r.progress||[],createdAt:r.createdAt}));
  const all=[...archived,...archivedReviews,...groups];const dated=all.every(g=>g.createdAt||g.request?.createdAt||g.events[0]?.at);if(dated)all.sort((a,b)=>String(a.createdAt||a.request?.createdAt||a.events[0]?.at).localeCompare(String(b.createdAt||b.request?.createdAt||b.events[0]?.at)));
  const ordered=all.filter(g=>g.request).sort((a,b)=>a.request.sequence-b.request.sequence);if(ordered.every(g=>Number.isFinite(g.request.sequence))){let next=0;for(let i=0;i<all.length;i++)if(all[i].request)all[i]=ordered[next++];}
+ const publication=all.findLastIndex(g=>g.events.some(e=>e.stage==='published'));if(publication>0)all.unshift(all.splice(publication,1)[0]);
  return all.map(group=>{
   const last=group.events.at(-1),request=group.request,failed=last?.stage==='failed'||job?.id===group.id&&['failed','rejected'].includes(job.status),done=['ready','published','restored'].includes(last?.stage)||failed;
   const row={key:group.id+'-status',running:!done,error:failed,events:group.events};

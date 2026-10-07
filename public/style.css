@@ -126,3 +126,5 @@ aside{padding:16px;gap:10px;overflow:hidden;min-height:0}.timeline{max-height:no
 .result-preview-row>.response-text{flex:1;min-width:0;margin:0;overflow-wrap:anywhere}
 .result-preview-row>.show-version{flex:none;margin-left:auto}
 .response-disclosure .disclosure-arrow{transform:none!important;font-weight:700;font-size:20px}
+
+.preview-toolbar>div:first-child{display:flex;align-items:center;min-width:0;flex:1}#project-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.live-dot,.commit,.preview-actions{flex-shrink:0}

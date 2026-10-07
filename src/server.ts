@@ -72,7 +72,7 @@ function auth(req:http.IncomingMessage) {const token=req.headers.cookie?.match(/
 function sameOrigin(req:http.IncomingMessage) {return req.headers.origin===publicOrigin;}
 function login(res:http.ServerResponse) {const token=randomBytes(32).toString('hex');sessions.set(token,Date.now()+8*3600000);res.setHeader('Set-Cookie',`sitetiller=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${publicOrigin.startsWith('https:')?'; Secure':''}`);}
 function hashPassword(p:string,salt:string) {return scryptSync(p,salt,64).toString('hex');}
-function state() {return {name:'SiteTiller',version:'0.23.0',siteUrl:siteUrl(),hasDraftSteps:!!config.requests.length,hasLoadedReality:!!config.realityCheckedAt||!!Object.keys(config.realityPaths||{}).length,agentArchitecture:3,imageModels:config.imageModels,configured:!!config.password,providers:Object.entries(providerKeys()).map(([provider,key])=>({provider,hasKey:!!key})),roles:config.roles,requests:config.requests,reviewRuns:config.reviewRuns||[],job,events,busy,pendingCount:pendingRequests(config.requests,config.reviewedThrough).length,lastReviewCommit:config.lastReviewCommit,approvedCommit:config.approvedCommit,publishedCommit:config.publishedCommit,releases:config.releases,previewUrl:process.env.SITETILLER_PREVIEW_URL||'/preview/',publishConfigured:!!process.env.SITETILLER_PUBLISH_URL};}
+function state() {return {name:'SiteTiller',version:'0.23.1',siteUrl:siteUrl(),hasDraftSteps:!!config.requests.length,hasLoadedReality:!!config.realityCheckedAt||!!Object.keys(config.realityPaths||{}).length,agentArchitecture:3,imageModels:config.imageModels,configured:!!config.password,providers:Object.entries(providerKeys()).map(([provider,key])=>({provider,hasKey:!!key})),roles:config.roles,requests:config.requests,reviewRuns:config.reviewRuns||[],job,events,busy,pendingCount:pendingRequests(config.requests,config.reviewedThrough).length,lastReviewCommit:config.lastReviewCommit,approvedCommit:config.approvedCommit,publishedCommit:config.publishedCommit,releases:config.releases,previewUrl:process.env.SITETILLER_PREVIEW_URL||'/preview/',publishConfigured:!!process.env.SITETILLER_PUBLISH_URL};}
 const realitySnapshots=new Map<string,any>();
 function siteUrl(){return config.siteUrl??process.env.SITETILLER_SITE_URL??'';}
 let historyCache:any=null;
@@ -114,7 +114,7 @@ const server=http.createServer(async(req,res)=>{try{
       failures.delete(ip);login(res);return response(res,200,{ok:true});
     }
     if(!auth(req))return response(res,401,{error:'Přihlas se do SiteTiller.'});
-    if(path==='/api/state'&&req.method==='GET'){const history=await historyState();return response(res,200,{...state(),...history});}
+    if(path==='/api/state'&&req.method==='GET'){for(let attempt=0;attempt<3;attempt++){const history=await historyState(),snapshot={...state(),...history};if(history.head===await project.head()&&snapshot.busy===busy)return response(res,200,snapshot);historyCache=null;}throw Error('Návrh se právě mění. Obnovte stav.');}
     if(path==='/api/models'&&(req.method==='GET'||req.method==='POST')){
       const input=req.method==='POST'?await body(req):{};
       const keys=providerKeys();
@@ -168,19 +168,25 @@ const server=http.createServer(async(req,res)=>{try{
         const snapshot=await realitySnapshot(publicUrl(url).href,process.env.SITETILLER_PUBLISH_URL,process.env.SITETILLER_PUBLISH_TOKEN),result=await compareReality(project,config,input.commit,snapshot,productionProject()),token=randomBytes(24).toString('hex');
         for(const [key,value] of realitySnapshots)if(Date.now()-value.created>10*60*1000)realitySnapshots.delete(key);
         while(realitySnapshots.size>=3)realitySnapshots.delete(realitySnapshots.keys().next().value!);
-        realitySnapshots.set(token,{snapshot,head,url,publication:config.publishedCommit||null,created:Date.now()});return response(res,200,{...result,token});
+        realitySnapshots.set(token,{snapshot,head,url,publication:config.publishedCommit||null,equal:result.equal,liveMatchesPublished:result.liveMatchesPublished,created:Date.now()});return response(res,200,{...result,token});
       }finally{busy=false;}
     }
     if(path==='/api/reality/load'&&req.method==='POST'){
       if(busy)throw Error('Počkej na dokončení úlohy.');const input=await body(req);if(busy)throw Error('Počkej na dokončení úlohy.');
       const cached=realitySnapshots.get(input.token);if(!cached||Date.now()-cached.created>10*60*1000||cached.url!==siteUrl()||cached.publication!==(config.publishedCommit||null))throw Error('Porovnání již není aktuální. Porovnej web znovu.');
       if(input.expectedHead!==cached.head||(typeof input.clearPrevious!=='boolean'||typeof input.saveVersion!=='boolean'))throw Error('Neplatné potvrzení načtení webu.');
+      if(cached.equal)throw Error('Zobrazená verze se shoduje se skutečným webem. Není co načítat.');
+      if(input.saveVersion&&cached.liveMatchesPublished)throw Error('Skutečný web již odpovídá uložené publikované verzi. Nová verze není potřeba.');
       busy=true;try{
         if(config.separatedHistories&&input.saveVersion&&(!Number.isInteger(input.versionNumber)||input.versionNumber<0||input.versionNumber>999999||config.releases.some(r=>r.number===input.versionNumber)||cached.snapshot.evidence.source!=='hosting-http'))throw Error('Vyber volné číslo verze skutečného webu připojeného k hostingu.');
-        const result=await loadReality(project,config,cached.snapshot,cached.head,input.clearPrevious,undefined,config.separatedHistories?false:input.saveVersion,input.versionNumber);
-        if(config.separatedHistories&&input.saveVersion){await save('config.json',config);const endpoint=new URL(process.env.SITETILLER_PUBLISH_URL!);endpoint.pathname=endpoint.pathname.replace(/publish$/,'archive');const archived=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+process.env.SITETILLER_PUBLISH_TOKEN},body:JSON.stringify({commit:result.commit,number:input.versionNumber}),signal:AbortSignal.timeout(90000)});const value:any=await archived.json();if(!archived.ok)throw Error(value.error||'Uložení skutečné verze selhalo.');await syncProduction(config);result.savedVersion=input.versionNumber;config.draftBaseCommit=result.commit;}
-        if(config.separatedHistories&&input.clearPrevious){const rebuilt=await rebaseWorkspace(project,productionProject()!,config.publishedCommit,cached.head);mapCleanupHistory(config,events,rebuilt.mapping);result.commit=rebuilt.mapping[result.commit]||rebuilt.head;if(result.request){result.request.commit=result.commit;config.requests=[result.request];}config.draftBaseCommit=config.publishedCommit;}
-        if(input.clearPrevious||result.first&&!result.request){await eventWrites;events=events.filter(e=>e.kind==='publish');await save('events.json',events);}
+        const beforeLoad=structuredClone(config),result=await loadReality(project,config,cached.snapshot,cached.head,input.clearPrevious,undefined,config.separatedHistories?false:input.saveVersion,input.versionNumber);
+        if(config.separatedHistories&&input.saveVersion){
+          try{await save('config.json',config);const endpoint=new URL(process.env.SITETILLER_PUBLISH_URL!);endpoint.pathname=endpoint.pathname.replace(/publish$/,'archive');const archived=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+process.env.SITETILLER_PUBLISH_TOKEN},body:JSON.stringify({commit:result.commit,number:input.versionNumber}),signal:AbortSignal.timeout(90000)});const value:any=await archived.json();if(!archived.ok)throw Error(value.error||'Uložení skutečné verze selhalo.');await syncProduction(config);}
+          catch(error){await syncProduction(config);if(!config.releases.some(r=>r.number===input.versionNumber&&r.sourceCommit===result.commit)){await project.rewind(cached.head,result.commit,null);config=beforeLoad;await save('config.json',config);historyCache=null;throw error;}}
+          result.savedVersion=input.versionNumber;config.draftBaseCommit=result.commit;
+        }
+        if(config.separatedHistories&&input.clearPrevious){await rebaseWorkspace(project,project,result.commit,result.commit,[]);if(result.request){result.request.baseCommit=null;config.requests=[result.request];}config.draftBaseCommit=result.commit;config.lastReviewCommit=result.commit;}
+        if(input.clearPrevious||result.first&&!result.request){await eventWrites;events=[];await save('events.json',events);}
         job=result.request?{id:result.request.id,kind:'edit',status:'ready',commit:result.commit,plan:{summary:result.request.memory.summary},tests:result.request.tests}:null;
         if(result.request){await emit({stage:'request',jobId:result.request.id,kind:'edit',message:result.request.prompt});await emit({stage:'build',status:'completed',jobId:result.request.id,kind:'edit',message:result.request.memory.summary,commit:result.commit});await emit({stage:'ready',jobId:result.request.id,kind:'edit',commit:result.commit,message:'Web byl načten do návrhu.'});}
         await save('config.json',config);await save('last-job.json',job);historyCache=null;realitySnapshots.clear();return response(res,200,{ok:true,commit:result.commit,savedVersion:result.savedVersion});
@@ -218,11 +224,11 @@ const server=http.createServer(async(req,res)=>{try{
           events=events.filter(e=>e.stage==='published'||ids.has(e.jobId)||e.kind==='restore'&&commits.has(e.commit));await save('events.json',events);job=null;await save('last-job.json',job);historyCache=null;
           return response(res,200,{...result,rewound:true});
         }
-        if(mode==='clear-all'&&!config.releases.some((r:any)=>r.id===input.releaseId&&r.commit===input.commit))throw Error('Odstranit všechny úpravy lze jen při načítání publikované verze.');
+        if(mode==='clear-all'&&!config.releases.some((r:any)=>r.id===input.releaseId&&r.commit===input.commit)&&!config.requests.some((r:any)=>r.commit===input.commit&&(!input.stepId||input.stepId===r.id)&&['ready','legacy'].includes(r.status)))throw Error('Vybraný krok nebo verze již nejsou dostupné.');
         const head=await project.head();if(input.expectedHead!==head)throw Error('Návrh se mezitím změnil. Obnov seznam úprav.');
-        const isPublished=config.separatedHistories&&config.releases.some(r=>r.commit===input.commit);if(mode==='clear-all'&&isPublished){await rebaseWorkspace(project,productionProject()!,config.publishedCommit,head);input.expectedHead=await project.head();}const result=mode==='clear-all'&&input.commit===await project.head()?{commit:await project.head(),restoredFrom:input.commit}:isPublished?await restoreProduction(project,productionProject()!,input.commit,input.expectedHead):await project.restore(input.commit,input.expectedHead);
+        const isPublished=config.separatedHistories&&config.releases.some(r=>r.commit===input.commit);const result=mode==='clear-all'?{commit:(await rebaseWorkspace(project,isPublished?productionProject()!:project,input.commit,head,[])).head,restoredFrom:input.commit}:isPublished?await restoreProduction(project,productionProject()!,input.commit,input.expectedHead):await project.restore(input.commit,input.expectedHead);
         config.approvedCommit=null;config.technicalApproval=null;
-        if(mode==='clear-all'){clearDraftHistory(config,result.commit);await eventWrites;events=events.filter(e=>e.stage==='published');await save('events.json',events);historyCache=null;}
+        if(mode==='clear-all'){clearDraftHistory(config,result.commit);config.conversationMemory=[];await eventWrites;events=[];await save('events.json',events);historyCache=null;}
         const loadedRequest=addRequest(config,{id:randomBytes(8).toString('hex'),createdAt:new Date().toISOString(),prompt:'Načíst do úprav přesný stav webu z verze '+input.commit+'. Tento návrat nahrazuje dřívější změny, které v této verzi nejsou.',restoredFrom:input.commit,commit:result.commit,status:'ready'});
         await save('config.json',config);job={id:loadedRequest.id,kind:'restore',status:'ready',...result,review:null};await save('last-job.json',job);
         await emit({stage:'restored',message:'Do úprav načtena verze '+input.commit.slice(0,8)+'. Publikovaný web se nezměnil.',commit:result.commit});

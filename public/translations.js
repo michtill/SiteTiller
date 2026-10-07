@@ -1,4 +1,7 @@
 export const english={
+  "Uložit jako verzi": "Save as a version",
+  "Číslo verze": "Version number",
+  "Stav načtený ze skutečného webu": "State imported from the live website",
   "Rozdíly": "Differences",
   "Skutečný web": "Live website",
   "Soubor chybí": "File is missing",

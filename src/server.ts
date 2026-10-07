@@ -1,4 +1,4 @@
-import {compareReality,loadReality,recordRealityZero} from './reality.ts';
+import {compareReality,loadReality} from './reality.ts';
 import {importWebsite,publicUrl} from './web-import.ts';
 import {studioPreviewPolicy} from './site-policy.ts';
 import {publicationTarget,publishableSteps} from './publication-target.ts';
@@ -143,7 +143,7 @@ const server=http.createServer(async(req,res)=>{try{
       const request=addRequest(config,{id:randomBytes(8).toString('hex'),prompt:input.prompt.trim(),mode,reasoningEffort,attachments,models:structuredClone(config.roles),status:'running',baseCommit,createdAt:new Date().toISOString()});
       config.approvedCommit=null;job={id:request.id,kind:'edit',status:'running',prompt:request.prompt,attachments};await save('config.json',config);await save('last-job.json',job);
       await emit({stage:'request',message:request.prompt,attachments});
-      void(async()=>{try{await hydrateRecentMemory(project,priorRequests);for(const prior of priorRequests){const saved=config.requests.find((r:any)=>r.id===prior.id);if(saved&&!saved.memory&&prior.memory)saved.memory=prior.memory;}const result=await workflow(project,activeSlots(),request.prompt,join(data,'drafts'),e=>{void emit(e);},undefined,resolvedTeam,images,{mode,reasoningEffort,conversation:recentConversation(priorRequests,baseCommit),history:query=>searchConversation(priorRequests,query,baseCommit),publication:()=>({publishedCommit:config.publishedCommit||null}),imageModels:config.imageModels,availableModels:list.models});Object.assign(request,{status:'ready',commit:result.commit,scope:result.scope,resolvedRequest:result.resolvedRequest,memory:result.memory,plan:result.plan,imageResults:result.imageResults,tests:result.tests});if(result.webImport?.resources)config.realityPaths={...(config.realityPaths||{}),...Object.fromEntries(result.webImport.resources.map((r:any)=>[r.path,r.url]))};if(result.webImport&&siteUrl()&&!config.releases.length){const a=new URL(siteUrl()),b=new URL(result.webImport.url);if(a.hostname.replace(/^www\./,'')===b.hostname.replace(/^www\./,'')&&a.pathname===b.pathname)await recordRealityZero(project,config,result.webImportBaselineCommit||result.commit,result.webImport.url);}job={...job,status:'ready',...result};}catch(e:any){request.status='failed';request.error=e.message;request.errorFromAgent=!!e.agentResponse;job={...job,status:'failed',error:e.message};await emit({stage:'failed',message:e.message,agentResponse:!!e.agentResponse});}finally{await save('config.json',config);await save('last-job.json',job);busy=false;}})();
+      void(async()=>{try{await hydrateRecentMemory(project,priorRequests);for(const prior of priorRequests){const saved=config.requests.find((r:any)=>r.id===prior.id);if(saved&&!saved.memory&&prior.memory)saved.memory=prior.memory;}const result=await workflow(project,activeSlots(),request.prompt,join(data,'drafts'),e=>{void emit(e);},undefined,resolvedTeam,images,{mode,reasoningEffort,conversation:recentConversation(priorRequests,baseCommit),history:query=>searchConversation(priorRequests,query,baseCommit),publication:()=>({publishedCommit:config.publishedCommit||null}),imageModels:config.imageModels,availableModels:list.models});Object.assign(request,{status:'ready',commit:result.commit,scope:result.scope,resolvedRequest:result.resolvedRequest,memory:result.memory,plan:result.plan,imageResults:result.imageResults,tests:result.tests});if(result.webImport?.resources)config.realityPaths={...(config.realityPaths||{}),...Object.fromEntries(result.webImport.resources.map((r:any)=>[r.path,r.url]))};job={...job,status:'ready',...result};}catch(e:any){request.status='failed';request.error=e.message;request.errorFromAgent=!!e.agentResponse;job={...job,status:'failed',error:e.message};await emit({stage:'failed',message:e.message,agentResponse:!!e.agentResponse});}finally{await save('config.json',config);await save('last-job.json',job);busy=false;}})();
       return response(res,202,{job});
     }
     if(path==='/api/reality/image'&&req.method==='GET'){
@@ -166,13 +166,13 @@ const server=http.createServer(async(req,res)=>{try{
     if(path==='/api/reality/load'&&req.method==='POST'){
       if(busy)throw Error('Počkej na dokončení úlohy.');const input=await body(req);if(busy)throw Error('Počkej na dokončení úlohy.');
       const cached=realitySnapshots.get(input.token);if(!cached||Date.now()-cached.created>10*60*1000||cached.url!==siteUrl())throw Error('Porovnání již není aktuální. Porovnej web znovu.');
-      if(input.expectedHead!==cached.head||typeof input.clearPrevious!=='boolean')throw Error('Neplatné potvrzení načtení webu.');
+      if(input.expectedHead!==cached.head||(typeof input.clearPrevious!=='boolean'||typeof input.saveVersion!=='boolean'))throw Error('Neplatné potvrzení načtení webu.');
       busy=true;try{
-        const result=await loadReality(project,config,cached.snapshot,cached.head,input.clearPrevious);
+        const result=await loadReality(project,config,cached.snapshot,cached.head,input.clearPrevious,undefined,input.saveVersion,input.versionNumber);
         if(input.clearPrevious||result.first&&!result.request){await eventWrites;events=events.filter(e=>e.kind==='publish');await save('events.json',events);}
         job=result.request?{id:result.request.id,kind:'edit',status:'ready',commit:result.commit,plan:{summary:result.request.memory.summary},tests:result.request.tests}:null;
         if(result.request){await emit({stage:'request',jobId:result.request.id,kind:'edit',message:result.request.prompt});await emit({stage:'build',status:'completed',jobId:result.request.id,kind:'edit',message:result.request.memory.summary,commit:result.commit});await emit({stage:'ready',jobId:result.request.id,kind:'edit',commit:result.commit,message:'Web byl načten do návrhu.'});}
-        await save('config.json',config);await save('last-job.json',job);historyCache=null;realitySnapshots.clear();return response(res,200,{ok:true,commit:result.commit,versionZero:result.first});
+        await save('config.json',config);await save('last-job.json',job);historyCache=null;realitySnapshots.clear();return response(res,200,{ok:true,commit:result.commit,savedVersion:result.savedVersion});
       }finally{busy=false;}
     }
     if(path==='/api/review'&&req.method==='POST'){

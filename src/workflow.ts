@@ -187,12 +187,11 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
   for(const image of imageResults)if(!Object.entries(files).some(([p,t])=>!raster(p)&&t.includes(image.path.slice(5))))tests.errors.push('Nový obrázek není použitý na webu: '+image.path);
   tests.passed=tests.errors.length===0;
   emit({stage:'test',status:'running',message:'Ověřuji soubory a zobrazení webu.'});
-  let browser:any={passed:false,errors:[],checks:[],screenshots:[]},verified:any=null,completion:any=null,webImportBaselineCommit:string|null=null;
+  let browser:any={passed:false,errors:[],checks:[],screenshots:[]},verified:any=null,completion:any=null;
   await mkdir(draftRoot,{recursive:true});const path=join(draftRoot,'job-'+Date.now());
   try{
    if(tests.passed){
     await cp(project.root,path,{recursive:true});const draft=new Project(path);
-    if(imported){await draft.writeSnapshot(imported.files);for(const [name,bytes] of Object.entries(importedBinary)){const target=safeSitePath(path,name);await mkdir(join(target,'..'),{recursive:true});await writeFile(target,bytes);}webImportBaselineCommit=await draft.commit('Načtený stav skutečného webu '+imported.evidence.url);}
     await draft.writeSnapshot(files);
     for(const image of [...images.filter(i=>i.use==='website'),...generated].filter(i=>Object.hasOwn(files,'site/assets/'+i.id))){await mkdir(join(path,'site/assets'),{recursive:true});await writeFile(join(path,'site/assets',image.id),Buffer.from(image.data,'base64'));}
     for(const [name,bytes] of Object.entries(importedBinary))if(Object.hasOwn(files,name)){const target=safeSitePath(path,name);await mkdir(join(target,'..'),{recursive:true});await writeFile(target,bytes);}
@@ -209,14 +208,15 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
     }
     if(browser.passed&&(!needsVerification||verified?.status==='PASS')){
      if(await project.head()!==baseCommit)throw Error('Projekt se mezitím změnil.');
-     const commit=await draft.commit('SiteTiller: '+prompt.replace(/\s+/g,' ').slice(0,110));
+     const message='SiteTiller: '+prompt.replace(/\s+/g,' ').slice(0,110);if(imported){await draft.git(['add','site']);await draft.git(['commit','--allow-empty','-m',message]);}
+     const commit=imported?await draft.head():await draft.commit(message);
      if(await project.head()!==baseCommit)throw Error('Projekt se mezitím změnil.');
      await project.git(['fetch',path,'main']);await project.git(['merge','--ff-only','FETCH_HEAD']);
      plan.summary=finalSummary;
      emit({stage:'test',status:'completed',message:'Automatické kontroly prošly.'});
      emit({stage:'build',status:'completed',message:finalSummary||'Úprava webu dokončena.',agentResponse:!!finalSummary,model:client.model,provider:client.provider,usage:result.usage});
      emit({stage:'ready',message:'Návrh je připravený. Můžeš jej publikovat.',commit,baseCommit});
-     completion={commit,baseCommit,scope,resolvedRequest,memory:changeMemory(original,files,finalSummary),plan,imageResults,webImport:imported?.evidence,webImportBaselineCommit,review:null,tests:{passed:true,errors:[],browserTests,static:tests,browser:{...browser,screenshots:undefined},publication,analysis:verified,warnings:imported?.evidence.warnings||[]}};return completion;
+     completion={commit,baseCommit,scope,resolvedRequest,memory:changeMemory(original,files,finalSummary),plan,imageResults,webImport:imported?.evidence,review:null,tests:{passed:true,errors:[],browserTests,static:tests,browser:{...browser,screenshots:undefined},publication,analysis:verified,warnings:imported?.evidence.warnings||[]}};return completion;
     }
    }
   }finally{

@@ -3,12 +3,6 @@ import {cp,mkdir,writeFile,rm} from 'node:fs/promises';import {join,posix} from 
 import {Project} from './project.ts';import {safeSitePath} from './core.ts';import {raster} from './images.ts';
 import {staticChecks,browserChecks} from './checks.ts';import {clearDraftHistory} from './draft-state.ts';import {addRequest} from './journal.ts';
 export function sourcePaths(snapshot:any){return Object.fromEntries(snapshot.evidence.resources.map((r:any)=>[r.path,r.url]));}
-export async function recordRealityZero(project:Project,config:any,commit:string,url:string){
- if((config.releases||[]).length)return false;
- config.releases=[{id:'imported-version-0',number:0,commit,publishedAt:new Date().toISOString(),imported:true,description:'Výchozí stav načtený ze skutečného webu',previousCommit:null,sourceUrl:url}];
- config.publishedCommit=commit;config.draftBaseCommit=commit;config.publishedThrough=0;config.lastReviewCommit=commit;
- await project.git(['tag','sitetiller/imported/v0',commit]);return true;
-}
 function normalized(files:Record<string,string>,binary:Record<string,Buffer>,url:string,paths:Record<string,string>){
  const base=new URL(url),result:Record<string,any>={};
  const logical=(path:string)=>{const address=new URL(paths[path]||path.slice(5),base);return address.origin===base.origin?address.pathname+address.search:address.href;};
@@ -34,8 +28,9 @@ export async function compareReality(project:Project,config:any,commit:string,sn
  }
  return {commit,head,url,checkedAt:new Date().toISOString(),baseline:config.publishedCommit||null,equal:changes.every(c=>c.status==='same'),changes,warnings:snapshot.evidence.warnings,limitations:snapshot.evidence.limitations};
 }
-export async function loadReality(project:Project,config:any,snapshot:any,expectedHead:string,clear:boolean,check=browserChecks){
+export async function loadReality(project:Project,config:any,snapshot:any,expectedHead:string,clear:boolean,check=browserChecks,saveVersion=false,versionNumber?:number){
  if(await project.head()!==expectedHead)throw Error('Návrh se mezitím změnil. Porovnej web znovu.');
+ if(saveVersion&&(!Number.isInteger(versionNumber)||versionNumber!<0||versionNumber!>999999||(config.releases||[]).some((r:any)=>r.number===versionNumber)))throw Error('Vyber volné celé číslo verze.');
  const path=join(project.root,'..','reality-'+randomUUID());await cp(project.root,path,{recursive:true});
  try{
   const draft=new Project(path);await draft.writeSnapshot(snapshot.files);
@@ -44,11 +39,11 @@ export async function loadReality(project:Project,config:any,snapshot:any,expect
   const browser=await check(path,snapshot.files);if(!browser.passed)throw Error('Načtený web neprošel kontrolou zobrazení: '+browser.errors.join('; '));
   await draft.git(['add','site']);await draft.git(['commit','--allow-empty','-m','Načtení skutečného webu '+snapshot.evidence.url]);const commit=await draft.head();
   if(await project.head()!==expectedHead)throw Error('Návrh se mezitím změnil.');await project.git(['fetch',path,'main']);await project.git(['merge','--ff-only','FETCH_HEAD']);
-  const first=!(config.releases||[]).length,hadSteps=(config.requests||[]).length>0;
+  const first=!(config.releases||[]).length;
   if(clear)clearDraftHistory(config,commit);
   config.realityPaths={...(config.realityPaths||{}),...sourcePaths(snapshot)};config.realityCheckedAt=new Date().toISOString();config.pendingRelease=null;config.approvedCommit=null;config.technicalApproval=null;
-  if(first){const release={id:'imported-version-0',number:0,commit,publishedAt:config.realityCheckedAt,imported:true,description:'Výchozí stav načtený ze skutečného webu',previousCommit:null,sourceUrl:snapshot.evidence.url};config.releases=[release];config.publishedCommit=commit;config.draftBaseCommit=commit;config.publishedThrough=clear?config.requestSequence||0:0;config.lastReviewCommit=commit;await project.git(['tag','sitetiller/imported/v0',commit]);}
-  let request=null;if(!first||hadSteps&&!clear)request=addRequest(config,{id:randomUUID(),prompt:'Načíst aktuální web z '+snapshot.evidence.url,createdAt:config.realityCheckedAt,status:'ready',commit,scope:'create',baseCommit:expectedHead,memory:{summary:'Aktuální web byl načten do návrhu. Skutečný web se nezměnil.'},tests:{passed:true,static:tests,browser:{...browser,screenshots:undefined}},webImport:snapshot.evidence});
-  return {commit,first,request,cleared:clear,source:snapshot.evidence};
+  if(saveVersion){const release={id:'imported-version-'+versionNumber,number:versionNumber!,commit,publishedAt:config.realityCheckedAt,imported:true,description:'Stav načtený ze skutečného webu',previousCommit:config.publishedCommit||null,sourceUrl:snapshot.evidence.url};config.releases=[...(config.releases||[]),release];config.publishedCommit=commit;config.draftBaseCommit=commit;config.publishedThrough=clear?config.requestSequence||0:config.publishedThrough||0;config.lastReviewCommit=commit;await project.git(['tag','sitetiller/imported/v'+versionNumber,commit]);}
+  const request=addRequest(config,{id:randomUUID(),prompt:'Načíst aktuální web z '+snapshot.evidence.url,createdAt:config.realityCheckedAt,status:'ready',commit,scope:'create',baseCommit:expectedHead,memory:{summary:'Aktuální web byl načten do návrhu. Skutečný web se nezměnil.'},tests:{passed:true,static:tests,browser:{...browser,screenshots:undefined}},webImport:snapshot.evidence});
+  return {commit,first,request,savedVersion:saveVersion?versionNumber:null,cleared:clear,source:snapshot.evidence};
  }finally{await rm(path,{recursive:true,force:true});}
 }

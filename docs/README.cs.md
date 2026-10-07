@@ -8,6 +8,8 @@ Veřejný web můžete načíst zadáním například „Načti https://example.
 
 ## Instalace
 
+Adresu skutečného webu nastavte v Nastavení nebo pomocí `SITETILLER_SITE_URL`. Úvodní nabídka umožní web načíst. Tlačítko **Porovnat se skutečností** porovná právě zobrazený krok či verzi, nic nezmění a ukáže změny v návrhu i na skutečném webu vůči poslední uložené verzi. V dialogu načtení můžete odstranit stávající kroky a zvolit **Uložit jako verzi**. Poprvé se nabídne číslo 0, později další volné číslo. Načtení vždy vytvoří samostatný krok s náhledem; skutečný web se nezmění a dříve uložené verze zůstanou zachované.
+
 Potřebujete Docker s Compose. Pro malou instalaci počítejte alespoň s 1 GB RAM a rezervou pro sestavení image a Chromium.
 
 ```sh

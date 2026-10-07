@@ -6,6 +6,8 @@ SiteTiller is a self-hosted editor that creates and changes static websites from
 
 To copy a public website, name its address in your request, for example: “Load https://example.com and copy it into my draft.” Web Lead retrieves actual public HTML, CSS, JavaScript, linked pages and supported images. The import becomes a reversible draft only after technical checks and independent verification. It does not modify the source website. Limits: 12 pages, 100 discovered resources, 20 MB total, 300 KB per text file and 5 MB per image. Server backends, authenticated content and private network addresses are not imported. Unsupported resources can remain external links, and coverage warnings are reported.
 
+Set the live website address in Settings or `SITETILLER_SITE_URL`. The welcome panel offers to load it. “Compare with the live website” compares whichever draft step or saved version is currently displayed, without editing it. Results distinguish draft changes and external website changes against the last saved live version, with text excerpts and image previews. Confirming an import always creates a previewable editing step. You may remove earlier editing steps and optionally save the imported state as a numbered version: the first suggested number is 0, later numbers follow existing versions. This records an externally observed live state; it does not publish anything. Saved versions are retained when editing steps are removed.
+
 The interface supports **English and Czech**. Choose the interface language in Settings; it is saved in your browser. Agents answer in the language of your request, independently of the interface language. Internal agent tasks remain concise English JSON.
 
 ## What it does

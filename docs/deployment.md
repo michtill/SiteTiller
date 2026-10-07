@@ -42,6 +42,8 @@ Import an existing site **before the first editor startup** by preparing the pri
 
 For VPS Center, `deploy/vpsc-compose.yml` is a studio/preview template with externally supplied URLs. Publisher user IDs, Git hooks, proxy mapping and host paths are host-specific and must be configured for that installation. The portable Compose publisher runs as UID/GID 1000; this is not a drop-in replacement for every managed-hosting publisher user.
 
+VPS Center restricts Compose bind sources to the application directory and may ignore supplementary `group_add` settings. An administrator can expose the fixed production repository through a persistent read-only filesystem bind view at `.volumes/sitetiller_production/repository.git`. Use `SITETILLER_PRODUCTION_HISTORY_MOUNT=sitetiller_production` and `SITETILLER_PRODUCTION_HISTORY_DIR=/production/repository.git`; give the repository's files read access to the domain group. This is a view of the same production Git, not a second repository. The studio and preview mounts must remain read-only. Unmount this view before removing the application directory, and keep its host mount configuration with deployment documentation.
+
 ### VPS Center: a separate installation from GitHub
 
 Create a new Docker Compose application and choose Git cloning from `https://github.com/michtill/SiteTiller.git`. Select a release tag such as `v0.20.0`; the cloning form expects a branch or tag, rather than a raw commit ID. The root Compose file starts only the studio and preview. Its optional production services remain inactive until explicitly enabled outside this studio-only setup.

@@ -1,5 +1,6 @@
 import {compareReality,loadReality} from './reality.ts';
 import {importWebsite,publicUrl} from './web-import.ts';
+import {realitySnapshot} from './reality-source.ts';
 import {studioPreviewPolicy} from './site-policy.ts';
 import {publicationTarget,publishableSteps} from './publication-target.ts';
 import {draftState,clearDraftHistory} from './draft-state.ts';
@@ -68,7 +69,7 @@ function auth(req:http.IncomingMessage) {const token=req.headers.cookie?.match(/
 function sameOrigin(req:http.IncomingMessage) {return req.headers.origin===publicOrigin;}
 function login(res:http.ServerResponse) {const token=randomBytes(32).toString('hex');sessions.set(token,Date.now()+8*3600000);res.setHeader('Set-Cookie',`sitetiller=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${publicOrigin.startsWith('https:')?'; Secure':''}`);}
 function hashPassword(p:string,salt:string) {return scryptSync(p,salt,64).toString('hex');}
-function state() {return {name:'SiteTiller',version:'0.22.5',siteUrl:siteUrl(),hasDraftSteps:!!config.requests.length,hasLoadedReality:!!config.realityCheckedAt||!!Object.keys(config.realityPaths||{}).length,agentArchitecture:3,imageModels:config.imageModels,configured:!!config.password,providers:Object.entries(providerKeys()).map(([provider,key])=>({provider,hasKey:!!key})),roles:config.roles,requests:config.requests,reviewRuns:config.reviewRuns||[],job,events,busy,pendingCount:pendingRequests(config.requests,config.reviewedThrough).length,lastReviewCommit:config.lastReviewCommit,approvedCommit:config.approvedCommit,publishedCommit:config.publishedCommit,releases:config.releases,previewUrl:process.env.SITETILLER_PREVIEW_URL||'/preview/',publishConfigured:!!process.env.SITETILLER_PUBLISH_URL};}
+function state() {return {name:'SiteTiller',version:'0.22.6',siteUrl:siteUrl(),hasDraftSteps:!!config.requests.length,hasLoadedReality:!!config.realityCheckedAt||!!Object.keys(config.realityPaths||{}).length,agentArchitecture:3,imageModels:config.imageModels,configured:!!config.password,providers:Object.entries(providerKeys()).map(([provider,key])=>({provider,hasKey:!!key})),roles:config.roles,requests:config.requests,reviewRuns:config.reviewRuns||[],job,events,busy,pendingCount:pendingRequests(config.requests,config.reviewedThrough).length,lastReviewCommit:config.lastReviewCommit,approvedCommit:config.approvedCommit,publishedCommit:config.publishedCommit,releases:config.releases,previewUrl:process.env.SITETILLER_PREVIEW_URL||'/preview/',publishConfigured:!!process.env.SITETILLER_PUBLISH_URL};}
 const realitySnapshots=new Map<string,any>();
 function siteUrl(){return config.siteUrl??process.env.SITETILLER_SITE_URL??'';}
 let historyCache:any=null;
@@ -160,7 +161,7 @@ const server=http.createServer(async(req,res)=>{try{
       busy=true;try{
         const head=await project.head();if(input.expectedHead!==head)throw Error('Návrh se mezitím změnil.');
         if(typeof input.commit!=='string'||!/^[a-f0-9]{40}$/.test(input.commit))throw Error('Neplatná verze.');await project.git(['merge-base','--is-ancestor',input.commit,head]);
-        const snapshot=await importWebsite(publicUrl(url).href),result=await compareReality(project,config,input.commit,snapshot),token=randomBytes(24).toString('hex');
+        const snapshot=await realitySnapshot(publicUrl(url).href,process.env.SITETILLER_PUBLISH_URL,process.env.SITETILLER_PUBLISH_TOKEN),result=await compareReality(project,config,input.commit,snapshot),token=randomBytes(24).toString('hex');
         for(const [key,value] of realitySnapshots)if(Date.now()-value.created>10*60*1000)realitySnapshots.delete(key);
         while(realitySnapshots.size>=3)realitySnapshots.delete(realitySnapshots.keys().next().value!);
         realitySnapshots.set(token,{snapshot,head,url,publication:config.publishedCommit||null,created:Date.now()});return response(res,200,{...result,token});

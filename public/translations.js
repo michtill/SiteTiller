@@ -1,4 +1,7 @@
 export const english={
+  "Některé dříve nasazené soubory již na webu nejsou dostupné.": "Some previously deployed files are no longer available on the website.",
+  "Skutečný web se liší od souborů posledního nasazení. Porovnává se jeho skutečně dostupný obsah.": "The live website differs from the last deployment files. Its actual served content is being compared.",
+  "Nasazení se během porovnávání změnilo. Porovnej web znovu.": "Deployment changed during comparison. Compare the website again.",
   "Obrázky s nejasnými dynamickými odkazy byly zachovány.": "Images with uncertain dynamic references were preserved.",
   "Uklízím nepoužívané a totožné obrázky.": "Cleaning up unused and identical images.",
   "Nepoužívané a totožné obrázky byly uklizeny. Vložené originály a starší verze zůstávají zachované.": "Unused and identical images were cleaned up. Uploaded originals and earlier versions are preserved.",

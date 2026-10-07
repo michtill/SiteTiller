@@ -26,7 +26,7 @@ export async function compareReality(project:Project,config:any,commit:string,sn
   const before=selected[path]?.text||'',after=live[path]?.text||'';let index=0;while(index<Math.min(before.length,after.length)&&before[index]===after[index])index++;const start=Math.max(0,index-100);
   changes.push({path,kind:(live[path]||selected[path]||baseline?.[path]).kind,selectedPath:selected[path]?.path,livePath:live[path]?.path,excerpt:before!==after?{selected:before.slice(start,start+500),live:after.slice(start,start+500)}:null,status:!selected[path]?'only-live':!live[path]?'only-draft':same?'same':'different',draftChanged:baseline?selected[path]?.hash!==baseline[path]?.hash:null,liveChanged:baseline?live[path]?.hash!==baseline[path]?.hash:null});
  }
- return {commit,head,url,checkedAt:new Date().toISOString(),baseline:config.publishedCommit||null,equal:changes.every(c=>c.status==='same'),changes,warnings:snapshot.evidence.warnings,limitations:snapshot.evidence.limitations};
+ return {commit,head,url,source:snapshot.evidence.source||'public-http',hostingCommit:snapshot.evidence.hostingCommit||null,checkedAt:new Date().toISOString(),baseline:config.publishedCommit||null,equal:changes.every(c=>c.status==='same'),changes,warnings:snapshot.evidence.warnings,limitations:snapshot.evidence.limitations};
 }
 export async function loadReality(project:Project,config:any,snapshot:any,expectedHead:string,clear:boolean,check=browserChecks,saveVersion=false,versionNumber?:number){
  if(await project.head()!==expectedHead)throw Error('Návrh se mezitím změnil. Porovnej web znovu.');

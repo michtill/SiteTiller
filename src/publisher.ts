@@ -1,5 +1,6 @@
 import {deploySite} from '../deploy/site-release.mjs';
 import {productionSnapshot} from './production-snapshot.ts';
+import {hostedSnapshot} from './hosted-snapshot.ts';
 import {hostingPolicyProblems} from './site-policy.ts';
 import {staticChecks} from './checks.ts';
 import http from 'node:http';
@@ -18,6 +19,12 @@ let busy=false,stage='';
 http.createServer(async(req,res)=>{const json=(status:number,value:any)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(value));};try{
   const received=Buffer.from(req.headers.authorization||''),expected=Buffer.from('Bearer '+process.env.SITETILLER_PUBLISH_TOKEN);
   if(received.length!==expected.length||!timingSafeEqual(received,expected))return json(401,{error:'Unauthorized'});
+  if(req.method==='GET'&&req.url==='/snapshot'){
+    if(busy)return json(409,{error:'Počkej na dokončení publikování.'});
+    if(!process.env.SITETILLER_PRODUCTION_URL)return json(501,{error:'Čtení nasazeného webu není nastavené.'});
+    busy=true;try{const snapshot=await hostedSnapshot(new Project(remote),process.env.SITETILLER_PRODUCTION_URL,fetch,process.env.SITETILLER_SITE_URL||process.env.SITETILLER_PRODUCTION_URL);return json(200,{...snapshot,binary:Object.fromEntries(Object.entries(snapshot.binary).map(([path,bytes])=>[path,bytes.toString('base64')]))});}
+    catch(e:any){return json(502,{error:e.name==='TimeoutError'?'Načítání webu překročilo časový limit.':e.message});}finally{busy=false;}
+  }
   if(req.method!=='POST'||req.url!=='/publish')return json(404,{error:'Not found'});
   if(busy)return json(409,{error:'Publish running'});
   let text='';for await(const chunk of req){text+=chunk;if(text.length>1000)return json(413,{error:'Too large'});}

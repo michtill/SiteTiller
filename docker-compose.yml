@@ -48,12 +48,13 @@ services:
       SITETILLER_PRODUCTION_SNAPSHOT: ${SITETILLER_PRODUCTION_SNAPSHOT:-0}
       SITETILLER_PRODUCTION_DIRECTORY: /production/www
       SITETILLER_PRODUCTION_URL: ${SITETILLER_PRODUCTION_URL:-http://production/}
+      SITETILLER_SITE_URL: ${SITETILLER_SITE_URL:-}
     volumes: ["sitetiller_data:/data:ro", "sitetiller_production:/production"]
     read_only: true
     tmpfs: ["/tmp:size=64m"]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
-    mem_limit: 96m
+    mem_limit: 256m
     pids_limit: 32
     restart: unless-stopped
   production:

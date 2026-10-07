@@ -68,7 +68,12 @@ export async function importWebsite(value:string,fetcher=fetchPublic){
   total+=resource.bytes.length;if(total>20*1024*1024)throw Error('Web překročil limit 20 MB.');
   let path='site/assets/web-'+createHash('sha256').update(resource.url).digest('hex').slice(0,16)+'.'+ext;
   if(ext==='html'){if(++pages>12){warnings.push('Načteno nejvýše 12 stránek.');continue;}const parsed=new URL(resource.url),route=parsed.pathname.replace(/[^a-zA-Z0-9_./-]/g,'_').replace(/(^|\/)\.+(?=\/|$)/g,'$1_');path=resource.url===first.url?'site/index.html':'site'+(route.endsWith('/')?route+'index.html':route.endsWith('.html')?route:route+'/index.html');}
-  safeSitePath('/project',path);if([...resources.values()].some(item=>item.path===path))throw Error('Stránky webu mají kolidující cesty.');
+  safeSitePath('/project',path);const collision=[...resources.entries()].find(([,item])=>item.path===path);
+  if(collision){
+   if(collision[1].resource.bytes.equals(resource.bytes)){if(ext==='html')pages--;aliases.set(item.url,collision[0]);aliases.set(resource.url,collision[0]);continue;}
+   // Different pages can normalize to the same route; retain both and rewrite links.
+   path='site/assets/web-'+createHash('sha256').update(resource.url).digest('hex')+'.'+ext;safeSitePath('/project',path);
+  }
   const text=['html','css','js','svg'].includes(ext)?resource.bytes.toString('utf8'):undefined;
   if(text&&Buffer.byteLength(text)>300000)throw Error('Textový soubor webu překročil limit 300 kB.');
   resources.set(resource.url,{resource,path,text});

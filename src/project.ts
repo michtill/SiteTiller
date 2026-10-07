@@ -55,7 +55,7 @@ export class Project {
   async history(limit:number|null=20) {return (await this.git(['log','--first-parent',...(limit===null?[]:['-'+limit]),'--format=%H%x00%s%x00%cI'])).split('\n').map(s=>{const [commit,message,date]=s.split('\0'); return {commit,message,date};});}
   async commit(message: string) {
     await this.git(['add','site']);
-    if (await this.git(['status','--porcelain'])) await this.git(['commit','-m',message.slice(0,150)]);
+    if (await this.git(['diff','--cached','--name-only','--','site'])) await this.git(['commit','-m',message.slice(0,150)]);
     return this.head();
   }
   async test() {return staticChecks(await this.files());}

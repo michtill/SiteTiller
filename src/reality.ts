@@ -3,6 +3,12 @@ import {cp,mkdir,writeFile,rm} from 'node:fs/promises';import {join,posix} from 
 import {Project} from './project.ts';import {safeSitePath} from './core.ts';import {raster} from './images.ts';
 import {staticChecks,browserChecks} from './checks.ts';import {clearDraftHistory} from './draft-state.ts';import {addRequest} from './journal.ts';
 export function sourcePaths(snapshot:any){return Object.fromEntries(snapshot.evidence.resources.map((r:any)=>[r.path,r.url]));}
+export async function recordRealityZero(project:Project,config:any,commit:string,url:string){
+ if((config.releases||[]).length)return false;
+ config.releases=[{id:'imported-version-0',number:0,commit,publishedAt:new Date().toISOString(),imported:true,description:'Výchozí stav načtený ze skutečného webu',previousCommit:null,sourceUrl:url}];
+ config.publishedCommit=commit;config.draftBaseCommit=commit;config.publishedThrough=0;config.lastReviewCommit=commit;
+ await project.git(['tag','sitetiller/imported/v0',commit]);return true;
+}
 function normalized(files:Record<string,string>,binary:Record<string,Buffer>,url:string,paths:Record<string,string>){
  const base=new URL(url),result:Record<string,any>={};
  const logical=(path:string)=>{const address=new URL(paths[path]||path.slice(5),base);return address.origin===base.origin?address.pathname+address.search:address.href;};
@@ -12,7 +18,7 @@ function normalized(files:Record<string,string>,binary:Record<string,Buffer>,url
    const reference=(raw:string)=>{if(/^(?:#|data:|blob:|mailto:|tel:|javascript:)/i.test(raw))return raw;try{const address=new URL(raw,'https://draft.invalid/'+path.slice(5));if(address.origin==='https://draft.invalid'){const target='site/'+address.pathname.slice(1);return new URL(paths[target]||target.slice(5),base).href+address.hash;}return address.href;}catch{return raw;}};
    const changed=text.replace(/\r\n/g,'\n').replace(/<base\b[^>]*>/gi,'').replace(/\b(src|href|poster|action)\s*=\s*(["'])(.*?)\2/gi,(_,a,q,v)=>a+'='+q+reference(v)+q).replace(/url\(\s*(["']?)([^)'"\s]+)\1\s*\)/gi,(_,q,v)=>'url('+q+reference(v)+q+')');bytes=Buffer.from(changed);
   }
-  result[logical(path)]={kind,hash:createHash('sha256').update(bytes).digest('hex')};
+  result[logical(path)]={kind,path,hash:createHash('sha256').update(bytes).digest('hex'),text:binary[path]?null:kind==='pages'?bytes.toString('utf8').replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi,'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim():bytes.toString('utf8')};
  }
  return result;
 }
@@ -23,7 +29,8 @@ export async function compareReality(project:Project,config:any,commit:string,sn
  const selected=await version(project,commit,url,paths),baseline=config.publishedCommit?await version(project,config.publishedCommit,url,paths):null,live=normalized(snapshot.files,snapshot.binary,url,paths);
  const changes:any[]=[];for(const path of new Set([...Object.keys(selected),...Object.keys(live),...Object.keys(baseline||{})])){
   const same=selected[path]?.hash===live[path]?.hash;if(same&&(!baseline||selected[path]?.hash===baseline[path]?.hash))continue;
-  changes.push({path,kind:(live[path]||selected[path]||baseline?.[path]).kind,status:!selected[path]?'only-live':!live[path]?'only-draft':same?'same':'different',draftChanged:baseline?selected[path]?.hash!==baseline[path]?.hash:null,liveChanged:baseline?live[path]?.hash!==baseline[path]?.hash:null});
+  const before=selected[path]?.text||'',after=live[path]?.text||'';let index=0;while(index<Math.min(before.length,after.length)&&before[index]===after[index])index++;const start=Math.max(0,index-100);
+  changes.push({path,kind:(live[path]||selected[path]||baseline?.[path]).kind,selectedPath:selected[path]?.path,livePath:live[path]?.path,excerpt:before!==after?{selected:before.slice(start,start+500),live:after.slice(start,start+500)}:null,status:!selected[path]?'only-live':!live[path]?'only-draft':same?'same':'different',draftChanged:baseline?selected[path]?.hash!==baseline[path]?.hash:null,liveChanged:baseline?live[path]?.hash!==baseline[path]?.hash:null});
  }
  return {commit,head,url,checkedAt:new Date().toISOString(),baseline:config.publishedCommit||null,equal:changes.every(c=>c.status==='same'),changes,warnings:snapshot.evidence.warnings,limitations:snapshot.evidence.limitations};
 }

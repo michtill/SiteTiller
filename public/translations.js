@@ -1,4 +1,11 @@
 export const english={
+  "Rozdíly": "Differences",
+  "Skutečný web": "Live website",
+  "Soubor chybí": "File is missing",
+  "Máte už existující web?": "Do you already have a website?",
+  "Zadejte adresu skutečného webu v nastavení.": "Enter the live website address in Settings.",
+  "Aktuální web byl načten do návrhu. Skutečný web se nezměnil.": "The live website was loaded into the draft. The live website was not changed.",
+  "Web byl načten do návrhu.": "The website was loaded into the draft.",
   "Adresa skutečného webu": "Live website address",
   "Porovnat se skutečností": "Compare with the live website",
   "Porovnat s verzí skutečně na ": "Compare with the version actually live at ",

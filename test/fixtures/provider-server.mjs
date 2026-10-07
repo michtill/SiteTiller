@@ -11,7 +11,7 @@ globalThis.fetch=async(url,options={})=>{
  let value;
  if(process.env.SITETILLER_TEST_TRACE)await appendFile(process.env.SITETILLER_TEST_TRACE,JSON.stringify({model:body.model,reasoningEffort:body.reasoning?.effort||body.output_config?.effort,input})+'\n');
  if(instruction.includes('Act as WEB LEAD')){
-  if(input.scope==='create'){
+  if(input.request==='Co znamená tato chyba?'){value={action:'answer',summary:'Chyba označuje neplatný odkaz na obrázek; web se nezměnil.'};}else if(input.scope==='create'){
    value={action:'implement',scope:'create',resolvedRequest:input.request,summary:'Nový web kavárny je připravený.',acceptance:[{id:'new-site',category:'required',description:'Create the complete new cafe website',basis:'User request'}],files:[
     {path:'site/index.html',content:'<!doctype html><html><head><title>Cafe</title><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/style.css?v=1"></head><body><h1>Cafe</h1><a class="button" href="/contact">Contact</a></body></html>'},
     {path:'site/style.css',content:'body{margin:0;color:#222}.button{background:#666;color:white}'},

@@ -43,7 +43,7 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
  let imported:any=null,imageCleanup:any=null;const importedBinary:Record<string,Buffer>={};let webRounds=0;
  const observed=new Set(Object.keys(context)),historyResults:any[]=[];
  let browserTests:any[]=[],lastCheckImages:any[]=[];let delegations=0,scenarioRepairs=0,pathRepairs=0;
- const generated:any[]=[],imageResults:any[]=[],seenImages=new Set<string>();
+ const generated:any[]=[],imageResults:any[]=[];
  const attachmentInfo=images.map(({data,...item})=>({...item,...(item.use==='website'?{path:'site/assets/'+item.id,publicUrl:'assets/'+item.id,immutable:true}:{})}));
  const attachmentPath=attachmentPaths(images);
  const existingImages=images.length?await websiteImages(project,baseCommit,original):[];
@@ -67,7 +67,7 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
    emit({stage:role==='ui'?'design':'escalation',status:'running',message:role==='ui'?'Provádím větší úpravu webu.':'Posuzuji příčinu chyby a potřebný další krok.',provider:client.provider,model:client.model});
    result=await modelCall(client,role==='ui'?specialistInstruction:escalationInstruction,input);
   }
-  const value=result?.value;if(!value||!['implement','stage','read','history','delegate','escalate','image','web','blocked','verify','cleanup'].includes(value.action))throw Error('Agent nevrátil platnou akci.');
+  const value=result?.value;if(!value||!['answer','implement','stage','read','history','delegate','escalate','image','web','blocked','verify','cleanup'].includes(value.action))throw Error('Agent nevrátil platnou akci.');
   if(value.action==='cleanup'){
    if(!['primary','escalation'].includes(role))throw Error('Úklid může vyžádat pouze Web Lead nebo eskalační model.');
    const cleaned=await cleanImages(files,async path=>{
@@ -105,6 +105,11 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
   if(role==='primary'&&value.acceptance!==undefined)plan.acceptance=acceptance(value.acceptance);
   if(value.needsVerification===true)needsVerification=true;
   if(value.summary)finalSummary=String(value.summary).slice(0,2000);
+  if(value.action==='answer'){
+   if(role!=='primary'||staged||generated.length||typeof value.summary!=='string'||!value.summary.trim()||value.files?.length||value.deleteFiles?.length||value.imageEdits?.length)throw Error('Odpověď nesmí měnit web.');
+   emit({stage:'build',status:'completed',message:finalSummary,agentResponse:true,model:client.model,provider:client.provider});emit({stage:'ready',message:finalSummary});
+   return {conversationOnly:true,commit:null,baseCommit,scope,resolvedRequest,memory:{summary:finalSummary},plan:{summary:finalSummary},imageResults:[],tests:null,review:null};
+  }
   if(value.action==='blocked'){const blocked=new Error(value.blockedReason||'Požadavek vyžaduje nepodporovanou funkci.');(blocked as any).agentResponse=!!value.blockedReason;throw blocked;}
   if(value.action==='web'){
    if(!['primary','escalation'].includes(role)||++webRounds>1||staged||typeof value.url!=='string')throw Error('Neplatný požadavek na načtení veřejného webu.');
@@ -141,7 +146,7 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
    // Validate the whole batch before spending on any image.
    const tasks=value.imageEdits.map((image:any)=>{
     if(typeof image.prompt!=='string'||!image.prompt.trim()||image.prompt.length>10000)throw Error('Neplatné zadání obrázku.');
-    if(image.source){safeSitePath(project.root,image.source);if(!raster(image.source)||seenImages.has(image.source))throw Error('Neplatný zdroj obrázku.');seenImages.add(image.source);
+    if(image.source){safeSitePath(project.root,image.source);if(!raster(image.source))throw Error('Neplatný zdroj obrázku.');
      if(!original[image.source]&&!images.some(i=>i.use==='website'&&'site/assets/'+i.id===image.source))throw Error('Zdrojový obrázek není součástí webu ani webovou přílohou.');}
     const capability=image.capability||(image.source?'precise':'fast');if(!['precise','fast','cheap'].includes(capability))throw Error('Neplatná obrazová capability.');
     const model=options.model===null?null:options.model||capabilityImage(capability,imageChoices,options.availableModels);

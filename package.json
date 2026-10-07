@@ -1,5 +1,5 @@
 {
-  "name": "sitetiller", "version": "0.23.2", "private": true,
+  "name": "sitetiller", "version": "0.23.3", "private": true,
   "type": "module", "engines": {"node": ">=24"},
   "scripts": {"start": "node src/server.ts", "test": "node --test --test-concurrency=2 test/*.test.ts"},
   "dependencies": {"playwright": "1.62.1"},

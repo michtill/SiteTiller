@@ -1,4 +1,5 @@
 export const english={
+  "Průběh": "Progress",
   "Zobrazená verze se shoduje se skutečným webem. Není co načítat.": "The displayed version matches the live website. There is nothing to load.",
   "Skutečný web již odpovídá uložené publikované verzi. Nová verze není potřeba.": "The live website already matches the saved published version. A new version is not needed.",
   "Některé dříve nasazené soubory již na webu nejsou dostupné.": "Some previously deployed files are no longer available on the website.",

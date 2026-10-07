@@ -18,7 +18,7 @@ export type ReturnTypeClient=ReturnType<typeof clientFor>;
 export type Scope='edit'|'redesign'|'create';
 type Options={webImport?:typeof importWebsite;cleanup?:(path:string)=>Promise<void>;reasoningEffort?:'auto'|'low'|'medium'|'high';mode?:Scope;conversation?:any;history?:(query:any)=>Promise<any>|any;publication?:()=>{publishedCommit:string|null};model?:string|null;call?:typeof editImage;generate?:typeof generateImage;imageModels?:ImageChoices;availableModels?:{provider:string;id:string;usable:boolean}[];check?:typeof browserChecks};
 const specialistInstruction=withRules('ui','Implement the bounded UI/CODE task. Do not add a planning round or re-analyze the project. In edit scope preserve existing behavior and unrelated content; respect its design system. In create scope build from the new brief without inheriting old content or design; obsolete text files have already been removed from the candidate. In redesign scope replace the requested design and structure. Request exact missing paths only when necessary. Return changed files and concrete required checks. '+editContract);
-const escalationInstruction=withRules('escalation','Fix the supplied repeated failure with a minimal implementation. Use only the request, acceptance, relevant files and concrete errors. No new roles or scope expansion. '+editContract);
+const escalationInstruction=withRules('escalation','First act as adjudicator: determine whether the failure belongs to implementation, browser scenario, or verifier judgment. Only then act as executor when a real repair is necessary. You may repair files, replace browserTests, use image/web tools, or return action="verify" to repeat verification of the unchanged candidate. verify must not contain file changes. After escalation the configured escalation model performs authoritative read-only verification instead of the ordinary verifier. Do not weaken the original user requirements, fabricate evidence, waive deterministic failures, expand scope or select models. Use supplied failures and evidence; read additional files only when needed. '+editContract);
 const verifierInstruction=withRules('verify','Verify only necessary requirements against the original request, acceptance, changed files and deterministic test/screenshot evidence. No edits or optional improvements. Browser interactions are actual executed open/close tests, including aria-expanded and visibility. testResults.publication is trusted runtime evidence: this isolated workflow cannot invoke publishing, and the captured published commit must remain unchanged. Accept this evidence for draft-only requirements; do not request content edits to prove an operation controlled by the host. Return only JSON {status:"PASS"|"FAIL",requiredFixes:string[]}. PASS requires adequate supplied evidence for each required criterion. FAIL must contain concrete necessary corrections, including missing evidence when a requirement cannot be checked.');
 function acceptance(value:any){
  if(value===undefined)return [];
@@ -41,7 +41,7 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
  let needsVerification=scope!=='edit',failures=0,readRounds=0,historyRounds=0,escalationCalls=0,protocolRepairs=0,staged=false,finalSummary='',plan:any={summary:'',steps:[],acceptance:[]};
  let imported:any=null;const importedBinary:Record<string,Buffer>={};let webRounds=0;
  const observed=new Set(Object.keys(context)),historyResults:any[]=[];
- let browserTests:any[]=[];let delegations=0,scenarioRepairs=0,pathRepairs=0;
+ let browserTests:any[]=[],lastCheckImages:any[]=[];let delegations=0,scenarioRepairs=0,pathRepairs=0;
  const generated:any[]=[],imageResults:any[]=[],seenImages=new Set<string>();
  const attachmentInfo=images.map(({data,...item})=>({...item,...(item.use==='website'?{path:'site/assets/'+item.id,publicUrl:'assets/'+item.id,immutable:true}:{})}));
  const attachmentPath=attachmentPaths(images);
@@ -58,15 +58,19 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
    ...(role==='primary'?{recentConversation:options.conversation||{currentHead:baseCommit,turns:[]},historyResults}:{}),
    manifest:scope==='create'?{...manifest,newWebsite:true,designSystem:[],files:Object.keys(files).map(path=>({path,type:raster(path)?'image':path.split('.').at(-1)}))}:manifest,
    files:context,acceptance:plan.acceptance,feedback,browserTests,imageResults,webImport:imported?.evidence,attachments:attachmentInfo,
-   capabilities:{publicWebsiteImport:true,interactionTests:browserTestContract,imageEditing:imageAvailable('precise')||imageAvailable('cheap'),imageGeneration:imageAvailable('fast')||imageAvailable('cheap'),images:{precise:imageAvailable('precise'),fast:imageAvailable('fast'),cheap:imageAvailable('cheap')},editableFiles:'static site text files',browser:'isolated local smoke tests; external services blocked'},_images:vision};
+   capabilities:{publicWebsiteImport:true,interactionTests:browserTestContract,imageEditing:imageAvailable('precise')||imageAvailable('cheap'),imageGeneration:imageAvailable('fast')||imageAvailable('cheap'),images:{precise:imageAvailable('precise'),fast:imageAvailable('fast'),cheap:imageAvailable('cheap')},editableFiles:'static site text files',browser:'isolated local smoke tests; external services blocked'},_images:[...vision,...(role==='escalation'?lastCheckImages:[])]};
   let result:any;
   if(role==='primary')result=await routeTask(client,input,emit,modelCall);
   else{
    if(role==='escalation'&&++escalationCalls>2)throw Error('Úloha překročila limit eskalace.');
-   emit({stage:role==='ui'?'design':'escalation',status:'running',message:role==='ui'?'Provádím větší úpravu webu.':'Řeším opakovanou chybu.',provider:client.provider,model:client.model});
+   emit({stage:role==='ui'?'design':'escalation',status:'running',message:role==='ui'?'Provádím větší úpravu webu.':'Posuzuji příčinu chyby a potřebný další krok.',provider:client.provider,model:client.model});
    result=await modelCall(client,role==='ui'?specialistInstruction:escalationInstruction,input);
   }
-  const value=result?.value;if(!value||!['implement','stage','read','history','delegate','escalate','image','web','blocked'].includes(value.action))throw Error('Agent nevrátil platnou akci.');
+  const value=result?.value;if(!value||!['implement','stage','read','history','delegate','escalate','image','web','blocked','verify'].includes(value.action))throw Error('Agent nevrátil platnou akci.');
+  if(value.action==='verify'){
+   if(role!=='escalation'||(value.files!==undefined&&(!Array.isArray(value.files)||value.files.length))||(value.deleteFiles!==undefined&&(!Array.isArray(value.deleteFiles)||value.deleteFiles.length)))throw Error('Opakování kontroly nesmí měnit soubory a je dostupné pouze při eskalaci.');
+   value.files=[];needsVerification=true;
+  }
   if(Array.isArray(value.paths))value.paths=value.paths.map(attachmentPath);
   if(Array.isArray(value.imageEdits))for(const item of value.imageEdits)if(item?.source)item.source=attachmentPath(item.source);
   const proposedPaths=[...(Array.isArray(value.paths)?value.paths:[]),...(Array.isArray(value.files)?value.files.map((f:any)=>f?.path):[]),...(Array.isArray(value.deleteFiles)?value.deleteFiles:[]),...(Array.isArray(value.imageEdits)?value.imageEdits.flatMap((i:any)=>[i?.source,i?.target].filter(p=>p!==undefined)):[])];
@@ -90,7 +94,7 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
   if(value.summary)finalSummary=String(value.summary).slice(0,2000);
   if(value.action==='blocked'){const blocked=new Error(value.blockedReason||'Požadavek vyžaduje nepodporovanou funkci.');(blocked as any).agentResponse=!!value.blockedReason;throw blocked;}
   if(value.action==='web'){
-   if(role!=='primary'||++webRounds>1||staged||typeof value.url!=='string')throw Error('Neplatný požadavek na načtení veřejného webu.');
+   if(!['primary','escalation'].includes(role)||++webRounds>1||staged||typeof value.url!=='string')throw Error('Neplatný požadavek na načtení veřejného webu.');
    const userContext=[prompt,...(options.conversation?.turns||[]).filter((turn:any)=>turn.active).map((turn:any)=>turn.request||'')].join('\n');
    const url=requestedUrl(value.url,userContext);emit({stage:'build',status:'running',message:'Načítám veřejný web do návrhu.'});
    imported=await (options.webImport||importWebsite)(url);files={...imported.files};Object.assign(importedBinary,imported.binary);scope='create';needsVerification=true;staged=true;
@@ -119,7 +123,7 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
    const paths=value.paths||Object.keys(context);if(scope==='create')for(const path of paths)safeSitePath(project.root,path);context=selectContext(files,scope==='create'?paths.filter((path:string)=>Object.hasOwn(files,path)||!Object.hasOwn(original,path)):paths);for(const path of Object.keys(context))observed.add(path);task=value.task;role=value.action==='escalate'?'escalation':'ui';needsVerification=true;continue;
   }
   if(value.action==='image'){
-   if(role!=='primary')throw Error('Obrazový nástroj může volat pouze Web Lead.');
+   if(!['primary','escalation'].includes(role))throw Error('Obrazový nástroj může volat pouze Web Lead nebo eskalační model.');
    if(!Array.isArray(value.imageEdits)||!value.imageEdits.length||imageResults.length+value.imageEdits.length>2)throw Error('V jednom požadavku lze vytvořit nejvýše dva obrázky.');
    // Validate the whole batch before spending on any image.
    const tasks=value.imageEdits.map((image:any)=>{
@@ -196,14 +200,17 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
     for(const image of [...images.filter(i=>i.use==='website'),...generated].filter(i=>Object.hasOwn(files,'site/assets/'+i.id))){await mkdir(join(path,'site/assets'),{recursive:true});await writeFile(join(path,'site/assets',image.id),Buffer.from(image.data,'base64'));}
     for(const [name,bytes] of Object.entries(importedBinary))if(Object.hasOwn(files,name)){const target=safeSitePath(path,name);await mkdir(join(target,'..'),{recursive:true});await writeFile(target,bytes);}
     browser=await(options.check||browserChecks)(path,files,browserTests);
+    lastCheckImages=browser.screenshots||[];
     const currentPublication=options.publication?.(),publication={mode:'isolated-unpublished-draft',publishInvoked:false,baselinePublishedCommit:initialPublication?.publishedCommit??null,publishedCommit:currentPublication?.publishedCommit??null,unchanged:initialPublication?.publishedCommit===currentPublication?.publishedCommit,source:'SiteTiller host workflow and captured application publication state; publication endpoint is separate and locked while the edit runs'};
     if(browser.passed&&needsVerification){
-     assertAvailable(team,'verify',options);const verifier={...clientFor(team,keys,'verify'),...(requestedEffort?{reasoningEffort:requestedEffort}:team.verify.reasoningEffort==='auto'?{reasoningEffort:effort}:{})};
+     const verificationRole:Role=role==='escalation'?'escalation':'verify';
+     assertAvailable(team,verificationRole,options);const verifier={...clientFor(team,keys,verificationRole),...(verificationRole==='escalation'?{reasoningEffort:team.escalation.reasoningEffort==='auto'?'high':team.escalation.reasoningEffort||'high'}:requestedEffort?{reasoningEffort:requestedEffort}:team.verify.reasoningEffort==='auto'?{reasoningEffort:effort}:{})};
      emit({stage:'verify',status:'running',message:'Ověřuji splnění zadání.',model:verifier.model,provider:verifier.provider});
      const diff=changed.map(path=>({path,before:original[path]||null,after:files[path]||null}));
-     const response=await modelCall(verifier,verifierInstruction,{originalRequest:prompt,request:prompt,resolvedRequest,scope,acceptance:plan.acceptance,diff,imageResults,testResults:{static:tests,browser:{...browser,screenshots:undefined},publication,webImport:imported?.evidence},_images:[...vision,...browser.screenshots]});
+     const response=await modelCall(verifier,verifierInstruction,{originalRequest:prompt,request:prompt,resolvedRequest,scope,acceptance:plan.acceptance,diff,imageResults,previousFailure:feedback,testResults:{static:tests,browser:{...browser,screenshots:undefined},publication,webImport:imported?.evidence},_images:[...vision,...browser.screenshots]});
      verified=response.value;
      if(!verified||!['PASS','FAIL'].includes(verified.status)||!Array.isArray(verified.requiredFixes)||verified.requiredFixes.some((x:any)=>typeof x!=='string')||verified.status==='FAIL'&&!verified.requiredFixes.length||verified.status==='PASS'&&verified.requiredFixes.length)throw Error('Verifier nevrátil platný PASS/FAIL.');
+     verified={...verified,model:verifier.model,provider:verifier.provider,role:verificationRole};
      emit({stage:'verify',status:verified.status==='PASS'?'completed':'rejected',message:verified.status==='PASS'?'Zadání prošlo kontrolou.':'Kontrola našla nutné opravy.',issues:verified.requiredFixes,model:verifier.model,provider:verifier.provider,usage:response.usage});
     }
     if(browser.passed&&(!needsVerification||verified?.status==='PASS')){
@@ -227,7 +234,7 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
     else emit({stage:'test',status:'warning',warnings:[warning]});
    }
   }
-  feedback={requiredFixes:[...tests.errors,...browser.errors,...(verified?.requiredFixes||[])]};
+  feedback={requiredFixes:[...tests.errors,...browser.errors,...(verified?.requiredFixes||[])],failedStep:!tests.passed?'static':!browser.passed?'browser':'verify',verification:verified,testResults:{static:tests,browser:{...browser,screenshots:undefined}},diff:changed.map(path=>({path,before:original[path]||null,after:files[path]||null}))};
   emit({stage:'test',status:'rejected',message:'Kontrola našla nutné opravy.',errors:feedback.requiredFixes});
   failures++;if(failures>=3||role==='escalation'&&escalationCalls>=2)throw Error('Změna neprošla kontrolou ani po eskalaci. Původní náhled zůstal zachován.');
   if(failures===2){role='escalation';needsVerification=true;}

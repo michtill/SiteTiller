@@ -47,13 +47,13 @@ test('specialist implements directly with bounded context, followed by one read-
 }));
 test('first failed check repairs with same agent; repeated failure escalates once',async()=>fixture(async(p,root)=>{
  const calls:string[]=[];let tests=0;const model:any=async(client:any,_:any,input:any)=>{
- calls.push(client.model);if(client.model==='gpt-6-luna')return {value:{status:'PASS',requiredFixes:[]}};
+ calls.push(client.model);if(input.diff)return {value:{status:'PASS',requiredFixes:[]}};
  if(calls.length>1)assert.ok(input.feedback.requiredFixes.includes('Required defect'));
  return {value:{action:'implement',summary:'Opraveno.',files:[{path:'site/style.css',content:input.files['site/style.css']+'\n/* attempt */'}]}};
  };
  const check:any=async()=>({...await checked(),passed:++tests===3,errors:tests<3?['Required defect']:[]});
  await workflow(p,slots,'Fix layout',join(root,'drafts'),()=>{},model,undefined,[],{check});
- assert.deepEqual(calls,['gpt-6.1-sol','gpt-6.1-sol','gpt-6-astra','gpt-6-luna']);
+ assert.deepEqual(calls,['gpt-6.1-sol','gpt-6.1-sol','gpt-6-astra','gpt-6-astra']);
 }));
 test('failed escalation preserves the exact project HEAD and files',async()=>fixture(async(p,root)=>{
  const head=await p.head(),files=await p.files();const model:any=async(_:any,__:any,input:any)=>({value:{action:'implement',files:[{path:'site/style.css',content:input.files['site/style.css']+'\n/* fail */'}]}});
@@ -85,11 +85,11 @@ test('exceptionally hard task uses configured escalation with a concrete reason 
  const calls:string[]=[];const model:any=async(client:any,_:any,input:any)=>{
  calls.push(client.model);
  if(calls.length===1)return {value:{action:'escalate',scope:'edit',task:'Resolve interacting constraints in the existing stylesheet.',difficultyReason:'Conflicting responsive constraints require deeper debugging.',paths:['site/style.css'],acceptance:[criterion]}};
- if(client.model==='gpt-6-astra')return {value:{action:'implement',files:[{path:'site/style.css',content:input.files['site/style.css']+'\n/* resolved */'}]}};
+ if(client.model==='gpt-6-astra'&&!input.diff)return {value:{action:'implement',files:[{path:'site/style.css',content:input.files['site/style.css']+'\n/* resolved */'}]}};
  return {value:{status:'PASS',requiredFixes:[]}};
  };
  await workflow(p,slots,'Resolve a very difficult layout issue',join(root,'drafts'),()=>{},model,undefined,[],{check:checked});
- assert.deepEqual(calls,['gpt-6.1-sol','gpt-6-astra','gpt-6-luna']);
+ assert.deepEqual(calls,['gpt-6.1-sol','gpt-6-astra','gpt-6-astra']);
 }));
 test('auto role settings adapt effort for delegated work and independent verification',async()=>fixture(async(p,root)=>{
  const team=initialTeam();team.primary.reasoningEffort='auto';team.verify.reasoningEffort='auto';let calls=0;
@@ -104,11 +104,47 @@ test('request effort reaches ordinary agents; escalation uses its separately con
  const team=initialTeam();team.escalation.reasoningEffort='low';const seen:any[]=[];let checks=0;
  const model:any=async(client:any,_:any,input:any)=>{
   seen.push([client.model,client.reasoningEffort]);
-  if(client.model==='gpt-6-luna')return {value:{status:'PASS',requiredFixes:[]}};
+  if(input.diff)return {value:{status:'PASS',requiredFixes:[]}};
   if(seen.length===1)return {value:{action:'delegate',scope:'edit',resolvedRequest:'Update the hero',task:'Update the hero',paths:['site/style.css'],acceptance:[criterion],effort:'high'}};
   return {value:{action:'implement',files:[{path:'site/style.css',content:input.files['site/style.css']+'\n/* effort test */'}]}};
  };
  const check:any=async()=>({...await checked(),passed:++checks===3,errors:checks<3?['Required defect']:[]});
  await workflow(p,slots,'Update hero',join(root,'drafts'),()=>{},model,team,[],{reasoningEffort:'medium',check});
- assert.deepEqual(seen,[['gpt-6.1-sol','medium'],['claude-sonnet-5-5','medium'],['claude-sonnet-5-5','medium'],['gpt-6-astra','low'],['gpt-6-luna','medium']]);
+ assert.deepEqual(seen,[['gpt-6.1-sol','medium'],['claude-sonnet-5-5','medium'],['claude-sonnet-5-5','medium'],['gpt-6-astra','low'],['gpt-6-astra','low']]);
+}));
+
+test('escalation adjudicates a verifier failure without source changes and replaces its verdict',async()=>fixture(async(p,root)=>{
+ const calls:string[]=[],events:any[]=[];let ordinary=0,checks=0;
+ const model:any=async(client:any,_:any,input:any)=>{
+  calls.push(client.model);
+  if(input.diff){
+   if(client.model==='gpt-6-luna'){ordinary++;return {value:{status:'FAIL',requiredFixes:['Incorrect judgment']}};}
+   assert.equal(client.model,'gpt-6-astra');assert.equal(input.previousFailure.failedStep,'verify');assert.equal(input.testResults.browser.passed,true);assert.deepEqual(input.acceptance,[criterion]);return {value:{status:'PASS',requiredFixes:[]}};
+  }
+  if(client.model==='gpt-6-astra'){assert.equal(input.feedback.verification.status,'FAIL');assert.ok(input.feedback.diff.length);return {value:{action:'verify'}};}
+  return {value:{action:'implement',needsVerification:true,acceptance:[criterion],files:ordinary?[]:[{path:'site/style.css',content:input.files['site/style.css']+'\n/* correct change */'}]}};
+ };
+ const result=await workflow(p,slots,'Change',join(root,'drafts'),e=>events.push(e),model,undefined,[],{check:async()=>{checks++;return checked();}});
+ assert.equal(ordinary,2);assert.equal(checks,3);assert.equal(result.tests.analysis.role,'escalation');assert.equal(result.tests.analysis.model,'gpt-6-astra');assert.equal((await p.files())['site/style.css'].split('correct change').length,2);assert.equal(events.filter(e=>e.stage==='verify'&&e.status==='completed').at(-1).model,'gpt-6-astra');
+}));
+
+test('escalation cannot replace failed deterministic checks with a claimed pass',async()=>fixture(async(p,root)=>{
+ const before=await p.head();let verifies=0;
+ const model:any=async(client:any,_:any,input:any)=>{
+  if(input.diff){verifies++;return {value:{status:'PASS',requiredFixes:[]}};}
+  if(client.model==='gpt-6-astra')return {value:{action:'verify',status:'PASS',requiredFixes:[]}};
+  return {value:{action:'implement',files:[{path:'site/style.css',content:input.files['site/style.css']+'\n/* candidate */'}]}};
+ };
+ await assert.rejects(workflow(p,slots,'Change',join(root,'drafts'),()=>{},model,undefined,[],{check:async()=>({...await checked(),passed:false,errors:['Real defect']})}),/eskalaci/);
+ assert.equal(verifies,0);assert.equal(await p.head(),before);
+}));
+
+test('escalation can repair only a browser scenario and then judge new evidence itself',async()=>fixture(async(p,root)=>{
+ let checks=0;const model:any=async(client:any,_:any,input:any)=>{
+  if(input.diff){assert.equal(client.model,'gpt-6-astra');return {value:{status:'PASS',requiredFixes:[]}};}
+  if(client.model==='gpt-6-astra'){assert.equal(input.feedback.failedStep,'browser');return {value:{action:'verify',browserTests:[{name:'Heading',path:'site/index.html',steps:[{action:'expectVisible',selector:'h1',visible:true}]}]}};}
+  return {value:{action:'implement',files:checks?[]:[{path:'site/style.css',content:input.files['site/style.css']+'\n/* retained */'}]}};
+ };
+ const result=await workflow(p,slots,'Change',join(root,'drafts'),()=>{},model,undefined,[],{check:async(_path:any,_files:any,scenarios:any)=>{checks++;return {...await checked(),passed:scenarios.length===1,errors:scenarios.length?[]:['Missing interaction evidence']};}});
+ assert.equal(checks,3);assert.equal(result.tests.browserTests.length,1);assert.equal(result.tests.analysis.role,'escalation');
 }));

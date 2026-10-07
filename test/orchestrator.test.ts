@@ -4,6 +4,21 @@ import {Project} from '../src/project.ts';import {workflow} from '../src/workflo
 const slots=[{provider:'openai' as const,key:'fake',...defaults.openai},{provider:'anthropic' as const,key:'fake-claude',...defaults.anthropic}];
 const checked:any=async()=>({passed:true,errors:[],warnings:[],checks:[],screenshots:[]});
 const criterion={id:'intent',category:'required',description:'Apply the requested change',basis:'User request'};
+test('an explicit editing request cannot silently become a conversational answer',async()=>fixture(async(p,root)=>{
+ let calls=0;const model:any=async(_:any,__:any,input:any)=>{if(++calls===1)return {value:{action:'answer',summary:'I can change that.'}};assert.ok(input.feedback.requiredFixes.some((fix:string)=>fix.includes('Do not return answer')));return {value:{action:'implement',files:[{path:'site/style.css',content:input.files['site/style.css']+'\n/* requested change */'}]}};};const result=await workflow(p,slots,'Uprav barvu pozadí',join(root,'drafts'),()=>{},model,undefined,[],{check:checked});assert.ok(result.commit);assert.equal(result.conversationOnly,undefined);assert.equal(calls,2);
+}));
+test('a verifier failure is not duplicated as a technical failure and escalation repairs an answer action without losing the candidate',async()=>fixture(async(p,root)=>{
+ let escalation=0;const events:any[]=[];const model:any=async(client:any,instruction:string,input:any)=>{
+  if(client.model==='gpt-6-luna')return {value:{status:'FAIL',requiredFixes:['Check actual composition']}};
+  if(client.model==='gpt-6-astra'){
+   if(instruction.includes('Verify only necessary'))return {value:{status:'PASS',requiredFixes:[]}};
+   if(++escalation===1)return {value:{action:'answer',summary:'The candidate needs independent assessment.'}};
+   assert.ok(input.feedback.requiredFixes.some((fix:string)=>fix.includes('Do not return answer')));assert.ok(input.files['site/style.css'].includes('candidate'));return {value:{action:'verify',files:[]}};
+  }
+  return {value:{action:'implement',needsVerification:true,files:[{path:'site/style.css',content:input.files['site/style.css']+'\n/* candidate */'}]}};
+ };
+ const result=await workflow(p,slots,'Change the website',join(root,'drafts'),e=>events.push(e),model,undefined,[],{check:checked});assert.equal(result.tests.passed,true);assert.equal(escalation,2);assert.equal(result.tests.analysis.model,'gpt-6-astra');assert.equal(events.filter(e=>e.stage==='verify'&&e.status==='rejected').length,2);assert.equal(events.filter(e=>e.stage==='test'&&e.status==='rejected').length,0);assert.ok(events.some(e=>e.stage==='test'&&e.status==='completed'));assert.ok((await p.files())['site/style.css'].includes('candidate'));
+}));
 test('invalid browser step schema is repaired against the same candidate instead of failing the edit',async()=>fixture(async(p,root)=>{
  let calls=0;const model:any=async(client:any,_:any,input:any)=>{
   calls++;if(calls===1)return {value:{action:'implement',files:[{path:'site/style.css',content:input.files['site/style.css']+'\n/* preserved */'}],browserTests:[{name:'Malformed',path:'site/index.html',steps:[{action:'expectValue',selector:'input'}]}]}};

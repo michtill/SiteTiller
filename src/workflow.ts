@@ -20,7 +20,7 @@ export type Scope='edit'|'redesign'|'create';
 type Options={webImport?:typeof importWebsite;cleanup?:(path:string)=>Promise<void>;reasoningEffort?:'auto'|'low'|'medium'|'high';mode?:Scope;conversation?:any;history?:(query:any)=>Promise<any>|any;publication?:()=>{publishedCommit:string|null};model?:string|null;call?:typeof editImage;generate?:typeof generateImage;imageModels?:ImageChoices;availableModels?:{provider:string;id:string;usable:boolean}[];check?:typeof browserChecks};
 const specialistInstruction=withRules('ui','Implement the bounded UI/CODE task. Do not add a planning round or re-analyze the project. In edit scope preserve existing behavior and unrelated content; respect its design system. In create scope build from the new brief without inheriting old content or design; obsolete text files have already been removed from the candidate. In redesign scope replace the requested design and structure. Request exact missing paths only when necessary. Return changed files and concrete required checks. '+editContract);
 const escalationInstruction=withRules('escalation','First act as adjudicator: determine whether the failure belongs to implementation, browser scenario, or verifier judgment. Only then act as executor when a real repair is necessary. You may repair files, replace browserTests, use image/web tools, or return action="verify" to repeat verification of the unchanged candidate. verify must not contain file changes. After escalation the configured escalation model performs authoritative read-only verification instead of the ordinary verifier. Do not weaken the original user requirements, fabricate evidence, waive deterministic failures, expand scope or select models. Use supplied failures and evidence; read additional files only when needed. '+editContract);
-const verifierInstruction=withRules('verify','Verify only necessary requirements against the original request, acceptance, changed files and deterministic test/screenshot evidence. No edits or optional improvements. Browser interactions are actual executed open/close tests, including aria-expanded and visibility. testResults.publication is trusted runtime evidence: this isolated workflow cannot invoke publishing, and the captured published commit must remain unchanged. Accept this evidence for draft-only requirements; do not request content edits to prove an operation controlled by the host. Return only JSON {status:"PASS"|"FAIL",requiredFixes:string[]}. PASS requires adequate supplied evidence for each required criterion. FAIL must contain concrete necessary corrections, including missing evidence when a requirement cannot be checked.');
+const verifierInstruction=withRules('verify','Verify only necessary requirements against the original request, acceptance, changed files and deterministic test/screenshot evidence. No edits or optional improvements. Browser interactions are actual executed open/close tests, including aria-expanded and visibility. testResults.publication is trusted runtime evidence: this isolated workflow cannot invoke publishing, and the captured published commit must remain unchanged. Accept this evidence for draft-only requirements; do not request content edits to prove an operation controlled by the host. For image transparency use trusted testResults.browser.imageEvidence from decoded pixels, not filenames or visual guessing. hasTransparentPixels=true establishes actual non-opaque pixels; still assess the requested subject and composition visually. Return only JSON {status:"PASS"|"FAIL",requiredFixes:string[]}. PASS requires adequate supplied evidence for each required criterion. FAIL must contain concrete necessary corrections, including missing evidence when a requirement cannot be checked.');
 function acceptance(value:any){
  if(value===undefined)return [];
  if(!Array.isArray(value)||value.length>40||value.some(c=>!c||typeof c.id!=='string'||!c.id||!['required','preference'].includes(c.category)||typeof c.description!=='string'||typeof c.basis!=='string'||!c.basis.trim())||new Set(value.map(c=>c.id)).size!==value.length)throw Error('Neplatná akceptační kritéria.');
@@ -42,7 +42,7 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
  let needsVerification=scope!=='edit',failures=0,readRounds=0,historyRounds=0,escalationCalls=0,protocolRepairs=0,staged=false,finalSummary='',plan:any={summary:'',steps:[],acceptance:[]};
  let imported:any=null,imageCleanup:any=null;const importedBinary:Record<string,Buffer>={};let webRounds=0;
  const observed=new Set(Object.keys(context)),historyResults:any[]=[];
- let browserTests:any[]=[],lastCheckImages:any[]=[];let delegations=0,scenarioRepairs=0,pathRepairs=0;
+ let browserTests:any[]=[],lastCheckImages:any[]=[];let delegations=0,scenarioRepairs=0,pathRepairs=0,answerRepairs=0;
  const generated:any[]=[],imageResults:any[]=[];
  const attachmentInfo=images.map(({data,...item})=>({...item,...(item.use==='website'?{path:'site/assets/'+item.id,publicUrl:'assets/'+item.id,immutable:true}:{})}));
  const attachmentPath=attachmentPaths(images);
@@ -59,7 +59,7 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
    ...(role==='primary'?{recentConversation:options.conversation||{currentHead:baseCommit,turns:[]},historyResults}:{}),
    manifest:scope==='create'?{...manifest,newWebsite:true,designSystem:[],files:Object.keys(files).map(path=>({path,type:raster(path)?'image':path.split('.').at(-1)}))}:manifest,
    files:context,acceptance:plan.acceptance,feedback,browserTests,imageResults,webImport:imported?.evidence,attachments:attachmentInfo,
-   capabilities:{publicWebsiteImport:true,interactionTests:browserTestContract,imageEditing:imageAvailable('precise')||imageAvailable('cheap'),imageGeneration:imageAvailable('fast')||imageAvailable('cheap'),images:{precise:imageAvailable('precise'),fast:imageAvailable('fast'),cheap:imageAvailable('cheap')},editableFiles:'static site text files',browser:'isolated local smoke tests; external services blocked'},_images:[...vision,...(role==='escalation'?lastCheckImages:[])]};
+   capabilities:{publicWebsiteImport:true,interactionTests:browserTestContract,imageEditing:imageAvailable('precise'),imageGeneration:imageAvailable('fast'),images:{precise:imageAvailable('precise'),fast:imageAvailable('fast')},editableFiles:'static site text files',browser:'isolated local smoke tests; external services blocked'},_images:[...vision,...(role==='escalation'?lastCheckImages:[])]};
   let result:any;
   if(role==='primary')result=await routeTask(client,input,emit,modelCall);
   else{
@@ -106,7 +106,11 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
   if(value.needsVerification===true)needsVerification=true;
   if(value.summary)finalSummary=String(value.summary).slice(0,2000);
   if(value.action==='answer'){
-   if(role!=='primary'||staged||generated.length||typeof value.summary!=='string'||!value.summary.trim()||value.files?.length||value.deleteFiles?.length||value.imageEdits?.length)throw Error('Odpověď nesmí měnit web.');
+   if(role!=='primary'||staged||generated.length||failures||/^(?:prosím\s+)?(?:vem|vezmi|vytvoř|vytvor|udělej|udelej|uprav|změň|zmen|přidej|pridej|odstraň|odstran|vyřízni|vyrizni|dej|načti|nacti|předělej|predelej|create|make|change|edit|add|remove|build|replace|implement|redesign|load)(?=\s|[.!,:;]|$)/iu.test(prompt.trim())||typeof value.summary!=='string'||!value.summary.trim()||value.files?.length||value.deleteFiles?.length||value.imageEdits?.length){
+    if(++answerRepairs>2)throw Error('Agent nedokončil požadovanou změnu ani po upřesnění postupu.');
+    feedback={...(feedback||{}),requiredFixes:[...(feedback?.requiredFixes||[]),'The original request is an implementation task with a pending candidate. Do not return answer or turn it into a conversation. Return implement to finish/repair the candidate, or (escalation only) verify to adjudicate the unchanged candidate. Reuse existing generated assets and supplied evidence.']};
+    emit({stage:role==='escalation'?'escalation':'orchestrate',status:'running',message:'Upřesňuji postup dokončení změny.',model:client.model,provider:client.provider});continue;
+   }
    emit({stage:'answer',status:'completed',message:finalSummary,agentResponse:true,model:client.model,provider:client.provider});emit({stage:'ready'});
    return {conversationOnly:true,commit:null,baseCommit,scope,resolvedRequest,memory:{summary:finalSummary},plan:{summary:finalSummary},imageResults:[],tests:null,review:null};
   }
@@ -148,11 +152,12 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
     if(typeof image.prompt!=='string'||!image.prompt.trim()||image.prompt.length>10000)throw Error('Neplatné zadání obrázku.');
     if(image.source){safeSitePath(project.root,image.source);if(!raster(image.source))throw Error('Neplatný zdroj obrázku.');
      if(!original[image.source]&&!images.some(i=>i.use==='website'&&'site/assets/'+i.id===image.source))throw Error('Zdrojový obrázek není součástí webu ani webovou přílohou.');}
-    const capability=image.capability||(image.source?'precise':'fast');if(!['precise','fast','cheap'].includes(capability))throw Error('Neplatná obrazová capability.');
+    const capability=image.capability||(image.source?'precise':'fast');if(!['precise','fast'].includes(capability))throw Error('Neplatná obrazová capability.');
     const model=options.model===null?null:options.model||capabilityImage(capability,imageChoices,options.availableModels);
     if(!keys.openai||!model)throw Error('Obrázky potřebují dostupný obrazový model a OpenAI API klíč.');
     const format=image.format||(image.target?.endsWith('.png')?'png':/\.jpe?g$/.test(image.target||'')?'jpeg':'webp');
     if(!['png','webp','jpeg'].includes(format))throw Error('Neplatný formát obrázku.');
+    if(image.background!==undefined&&!['auto','opaque','transparent'].includes(image.background)||image.background==='transparent'&&format==='jpeg')throw Error('Průhledné pozadí vyžaduje formát PNG nebo WebP.');
     if(image.target){safeSitePath(project.root,image.target);if(!/^site\/assets\/[a-zA-Z0-9_-]+\.(png|webp|jpe?g)$/.test(image.target)||files[image.target])throw Error('Cílový obrázek musí mít novou bezpečnou cestu.');const ext=image.target.split('.').at(-1);if(format==='jpeg'?!['jpg','jpeg'].includes(ext):format!==ext)throw Error('Název obrázku neodpovídá formátu.');}
     return {...image,model,format};
    });
@@ -161,10 +166,10 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
     emit({stage:'image',status:'running',message:'Připravuji obrázek.',model:image.model,provider:'openai'});
     const uploaded=images.find(i=>i.use==='website'&&'site/assets/'+i.id===image.source);
     const source=image.source?uploaded||{data:(await project.binary(baseCommit,image.source)).toString('base64'),mime:(await import('./images.ts')).imageMime(image.source)}:null;
-    const edited=source?await(options.call||editImage)(keys.openai,image.model,source,image.prompt,undefined,{format:image.format}):await(options.generate||generateImage)(keys.openai,image.model,image.prompt,undefined,{format:image.format});
+    const edited=source?await(options.call||editImage)(keys.openai,image.model,source,image.prompt,undefined,{format:image.format,background:image.background}):await(options.generate||generateImage)(keys.openai,image.model,image.prompt,undefined,{format:image.format,background:image.background});
     const path=image.target||'site/assets/'+edited.id;if(files[path])throw Error('Obrázek nevytvořil samostatnou novou verzi.');
     generated.push({...edited,id:path.slice('site/assets/'.length),path,use:'website'});files[path]='[Binary image asset]';
-    imageResults.push({source:image.source||null,path,format:edited.mime,prompt:image.prompt});
+    imageResults.push({source:image.source||null,path,format:edited.mime,prompt:image.prompt,background:image.background||'auto'});
     if(source&&!vision.some(i=>i.path===image.source))vision.push({...source,path:image.source});
     vision.push({...edited,path});context[path]='[Binary image asset]';
     emit({stage:'image',status:'completed',message:'Obrázek je připraven.',model:image.model,provider:'openai',usage:edited.usage});
@@ -218,7 +223,9 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
     await draft.writeSnapshot(files);
     for(const image of [...images.filter(i=>i.use==='website'),...generated].filter(i=>Object.hasOwn(files,'site/assets/'+i.id))){await mkdir(join(path,'site/assets'),{recursive:true});await writeFile(join(path,'site/assets',image.id),Buffer.from(image.data,'base64'));}
     for(const [name,bytes] of Object.entries(importedBinary))if(Object.hasOwn(files,name)){const target=safeSitePath(path,name);await mkdir(join(target,'..'),{recursive:true});await writeFile(target,bytes);}
-    browser=await(options.check||browserChecks)(path,files,browserTests);
+    browser=await(options.check||browserChecks)(path,files,browserTests,imageResults.map(image=>image.path));
+    for(const image of imageResults.filter(image=>image.background==='transparent')){const evidence=browser.imageEvidence?.find(item=>item.path===image.path);if(evidence?.checked&&!evidence.hasTransparentPixels){browser.errors.push('Obrázek '+image.path+' neobsahuje požadované průhledné pixely.');browser.passed=false;}}
+    if(browser.passed)emit({stage:'test',status:'completed',message:'Technické kontroly prošly.'});
     lastCheckImages=browser.screenshots||[];
     const currentPublication=options.publication?.(),publication={mode:'isolated-unpublished-draft',publishInvoked:false,baselinePublishedCommit:initialPublication?.publishedCommit??null,publishedCommit:currentPublication?.publishedCommit??null,unchanged:initialPublication?.publishedCommit===currentPublication?.publishedCommit,source:'SiteTiller host workflow and captured application publication state; publication endpoint is separate and locked while the edit runs'};
     if(browser.passed&&needsVerification){
@@ -239,7 +246,6 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
      if(await project.head()!==baseCommit)throw Error('Projekt se mezitím změnil.');
      await project.git(['fetch',path,'main']);await project.git(['merge','--ff-only','FETCH_HEAD']);
      plan.summary=finalSummary;
-     emit({stage:'test',status:'completed',message:'Automatické kontroly prošly.'});
      emit({stage:'build',status:'completed',message:finalSummary||'Úprava webu dokončena.',agentResponse:!!finalSummary,model:client.model,provider:client.provider,usage:result.usage});
      emit({stage:'ready',message:'Návrh je připravený. Můžeš jej publikovat.',commit,baseCommit});
      completion={commit,baseCommit,scope,resolvedRequest,memory:changeMemory(original,files,finalSummary),plan,imageResults,webImport:imported?.evidence,review:null,tests:{passed:true,errors:[],browserTests,static:tests,browser:{...browser,screenshots:undefined},publication,analysis:verified,imageCleanup,warnings:imported?.evidence.warnings||[]}};return completion;
@@ -254,7 +260,7 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
    }
   }
   feedback={requiredFixes:[...tests.errors,...browser.errors,...(verified?.requiredFixes||[])],failedStep:!tests.passed?'static':!browser.passed?'browser':'verify',verification:verified,testResults:{static:tests,browser:{...browser,screenshots:undefined}},diff:changed.map(path=>({path,before:original[path]||null,after:files[path]||null}))};
-  emit({stage:'test',status:'rejected',message:'Kontrola našla nutné opravy.',errors:feedback.requiredFixes});
+  if(!tests.passed||!browser.passed)emit({stage:'test',status:'rejected',message:'Technická kontrola našla nutné opravy.',errors:[...tests.errors,...browser.errors]});
   failures++;if(failures>=3||role==='escalation'&&escalationCalls>=2)throw Error('Změna neprošla kontrolou ani po eskalaci. Původní náhled zůstal zachován.');
   if(failures===2){role='escalation';needsVerification=true;}
   // Keep the same implementer for the first repair; escalation is resolved from configuration.

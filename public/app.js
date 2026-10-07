@@ -78,20 +78,21 @@ splitter.addEventListener('pointerup',endResize);splitter.addEventListener('lost
 splitter.addEventListener('keydown',e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();resize(Number(splitter.getAttribute('aria-valuenow'))+(e.key==='ArrowLeft'?-2:2));}});
 $('mobile').addEventListener('click',()=>{$('preview-frame').classList.toggle('mobile');$('mobile').textContent=$('preview-frame').classList.contains('mobile')?'Desktop':t('Mobil');});
 const roleLabels={primary:t('Web Lead — hlavní agent'),ui:t('UI / Code Specialist — větší realizace'),verify:t('Verifier — nezávislá kontrola'),escalation:t('Escalation — opakovaný neúspěch')};
-const imageLabels={precise:t('Obrázky — přesné úpravy'),fast:t('Obrázky — rychlé generování'),cheap:t('Obrázky — nenáročné úlohy')};
-function providerName(provider){return provider==='openai'?'OpenAI':'Claude / Anthropic';}
+const imageLabels={precise:t('Obrázky — přesné úpravy'),fast:t('Obrázky — rychlé generování')};
+function providerName(provider){return provider==='openai'?'OpenAI':'Anthropic';}
 function alertModels(messages){$('model-alert').textContent=messages.map(message=>t(message)).join('\n');$('model-alert').hidden=!messages.length;}
 function inputKeys(){return Object.fromEntries(['openai','anthropic'].map(p=>[p,$('key-'+p)?.value||'']));}
 function selectedRoles(){return Object.fromEntries(Object.keys(roleLabels).map(role=>{const value=$('role-'+role).value;const separator=value.indexOf('|');return [role,{provider:value.slice(0,separator),model:value.slice(separator+1),reasoningEffort:['primary','escalation'].includes(role)?$('effort-'+role).value:'auto'}];}));}
 function selectedImages(){return Object.fromEntries(Object.keys(imageLabels).map(key=>[key,$('image-'+key).value]));}
 function renderModels(choices=current.roles,imageChoices=current.imageModels){
- $('role-models').replaceChildren();for(const [role,title] of Object.entries(roleLabels)){
+ $('role-models').replaceChildren();$('role-models').append(node('h3',t('Modely pro tým'),'settings-heading'));for(const [role,title] of Object.entries(roleLabels)){
  const label=node('div','','model-choice'),caption=node('label',title),controls=node('div','','model-controls'),select=document.createElement('select');select.id='role-'+role;caption.htmlFor=select.id;label.append(caption,controls);select.required=true;
  for(const m of modelCatalog?.models.filter(m=>m.usable)||[]){const option=node('option',providerName(m.provider)+' · '+m.name);option.value=m.provider+'|'+m.id;select.append(option);}
  const choice=choices[role],value=choice.provider+'|'+choice.model;if(!Array.from(select.options).some(o=>o.value===value)){const option=node('option',value+t(' · dostupnost nepotvrzena'));option.value=value;select.append(option);}select.value=value;controls.append(select);
  if(['primary','escalation'].includes(role)){const effort=document.createElement('select');effort.id='effort-'+role;effort.setAttribute('aria-label',t('Míra uvažování: ')+title);for(const [value,title] of [...(role==='escalation'?[]:[['auto',t('Automaticky')]]),['low',t('Nízké uvažování')],['medium',t('Střední uvažování')],['high',t('Vysoké uvažování')]]){const option=node('option',title);option.value=value;effort.append(option);}effort.value=choice.reasoningEffort||(role==='escalation'?'high':'auto');controls.append(effort);}
  $('role-models').append(label);if(role==='primary')$('role-models').append(node('p',t("Web Lead zvládá běžné úpravy sám. Specialisté a obrazové nástroje se používají podle potřeby."),'hint web-lead-hint'));
  }
+ $('role-models').append(node('h3',t('Obrazové nástroje'),'settings-heading'));
  for(const [key,title] of Object.entries(imageLabels)){const label=node('label',title),select=document.createElement('select');select.id='image-'+key;const disabled=node('option',t('Vypnuto'));disabled.value='none';select.append(disabled);for(const m of modelCatalog?.models.filter(m=>m.provider==='openai'&&/^gpt-image-/.test(m.id))||[]){const option=node('option',m.name);option.value=m.id;select.append(option);}const choice=imageChoices[key];if(!Array.from(select.options).some(o=>o.value===choice)){const option=node('option',choice+t(' · dostupnost nepotvrzena'));option.value=choice;select.append(option);}select.value=choice;label.append(select);$('role-models').append(label);}
 }
 function renderSettings(){$('site-url').value=current.siteUrl||'';$('interface-language').value=locale;$('provider-keys').replaceChildren();for(const provider of ['openai','anthropic']){const label=node('label',t('API klíč ')+providerName(provider)+':');const input=document.createElement('input');input.type='password';input.id='key-'+provider;input.autocomplete='new-password';input.placeholder=current.providers.find(p=>p.provider===provider)?.hasKey?t('Klíč je nastavený — ponechat'):t('Zadej API klíč');label.append(input);$('provider-keys').append(label);}renderModels();alertModels(availabilityIssues);}

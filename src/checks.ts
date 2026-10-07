@@ -15,10 +15,10 @@ export function staticChecks(files:Record<string,string>){
  return {passed:errors.length===0,errors,checks:['HTML structure','local references','classic JavaScript syntax'],limitations:['Module JavaScript is validated during browser loading.']};
 }
 // Ephemeral isolated preview. Never exposes the studio, credentials or project metadata.
-export async function browserChecks(root:string,files:Record<string,string>,browserTests:any[]=[]){
+export async function browserChecks(root:string,files:Record<string,string>,browserTests:any[]=[],preferredImages:string[]=[]){
  validateBrowserTests(browserTests,files);const scenarios:any[]=[];let scenarioTime=0;
  const {chromium}=await import('playwright');
- const errors:string[]=[],warnings:string[]=[],screenshots:any[]=[],checks:any[]=[],interactions:any[]=[];
+ const errors:string[]=[],warnings:string[]=[],screenshots:any[]=[],checks:any[]=[],interactions:any[]=[],imageEvidence:any[]=[];
  const server=http.createServer(async(req,res)=>{
   try{
    const url=new URL(req.url||'/','http://127.0.0.1'),name=resolveSiteFile(decodeURIComponent(url.pathname),files);
@@ -36,6 +36,21 @@ export async function browserChecks(root:string,files:Record<string,string>,brow
   const origin='http://127.0.0.1:'+(server.address() as any).port;
   const pages=Object.keys(files).filter(p=>p.endsWith('.html'));
   if(pages.length>20)throw Error('Browser check supports at most 20 pages per request.');
+  const references=Object.entries(files).filter(([p])=>!raster(p)).map(([,text])=>text).join('\n'),imagePaths=[...new Set([...preferredImages,...Object.keys(files).filter(p=>raster(p)&&references.includes(p.slice(5)))])].filter(p=>raster(p)&&Object.hasOwn(files,p)).slice(0,20);
+  if(imagePaths.length){
+   // Website scripts cannot alter the canvas APIs used for trusted pixel evidence.
+   const evidenceContext=await browser.newContext({javaScriptEnabled:false});await evidenceContext.route('**/*',async(route:any)=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
+   const evidencePage=await evidenceContext.newPage();try{await evidencePage.goto(origin+'/',{waitUntil:'domcontentloaded',timeout:15000});
+    const decoded=await evidencePage.evaluate(async(paths:string[])=>{const evidence:any[]=[];let pixelBudget=32000000;
+     for(const path of paths)try{const image=new Image();image.src='/'+path.split('/').slice(1).map(encodeURIComponent).join('/');await image.decode();const width=image.naturalWidth,height=image.naturalHeight,totalPixels=width*height;
+      if(totalPixels>8000000||totalPixels>pixelBudget){evidence.push({path,width,height,totalPixels,checked:false,reason:'Pixel budget exceeded'});continue;}pixelBudget-=totalPixels;
+      const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;const context=canvas.getContext('2d',{willReadFrequently:true})!;context.drawImage(image,0,0);const bytes=context.getImageData(0,0,width,height).data;let transparentPixels=0,partiallyTransparentPixels=0;
+      for(let i=3;i<bytes.length;i+=4)if(bytes[i]===0)transparentPixels++;else if(bytes[i]<255)partiallyTransparentPixels++;
+      evidence.push({path,width,height,totalPixels,checked:true,transparentPixels,partiallyTransparentPixels,hasTransparentPixels:transparentPixels+partiallyTransparentPixels>0});canvas.width=canvas.height=0;
+     }catch{evidence.push({path,checked:false,error:'Image decoding failed'});}return evidence;
+    },imagePaths);imageEvidence.push(...decoded);for(const image of decoded)if(image.error)errors.push(image.path+': '+image.error);else if(!image.checked)warnings.push(image.path+': pixel evidence skipped');
+   }finally{await evidenceContext.close();}
+  }
   for(const viewport of [{width:1440,height:900},{width:390,height:844}]){
    const context=await browser.newContext({viewport});
    await context.route('**/*',async(route:any)=>{
@@ -87,6 +102,6 @@ export async function browserChecks(root:string,files:Record<string,string>,brow
    await context.close();
   }
   warnings.push('External services are blocked during smoke tests; real Spotify/Mailchimp requests are not tested.');
-  return {passed:errors.length===0,errors:[...new Set(errors)],warnings,checks,interactions,scenarios,screenshots};
+  return {passed:errors.length===0,errors:[...new Set(errors)],warnings,checks,interactions,scenarios,imageEvidence,screenshots};
  }finally{await browser?.close();await new Promise<void>(resolve=>server.close(()=>resolve()));}
 }

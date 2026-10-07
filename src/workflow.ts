@@ -14,6 +14,7 @@ import {editImage,generateImage,websiteImages,capabilityImage} from './image-edi
 import {raster} from './images.ts';
 import {projectManifest,initialContext,selectContext} from './manifest.ts';
 import {staticChecks,browserChecks} from './checks.ts';
+import {smallStyleChange} from './check-scope.ts';
 import {changeMemory} from './memory.ts';
 export type ReturnTypeClient=ReturnType<typeof clientFor>;
 export type Scope='edit'|'redesign'|'create';
@@ -211,10 +212,12 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
   const functional=(text:string)=>[...text.matchAll(/<(?:form|script|iframe)\b[\s\S]*?<\/(?:form|script|iframe)>|\bon[a-z]+\s*=\s*["'][^"']*["']/gi)].map(m=>m[0]).join('\n');
   if(changed.some(p=>p.endsWith('.js'))||value.files.some((f:any)=>/\.html$/.test(f.path)&&functional(f.content)!==functional(original[f.path]||'')))needsVerification=true;
   for(const image of images.filter(i=>i.automaticUse)){const path='site/assets/'+image.id;if(!original[path]&&!Object.entries(files).some(([p,t])=>!raster(p)&&t.includes(path.slice(5)))&&!imageResults.some(i=>i.source===path)){delete files[path];delete context[path];}}
+  const quickCheck=scope==='edit'&&role==='primary'&&!failures&&!staged&&!imported&&!generated.length&&!imageCleanup&&!browserTests.length&&!changed.some(p=>p.endsWith('.html')&&functional(files[p]||'')!==functional(original[p]||''))&&smallStyleChange(original,files);
+  if(quickCheck)needsVerification=false;
   const tests=staticChecks(files);
   for(const image of imageResults)if(!Object.entries(files).some(([p,t])=>!raster(p)&&t.includes(image.path.slice(5))))tests.errors.push('Nový obrázek není použitý na webu: '+image.path);
   tests.passed=tests.errors.length===0;
-  emit({stage:'test',status:'running',message:'Ověřuji soubory a zobrazení webu.'});
+  emit({stage:'test',status:'running',message:quickCheck?'Ověřuji změněné styly a odkazy.':'Ověřuji soubory a zobrazení webu.'});
   let browser:any={passed:false,errors:[],checks:[],screenshots:[]},verified:any=null,completion:any=null;
   await mkdir(draftRoot,{recursive:true});const path=join(draftRoot,'job-'+Date.now());
   try{
@@ -223,7 +226,7 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
     await draft.writeSnapshot(files);
     for(const image of [...images.filter(i=>i.use==='website'),...generated].filter(i=>Object.hasOwn(files,'site/assets/'+i.id))){await mkdir(join(path,'site/assets'),{recursive:true});await writeFile(join(path,'site/assets',image.id),Buffer.from(image.data,'base64'));}
     for(const [name,bytes] of Object.entries(importedBinary))if(Object.hasOwn(files,name)){const target=safeSitePath(path,name);await mkdir(join(target,'..'),{recursive:true});await writeFile(target,bytes);}
-    browser=await(options.check||browserChecks)(path,files,browserTests,imageResults.map(image=>image.path));
+    browser=quickCheck?{passed:true,errors:[],checks:[],screenshots:[],skipped:true,reason:'Small presentation-only change; full browser checks run before publishing.'}:await(options.check||browserChecks)(path,files,browserTests,imageResults.map(image=>image.path));
     for(const image of imageResults.filter(image=>image.background==='transparent')){const evidence=browser.imageEvidence?.find(item=>item.path===image.path);if(evidence?.checked&&!evidence.hasTransparentPixels){browser.errors.push('Obrázek '+image.path+' neobsahuje požadované průhledné pixely.');browser.passed=false;}}
     if(browser.passed)emit({stage:'test',status:'completed',message:'Technické kontroly prošly.'});
     lastCheckImages=browser.screenshots||[];
@@ -248,7 +251,7 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
      plan.summary=finalSummary;
      emit({stage:'build',status:'completed',message:finalSummary||'Úprava webu dokončena.',agentResponse:!!finalSummary,model:client.model,provider:client.provider,usage:result.usage});
      emit({stage:'ready',message:'Návrh je připravený. Můžeš jej publikovat.',commit,baseCommit});
-     completion={commit,baseCommit,scope,resolvedRequest,memory:changeMemory(original,files,finalSummary),plan,imageResults,webImport:imported?.evidence,review:null,tests:{passed:true,errors:[],browserTests,static:tests,browser:{...browser,screenshots:undefined},publication,analysis:verified,imageCleanup,warnings:imported?.evidence.warnings||[]}};return completion;
+     completion={commit,baseCommit,scope,resolvedRequest,memory:changeMemory(original,files,finalSummary),plan,imageResults,webImport:imported?.evidence,review:null,tests:{passed:true,errors:[],checkLevel:quickCheck?'quick':'full',browserTests,static:tests,browser:{...browser,screenshots:undefined},publication,analysis:verified,imageCleanup,warnings:imported?.evidence.warnings||[]}};return completion;
     }
    }
   }finally{

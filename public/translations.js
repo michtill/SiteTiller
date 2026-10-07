@@ -198,6 +198,7 @@ export const english={
   "kontrola": "checking",
   "revize": "reviewing",
   "Upravuji web.": "Editing the website.",
+  "Ověřuji změněné styly a odkazy.": "Checking changed styles and references.",
   "Ověřuji soubory a zobrazení webu.": "Checking files and website rendering.",
   "Automatické kontroly prošly.": "Automated checks passed.",
   "Návrh je připravený. Můžeš jej publikovat.": "The draft is ready to publish.",

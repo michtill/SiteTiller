@@ -1,4 +1,5 @@
 export const english={
+  "Ověřeno ": "Checked ",
   "Zobrazená verze": "Displayed version",
   "Uložit jako verzi": "Save as a version",
   "Číslo verze": "Version number",

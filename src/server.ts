@@ -162,12 +162,12 @@ const server=http.createServer(async(req,res)=>{try{
         const snapshot=await importWebsite(publicUrl(url).href),result=await compareReality(project,config,input.commit,snapshot),token=randomBytes(24).toString('hex');
         for(const [key,value] of realitySnapshots)if(Date.now()-value.created>10*60*1000)realitySnapshots.delete(key);
         while(realitySnapshots.size>=3)realitySnapshots.delete(realitySnapshots.keys().next().value!);
-        realitySnapshots.set(token,{snapshot,head,url,created:Date.now()});return response(res,200,{...result,token});
+        realitySnapshots.set(token,{snapshot,head,url,publication:config.publishedCommit||null,created:Date.now()});return response(res,200,{...result,token});
       }finally{busy=false;}
     }
     if(path==='/api/reality/load'&&req.method==='POST'){
       if(busy)throw Error('Počkej na dokončení úlohy.');const input=await body(req);if(busy)throw Error('Počkej na dokončení úlohy.');
-      const cached=realitySnapshots.get(input.token);if(!cached||Date.now()-cached.created>10*60*1000||cached.url!==siteUrl())throw Error('Porovnání již není aktuální. Porovnej web znovu.');
+      const cached=realitySnapshots.get(input.token);if(!cached||Date.now()-cached.created>10*60*1000||cached.url!==siteUrl()||cached.publication!==(config.publishedCommit||null))throw Error('Porovnání již není aktuální. Porovnej web znovu.');
       if(input.expectedHead!==cached.head||(typeof input.clearPrevious!=='boolean'||typeof input.saveVersion!=='boolean'))throw Error('Neplatné potvrzení načtení webu.');
       busy=true;try{
         const result=await loadReality(project,config,cached.snapshot,cached.head,input.clearPrevious,undefined,input.saveVersion,input.versionNumber);

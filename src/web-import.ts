@@ -89,5 +89,5 @@ export async function importWebsite(value:string,fetcher=fetchPublic){
   if(path.endsWith('.js'))changed=changed.replace(/((?:\bfrom|\bimport)\s*)(["'])([^"']+)\2/g,(_,lead,q,url)=>lead+q+(rewrite(url,resource.url,path).startsWith('http')?rewrite(url,resource.url,path):'./'+rewrite(url,resource.url,path))+q);
   files[path]=changed;
  }
- return {files,binary,evidence:{url:first.url,pages,files:Object.keys(files).length,bytes:total,warnings:[...new Set(warnings)].slice(0,20),limitations:'Public static frontend only. Backend, private data, payments and API services are not copied. External resources may remain external.'}};
+ return {files,binary,evidence:{url:first.url,pages,files:Object.keys(files).length,bytes:total,resources:[...resources.values()].map(({resource,path})=>({url:resource.url,path,sha256:createHash('sha256').update(resource.bytes).digest('hex'),originalBinaryPreserved:!!binary[path]})),warnings:[...new Set(warnings)].slice(0,20),limitations:'Public static frontend only. Backend, private data, payments and API services are not copied. External resources may remain external.'}};
 }

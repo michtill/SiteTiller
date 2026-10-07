@@ -11,6 +11,7 @@ test('the cached hosting snapshot is both comparable and loadable with exact ori
  const wire={...snapshot,binary:Object.fromEntries(Object.entries(snapshot.binary).map(([path,bytes])=>[path,bytes.toString('base64')]))};
  const decoded=await realitySnapshot('https://example.org/','http://publisher/publish','fixture-token',(async(address:URL,options:any)=>{assert.equal(address.href,'http://publisher/snapshot');assert.equal(options.headers.Authorization,'Bearer fixture-token');return new Response(JSON.stringify(wire));}) as any);
  assert.equal((await compareReality(p,{},head,decoded)).equal,true);assert.equal(await p.head(),head);
+ const alias=await realitySnapshot('https://example.org/index.html','http://publisher/publish','fixture-token',(async()=>new Response(JSON.stringify(wire))) as any,(async()=>{throw Error('Equivalent index alias must use hosting connector');}) as any);assert.equal(alias.evidence.source,'hosting-http');
  const config:any={requests:[],releases:[]};const result=await loadReality(p,config,decoded,head,false,async()=>({passed:true,errors:[],screenshots:[],checks:[]}));assert.notEqual(result.commit,head);assert.equal(config.requests.length,1);assert.deepEqual(await p.binary(result.commit,'site/assets/original.png'),pixel);
 }));
 test('unconnected sites and legacy publishers fall back to HTTP import; connector failures remain explicit',async()=>{

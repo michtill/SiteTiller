@@ -113,3 +113,5 @@ aside{padding:16px;gap:10px;overflow:hidden;min-height:0}.timeline{max-height:no
 .reality-difference details{width:100%}.reality-difference pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;color:var(--muted)}.reality-images{display:flex;gap:12px;width:100%}.reality-images figure{margin:0;flex:1;min-width:0}.reality-images img{width:100%;max-height:140px;object-fit:contain;background:#9298a910}.reality-images figcaption{font-size:11px;color:var(--muted)}
 
 #reality-version-option{display:flex;gap:12px;align-items:center;margin:12px 0}#reality-version-number{width:100px;margin:0}
+
+#reality-load.is-loading #reality-load-result{display:flex;align-items:center;gap:10px;color:var(--accent);margin-top:16px}#reality-load.is-loading #reality-load-result:before{content:'';width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:reality-spin 1s linear infinite;flex:none}@keyframes reality-spin{to{transform:rotate(360deg)}}

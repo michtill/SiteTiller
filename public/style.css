@@ -115,3 +115,14 @@ aside{padding:16px;gap:10px;overflow:hidden;min-height:0}.timeline{max-height:no
 #reality-version-option{display:flex;gap:12px;align-items:center;margin:12px 0}#reality-version-number{width:100px;margin:0}
 
 #reality-load.is-loading #reality-load-result{display:flex;align-items:center;gap:10px;color:var(--accent);margin-top:16px}#reality-load.is-loading #reality-load-result:before{content:'';width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:reality-spin 1s linear infinite;flex:none}@keyframes reality-spin{to{transform:rotate(360deg)}}
+
+/* One conversation continues until a previewable result closes it. */
+.progress-group{border-bottom:0;margin-bottom:0;padding-bottom:10px}
+.progress-group.result-complete{border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:16px}
+.result-complete>.user-message{width:100%;max-width:none;display:flex;flex-direction:column;align-items:flex-end}
+.result-complete>.user-message>.chat-request,.result-complete>.user-message>.request-images{max-width:88%}
+.preview-hit{cursor:pointer;border-radius:6px}.preview-hit:hover{background:#9298a910}.preview-hit:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.result-preview-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;width:100%}
+.result-preview-row>.response-text{flex:1;min-width:0;margin:0;overflow-wrap:anywhere}
+.result-preview-row>.show-version{flex:none;margin-left:auto}
+.response-disclosure .disclosure-arrow{transform:none!important;font-weight:700;font-size:20px}

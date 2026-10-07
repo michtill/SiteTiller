@@ -4,6 +4,8 @@
 
 SiteTiller je aplikace pro tvorbu a úpravy statických webů pomocí přirozeného jazyka. Umožňuje vytvořit web od nuly, změnit jeho design, upravit obrázky a přidat funkce v HTML, CSS a JavaScriptu. Každá úprava je nejprve návrh. Publikování provedete samostatně.
 
+Veřejný web můžete načíst zadáním například „Načti https://example.com a zkopíruj ho do návrhu.“ Web Lead stáhne skutečné veřejné HTML, styly, skripty, odkazované stránky a podporované obrázky. Výsledek se uloží jako vratný návrh až po kontrole; zdrojový web se nezmění. Limity jsou 12 stránek, 100 nalezených zdrojů, celkem 20 MB, 300 kB na textový soubor a 5 MB na obrázek. Backend, obsah za přihlášením a interní síťové adresy se nenačítají. Některé nepodporované zdroje mohou zůstat odkazy na původní web; případná omezení se uvedou ve výsledku.
+
 ## Instalace
 
 Potřebujete Docker s Compose. Pro malou instalaci počítejte alespoň s 1 GB RAM a rezervou pro sestavení image a Chromium.

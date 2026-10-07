@@ -1,4 +1,5 @@
 export const english={
+  "Načítám veřejný web do návrhu.": "Loading the public website into the draft.",
   "Aktuální návrh": "Current draft",
   "Historie": "History",
   "Nastavení": "Settings",

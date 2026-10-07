@@ -1,4 +1,5 @@
 import {attachmentPaths} from './attachment-paths.ts';
+import {importWebsite,requestedUrl} from './web-import.ts';
 import {validateBrowserTests,browserTestContract} from './browser-scenarios.ts';
 import {withRules} from './instructions.ts';
 import {routeTask,editContract} from './orchestrator.ts';
@@ -15,7 +16,7 @@ import {staticChecks,browserChecks} from './checks.ts';
 import {changeMemory} from './memory.ts';
 export type ReturnTypeClient=ReturnType<typeof clientFor>;
 export type Scope='edit'|'redesign'|'create';
-type Options={cleanup?:(path:string)=>Promise<void>;reasoningEffort?:'auto'|'low'|'medium'|'high';mode?:Scope;conversation?:any;history?:(query:any)=>Promise<any>|any;publication?:()=>{publishedCommit:string|null};model?:string|null;call?:typeof editImage;generate?:typeof generateImage;imageModels?:ImageChoices;availableModels?:{provider:string;id:string;usable:boolean}[];check?:typeof browserChecks};
+type Options={webImport?:typeof importWebsite;cleanup?:(path:string)=>Promise<void>;reasoningEffort?:'auto'|'low'|'medium'|'high';mode?:Scope;conversation?:any;history?:(query:any)=>Promise<any>|any;publication?:()=>{publishedCommit:string|null};model?:string|null;call?:typeof editImage;generate?:typeof generateImage;imageModels?:ImageChoices;availableModels?:{provider:string;id:string;usable:boolean}[];check?:typeof browserChecks};
 const specialistInstruction=withRules('ui','Implement the bounded UI/CODE task. Do not add a planning round or re-analyze the project. In edit scope preserve existing behavior and unrelated content; respect its design system. In create scope build from the new brief without inheriting old content or design; obsolete text files have already been removed from the candidate. In redesign scope replace the requested design and structure. Request exact missing paths only when necessary. Return changed files and concrete required checks. '+editContract);
 const escalationInstruction=withRules('escalation','Fix the supplied repeated failure with a minimal implementation. Use only the request, acceptance, relevant files and concrete errors. No new roles or scope expansion. '+editContract);
 const verifierInstruction=withRules('verify','Verify only necessary requirements against the original request, acceptance, changed files and deterministic test/screenshot evidence. No edits or optional improvements. Browser interactions are actual executed open/close tests, including aria-expanded and visibility. testResults.publication is trusted runtime evidence: this isolated workflow cannot invoke publishing, and the captured published commit must remain unchanged. Accept this evidence for draft-only requirements; do not request content edits to prove an operation controlled by the host. Return only JSON {status:"PASS"|"FAIL",requiredFixes:string[]}. PASS requires adequate supplied evidence for each required criterion. FAIL must contain concrete necessary corrections, including missing evidence when a requirement cannot be checked.');
@@ -38,6 +39,7 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
  let scope:Scope=options.mode||'edit';if(!['edit','redesign','create'].includes(scope))throw Error('Neplatný rozsah změny.');
  let files=scope==='create'?Object.fromEntries(Object.entries(original).filter(([path])=>raster(path))):{...original},context=scope==='create'?{}:initialContext(original),role:Role='primary',feedback:any=null,task=prompt,resolvedRequest=prompt,effort:'low'|'medium'|'high'=requestedEffort||(team.primary.reasoningEffort==='auto'?'low':team.primary.reasoningEffort)||'low';
  let needsVerification=scope!=='edit',failures=0,readRounds=0,historyRounds=0,escalationCalls=0,protocolRepairs=0,staged=false,finalSummary='',plan:any={summary:'',steps:[],acceptance:[]};
+ let imported:any=null;const importedBinary:Record<string,Buffer>={};let webRounds=0;
  const observed=new Set(Object.keys(context)),historyResults:any[]=[];
  let browserTests:any[]=[];let delegations=0,scenarioRepairs=0,pathRepairs=0;
  const generated:any[]=[],imageResults:any[]=[],seenImages=new Set<string>();
@@ -55,8 +57,8 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
   const input={originalRequest:prompt,request:role==='primary'?prompt:resolvedRequest,resolvedRequest,task,scope,reasoningPreference:options.reasoningEffort||'auto',
    ...(role==='primary'?{recentConversation:options.conversation||{currentHead:baseCommit,turns:[]},historyResults}:{}),
    manifest:scope==='create'?{...manifest,newWebsite:true,designSystem:[],files:Object.keys(files).map(path=>({path,type:raster(path)?'image':path.split('.').at(-1)}))}:manifest,
-   files:context,acceptance:plan.acceptance,feedback,browserTests,imageResults,attachments:attachmentInfo,
-   capabilities:{interactionTests:browserTestContract,imageEditing:imageAvailable('precise')||imageAvailable('cheap'),imageGeneration:imageAvailable('fast')||imageAvailable('cheap'),images:{precise:imageAvailable('precise'),fast:imageAvailable('fast'),cheap:imageAvailable('cheap')},editableFiles:'static site text files',browser:'isolated local smoke tests; external services blocked'},_images:vision};
+   files:context,acceptance:plan.acceptance,feedback,browserTests,imageResults,webImport:imported?.evidence,attachments:attachmentInfo,
+   capabilities:{publicWebsiteImport:true,interactionTests:browserTestContract,imageEditing:imageAvailable('precise')||imageAvailable('cheap'),imageGeneration:imageAvailable('fast')||imageAvailable('cheap'),images:{precise:imageAvailable('precise'),fast:imageAvailable('fast'),cheap:imageAvailable('cheap')},editableFiles:'static site text files',browser:'isolated local smoke tests; external services blocked'},_images:vision};
   let result:any;
   if(role==='primary')result=await routeTask(client,input,emit,modelCall);
   else{
@@ -64,7 +66,7 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
    emit({stage:role==='ui'?'design':'escalation',status:'running',message:role==='ui'?'Provádím větší úpravu webu.':'Řeším opakovanou chybu.',provider:client.provider,model:client.model});
    result=await modelCall(client,role==='ui'?specialistInstruction:escalationInstruction,input);
   }
-  const value=result?.value;if(!value||!['implement','stage','read','history','delegate','escalate','image','blocked'].includes(value.action))throw Error('Agent nevrátil platnou akci.');
+  const value=result?.value;if(!value||!['implement','stage','read','history','delegate','escalate','image','web','blocked'].includes(value.action))throw Error('Agent nevrátil platnou akci.');
   if(Array.isArray(value.paths))value.paths=value.paths.map(attachmentPath);
   if(Array.isArray(value.imageEdits))for(const item of value.imageEdits)if(item?.source)item.source=attachmentPath(item.source);
   const proposedPaths=[...(Array.isArray(value.paths)?value.paths:[]),...(Array.isArray(value.files)?value.files.map((f:any)=>f?.path):[]),...(Array.isArray(value.deleteFiles)?value.deleteFiles:[]),...(Array.isArray(value.imageEdits)?value.imageEdits.flatMap((i:any)=>[i?.source,i?.target].filter(p=>p!==undefined)):[])];
@@ -87,6 +89,13 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
   if(value.needsVerification===true)needsVerification=true;
   if(value.summary)finalSummary=String(value.summary).slice(0,2000);
   if(value.action==='blocked'){const blocked=new Error(value.blockedReason||'Požadavek vyžaduje nepodporovanou funkci.');(blocked as any).agentResponse=!!value.blockedReason;throw blocked;}
+  if(value.action==='web'){
+   if(role!=='primary'||++webRounds>1||staged||typeof value.url!=='string')throw Error('Neplatný požadavek na načtení veřejného webu.');
+   const url=requestedUrl(value.url,prompt);emit({stage:'build',status:'running',message:'Načítám veřejný web do návrhu.'});
+   imported=await (options.webImport||importWebsite)(url);files={...imported.files};Object.assign(importedBinary,imported.binary);scope='create';needsVerification=true;staged=true;
+   context=initialContext(files);for(const path of Object.keys(context))observed.add(path);
+   feedback={webImport:imported.evidence,instruction:'The host fetched the real public HTML, CSS, JavaScript and image bytes into an isolated candidate. Finish this imported site with implement and files:[] unless the user requested additional changes. Do not replace it with a recreation or regenerated images. Report supplied limitations and warnings honestly in the user language; remote backends are not copied. Define concrete acceptance criteria for the requested public frontend.'};continue;
+  }
   if(value.action==='history'){
    if(role!=='primary'||!options.history||++historyRounds>2)throw Error('Historie pro tuto úlohu není dostupná nebo překročila limit dotazů.');
    historyResults.push(await options.history(value.historyQuery));continue;
@@ -183,6 +192,7 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
    if(tests.passed){
     await cp(project.root,path,{recursive:true});const draft=new Project(path);await draft.writeSnapshot(files);
     for(const image of [...images.filter(i=>i.use==='website'),...generated].filter(i=>Object.hasOwn(files,'site/assets/'+i.id))){await mkdir(join(path,'site/assets'),{recursive:true});await writeFile(join(path,'site/assets',image.id),Buffer.from(image.data,'base64'));}
+    for(const [name,bytes] of Object.entries(importedBinary))if(Object.hasOwn(files,name)){const target=safeSitePath(path,name);await mkdir(join(target,'..'),{recursive:true});await writeFile(target,bytes);}
     browser=await(options.check||browserChecks)(path,files,browserTests);
     const currentPublication=options.publication?.(),publication={mode:'isolated-unpublished-draft',publishInvoked:false,baselinePublishedCommit:initialPublication?.publishedCommit??null,publishedCommit:currentPublication?.publishedCommit??null,unchanged:initialPublication?.publishedCommit===currentPublication?.publishedCommit,source:'SiteTiller host workflow and captured application publication state; publication endpoint is separate and locked while the edit runs'};
     if(browser.passed&&needsVerification){
@@ -203,7 +213,7 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
      emit({stage:'test',status:'completed',message:'Automatické kontroly prošly.'});
      emit({stage:'build',status:'completed',message:finalSummary||'Úprava webu dokončena.',agentResponse:!!finalSummary,model:client.model,provider:client.provider,usage:result.usage});
      emit({stage:'ready',message:'Návrh je připravený. Můžeš jej publikovat.',commit,baseCommit});
-     completion={commit,baseCommit,scope,resolvedRequest,memory:changeMemory(original,files,finalSummary),plan,imageResults,review:null,tests:{passed:true,errors:[],browserTests,static:tests,browser:{...browser,screenshots:undefined},publication,analysis:verified}};return completion;
+     completion={commit,baseCommit,scope,resolvedRequest,memory:changeMemory(original,files,finalSummary),plan,imageResults,webImport:imported?.evidence,review:null,tests:{passed:true,errors:[],browserTests,static:tests,browser:{...browser,screenshots:undefined},publication,analysis:verified,warnings:imported?.evidence.warnings||[]}};return completion;
     }
    }
   }finally{

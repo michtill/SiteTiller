@@ -29,6 +29,8 @@ test('web fetch rejects private, reserved and metadata addresses and requires a 
  assert.equal(requestedUrl('https://www.example.org/','Načti web example.org.'),'https://www.example.org/');
  assert.throws(()=>requestedUrl('https://evil.org/','Načti example.org.'),/uživatel/);
  assert.throws(()=>requestedUrl('https://example.org/','Načti badexample.org.'),/uživatel/);
+ assert.throws(()=>requestedUrl('https://example.org/','Načti exampleXorg.'),/uživatel/);
+ assert.equal(publicAddress('2001:0db8::1'),false);assert.equal(publicAddress('2002:0a00:0001::1'),false);
 });
 test('import remains an isolated candidate until checks pass and preserves originals in version history',async()=>{
  const root=await mkdtemp(join(tmpdir(),'sitetiller-import-'));

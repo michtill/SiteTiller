@@ -7,10 +7,21 @@ import {safeSitePath} from './core.ts';
 const types:Record<string,string>={'text/html':'html','text/css':'css','application/javascript':'js','text/javascript':'js','image/svg+xml':'svg','image/png':'png','image/jpeg':'jpg','image/webp':'webp'};
 export function publicAddress(address:string){
  if(isIP(address)===4){const [a,b,c]=address.split('.').map(Number);return !(a===0||a===10||a===127||a===169&&b===254||a===172&&b>=16&&b<=31||a===192&&(b===168||b===0||b===2)||a===100&&b>=64&&b<=127||a===198&&(b===18||b===19||b===51&&c===100)||a===203&&b===0&&c===113||a>=224);}
- return isIP(address)===6&&/^[23][0-9a-f]{3}:/i.test(address)&&!/^2001:(?:db8|0|10|20):/i.test(address);
+ if(isIP(address)!==6)return false;const prefix=address.split(':').slice(0,2).map(word=>parseInt(word||'0',16));
+ return (prefix[0]&0xe000)===0x2000&&prefix[0]!==0x2002&&!(prefix[0]===0x2001&&(prefix[1]<0x200||prefix[1]===0xdb8));
 }
 export function publicUrl(value:string){const url=new URL(value);if(!['http:','https:'].includes(url.protocol)||url.username||url.password||url.port&&!['80','443'].includes(url.port)||url.hostname==='localhost'||url.hostname.endsWith('.localhost'))throw Error('Načítat lze pouze veřejné HTTP/HTTPS adresy bez přihlašovacích údajů.');url.hash='';return url;}
-export function requestedUrl(value:string,prompt:string){const url=publicUrl(value),hostname=url.hostname.replace(/^www\./,'');const escaped=hostname.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');if(!new RegExp('(^|[^a-z0-9.-])(?:www\\.)?'+escaped+'(?=$|[^a-z0-9.-]|\\.(?=\\s|$))','i').test(prompt))throw Error('Adresu webu musí uvést uživatel v zadání.');return url.href;}
+export function requestedUrl(value:string,prompt:string){
+ const url=publicUrl(value),text=prompt.toLowerCase();let allowed=false;
+ for(const hostname of new Set([url.hostname,url.hostname.replace(/^www\./,'')])){
+  let offset=0,index;while((index=text.indexOf(hostname,offset))!==-1){offset=index+hostname.length;let start=index;
+   if(text.slice(Math.max(0,index-4),index)==='www.')start=index-4;
+   const before=text[start-1]||'',after=text[offset]||'',following=text[offset+1]||'';
+   if((!before||!/[a-z0-9._-]/i.test(before))&&(!after||!/[a-z0-9._-]/i.test(after)||after==='.'&&(!following||/\s/.test(following)))){allowed=true;break;}
+  }
+ }
+ if(!allowed)throw Error('Adresu webu musí uvést uživatel v zadání.');return url.href;
+}
 type Resource={url:string;mime:string;bytes:Buffer};
 export async function fetchPublic(value:string,deadline=Date.now()+45000):Promise<Resource>{
  let url=publicUrl(value);
@@ -37,8 +48,8 @@ export async function fetchPublic(value:string,deadline=Date.now()+45000):Promis
  throw Error('Web má příliš mnoho přesměrování.');
 }
 export async function importWebsite(value:string,fetcher=fetchPublic){
- const first=await fetcher(publicUrl(value).href);if(first.mime!=='text/html')throw Error('Adresa nevrátila HTML stránku.');
- const origin=new URL(first.url).origin,deadline=Date.now()+45000;
+ const deadline=Date.now()+45000,first=await fetcher(publicUrl(value).href,deadline);if(first.mime!=='text/html')throw Error('Adresa nevrátila HTML stránku.');
+ const origin=new URL(first.url).origin;
  const resources=new Map<string,{resource:Resource;path:string;text?:string}>(),aliases=new Map<string,string>(),warnings:string[]=[];
  const queue:{url:string;page:boolean}[]=[{url:first.url,page:true}],queued=new Set([first.url]);let pages=0,total=0;
  function discover(raw:string,base:string,page=false){

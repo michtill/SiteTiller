@@ -91,7 +91,8 @@ export async function workflow(project:Project,slots:Slot[],prompt:string,draftR
   if(value.action==='blocked'){const blocked=new Error(value.blockedReason||'Požadavek vyžaduje nepodporovanou funkci.');(blocked as any).agentResponse=!!value.blockedReason;throw blocked;}
   if(value.action==='web'){
    if(role!=='primary'||++webRounds>1||staged||typeof value.url!=='string')throw Error('Neplatný požadavek na načtení veřejného webu.');
-   const url=requestedUrl(value.url,prompt);emit({stage:'build',status:'running',message:'Načítám veřejný web do návrhu.'});
+   const userContext=[prompt,...(options.conversation?.turns||[]).filter((turn:any)=>turn.active).map((turn:any)=>turn.request||'')].join('\n');
+   const url=requestedUrl(value.url,userContext);emit({stage:'build',status:'running',message:'Načítám veřejný web do návrhu.'});
    imported=await (options.webImport||importWebsite)(url);files={...imported.files};Object.assign(importedBinary,imported.binary);scope='create';needsVerification=true;staged=true;
    context=initialContext(files);for(const path of Object.keys(context))observed.add(path);
    feedback={webImport:imported.evidence,instruction:'The host fetched the real public HTML, CSS, JavaScript and image bytes into an isolated candidate. Finish this imported site with implement and files:[] unless the user requested additional changes. Do not replace it with a recreation or regenerated images. Report supplied limitations and warnings honestly in the user language; remote backends are not copied. Define concrete acceptance criteria for the requested public frontend.'};continue;

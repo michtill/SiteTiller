@@ -22,6 +22,6 @@ test('publisher rejects missing auth and stale commits; pushes reviewed explicit
     const request=(sha:string)=>fetch(url,{method:'POST',headers:{Authorization:'Bearer test-token','Content-Type':'application/json'},body:JSON.stringify({commit:sha})});
     assert.equal((await request(base)).status,409);
     const response=await request(commit);assert.equal(response.status,200,await response.text());
-    const {stdout}=await exec('git',['--git-dir='+target,'rev-parse','main']);assert.equal(stdout.trim(),commit);assert.equal(await project.head(),newer);
+    const {stdout}=await exec('git',['--git-dir='+target,'rev-parse','main']);assert.notEqual(stdout.trim(),commit);assert.equal((await exec('git',['--git-dir='+target,'rev-parse','main:site'])).stdout.trim(),await project.git(['rev-parse',commit+':site']));assert.equal(await project.head(),newer);
   }finally{if(child){child.kill();await new Promise(r=>child.once('exit',r));}await rm(root,{recursive:true,force:true});}
 });

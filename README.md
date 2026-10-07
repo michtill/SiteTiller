@@ -64,7 +64,7 @@ The default local studio is on port 8080. The installation token is in `data/boo
 
 ## Configuration and multiple websites
 
-Use one instance per website. Give each Compose project a unique `SITETILLER_INSTANCE`, ports, URLs and volumes. Each has its own administrator, credentials, draft Git repository and publication history. This is not a multi-tenant SaaS installation.
+Use one instance per website. Give each Compose project a unique `SITETILLER_INSTANCE`, ports, URLs and volumes. Each has its own administrator and credentials. Working Git stores the current draft and active steps; independent production Git stores published versions and their numbers, dates and descriptions. Publishing closes older working steps and removes their Git objects while preserving any newer draft steps. This is not a multi-tenant SaaS installation.
 
 Model mapping is configurable in Settings. Defaults are in `src/team.ts`; usable model availability depends on your provider account. Web Lead selects capabilities rather than arbitrary model IDs. See the architecture document for verification and escalation behavior.
 

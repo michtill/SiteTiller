@@ -1,6 +1,6 @@
 export async function draftState(project:any,config:any,head:string){
  const published=config.publishedCommit;
- const contentChanged=!published||(await project.git(['rev-parse',head+':site']))!==(await project.git(['rev-parse',published+':site']));
+ const contentChanged=!published||(await project.git(['rev-parse',head+':site']))!==(config.publishedTree||await project.git(['rev-parse',published+':site']));
  const base=config.draftBaseCommit||published;
  return {contentChanged,hasUnpublishedWork:!!published&&(head!==base||(config.requests||[]).length>0||(config.reviewRuns||[]).length>0||!!config.pendingRelease)};
 }

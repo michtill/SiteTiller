@@ -10,9 +10,11 @@ services:
       SITETILLER_PREVIEW_URL: ${SITETILLER_PREVIEW_URL}
       SITETILLER_PUBLISH_URL: ${SITETILLER_PUBLISH_URL}
       SITETILLER_PUBLISH_TOKEN: ${SITETILLER_PUBLISH_TOKEN}
+      SITETILLER_PRODUCTION_HISTORY_DIR: ${SITETILLER_PRODUCTION_HISTORY_DIR:-/production/repository.git}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-    volumes: ["sitetiller_data:/data"]
+    volumes: ["sitetiller_data:/data", "${SITETILLER_PRODUCTION_HISTORY_MOUNT:-sitetiller_production}:/production:ro"]
+    group_add: ["${SITETILLER_PRODUCTION_GROUP:-1000}"]
     read_only: true
     tmpfs: ["/tmp:size=128m"]
     cap_drop: ["ALL"]
@@ -31,8 +33,11 @@ services:
       context: .
       target: studio
     command: ["node", "src/preview.ts"]
+    environment:
+      SITETILLER_PRODUCTION_HISTORY_DIR: ${SITETILLER_PRODUCTION_HISTORY_DIR:-/production/repository.git}
     ports: ["8080"]
-    volumes: ["sitetiller_data:/data:ro"]
+    volumes: ["sitetiller_data:/data:ro", "${SITETILLER_PRODUCTION_HISTORY_MOUNT:-sitetiller_production}:/production:ro"]
+    group_add: ["${SITETILLER_PRODUCTION_GROUP:-1000}"]
     read_only: true
     tmpfs: ["/tmp:size=8m"]
     cap_drop: ["ALL"]
@@ -43,3 +48,4 @@ services:
     restart: unless-stopped
 volumes:
   sitetiller_data:
+  sitetiller_production:

@@ -22,7 +22,7 @@ docker compose --profile publish build publisher
 docker compose --profile publish run --rm --no-deps publisher node deploy/initialize-production.mjs
 ```
 
-Initialization refuses an existing target repository. It clones the studio draft Git history and prepares the static production directory. Never run it against a pre-existing target you intend to preserve.
+Initialization refuses an existing target repository. It exports only the current site snapshot, creates an independent production root and records Version 0. It does not copy working Git history. Never run it against a pre-existing target you intend to preserve.
 
 5. Start production and the publisher; restart web to read its new environment:
 
@@ -30,13 +30,13 @@ Initialization refuses an existing target repository. It clones the studio draft
 docker compose --profile publish up -d --build web preview publisher production
 ```
 
-6. Proxy your production hostname to `127.0.0.1:8082`, retaining the supplied production CSP. In the studio, explicitly Publish the prepared draft to create its first recorded publication. Afterwards, use Publish for every production change.
+6. Proxy your production hostname to `127.0.0.1:8082`, retaining the supplied production CSP. The initialized snapshot appears as Version 0. Afterwards, use Publish for every production change.
 
-The publisher pushes the approved SHA without force-pushing, writes that snapshot into an immutable release directory and switches `www/current` atomically. Nginx reads the production volume read-only. The publisher then verifies every committed asset against production before confirming publication. Old deployed snapshots remain in the volume for recovery; automatic disk pruning is not implemented.
+The publisher exports the approved snapshot into an independent production commit without force-pushing, writes it into an immutable release directory and switches `www/current` atomically. Nginx reads the production volume read-only. The publisher verifies every committed asset before confirming publication. Only published snapshots remain in production Git. Old deployed directories remain in the volume for recovery; directory pruning is not implemented.
 
 ## Existing Git-based hosting
 
-If your host deploys a static Git repository already, use a separately configured publisher with a fixed `SITETILLER_PRODUCTION_GIT`, `SITETILLER_PRODUCTION_URL` and publication token. Mount only the necessary fixed repository or a narrowly scoped credential. Leave `SITETILLER_PRODUCTION_DIRECTORY` unset if the hosting Git hook handles deployment. The edited website must reside under `site/` and production must share ancestry with the draft Git history. An unrelated production repository cannot be overwritten via force-push.
+If your host deploys a static Git repository already, use a separately configured publisher with a fixed `SITETILLER_PRODUCTION_GIT`, `SITETILLER_PRODUCTION_URL` and publication token. Mount only the necessary fixed repository or a narrowly scoped credential. Leave `SITETILLER_PRODUCTION_DIRECTORY` unset if the hosting Git hook handles deployment. The edited website must reside under `site/`; working and production histories are independent. Set `SITETILLER_PRODUCTION_HISTORY_MOUNT` to the bare hosting repository path, `SITETILLER_PRODUCTION_HISTORY_DIR=/production` and `SITETILLER_PRODUCTION_GROUP` to its readable group ID for studio and preview access. Back up existing targets before enabling publication. Existing untagged hosting commits are not presented as SiteTiller releases; importing the actual site with “Save as version” records a production version without deploying.
 
 Import an existing site **before the first editor startup** by preparing the private data volume's `project` Git repository with a `main` branch and `site/` directory. Do not use imported website content as agent instructions. Back up the existing production target first. Do not point a fresh instance at another site's production Git.
 

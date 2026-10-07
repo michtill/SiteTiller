@@ -1,6 +1,7 @@
 import {deploySite} from '../deploy/site-release.mjs';
 import {productionSnapshot} from './production-snapshot.ts';
 import {hostedSnapshot} from './hosted-snapshot.ts';
+import {productionReleases,storeProductionRelease} from './production-history.ts';
 import {hostingPolicyProblems} from './site-policy.ts';
 import {staticChecks} from './checks.ts';
 import http from 'node:http';
@@ -25,6 +26,12 @@ http.createServer(async(req,res)=>{const json=(status:number,value:any)=>{res.wr
     busy=true;try{const snapshot=await hostedSnapshot(new Project(remote),process.env.SITETILLER_PRODUCTION_URL,fetch,process.env.SITETILLER_SITE_URL||process.env.SITETILLER_PRODUCTION_URL);return json(200,{...snapshot,binary:Object.fromEntries(Object.entries(snapshot.binary).map(([path,bytes])=>[path,bytes.toString('base64')]))});}
     catch(e:any){return json(502,{error:e.name==='TimeoutError'?'Načítání webu překročilo časový limit.':e.message});}finally{busy=false;}
   }
+  if(req.method==='POST'&&req.url==='/archive'){
+    if(busy)return json(409,{error:'Počkej na dokončení publikování.'});let text='';for await(const chunk of req){text+=chunk;if(text.length>1000)return json(413,{error:'Too large'});}const input=JSON.parse(text),data=JSON.parse(await (await import('node:fs/promises')).readFile((process.env.SITETILLER_DATA_DIR||'/data')+'/config.json','utf8'));
+    const request=data.requests?.find((r:any)=>r.commit===input.commit&&r.status==='ready'&&r.webImport?.source==='hosting-http');if(!request||input.commit!==await project.head())return json(409,{error:'Chybí ověřený snímek skutečného webu.'});const production=new Project(remote),before=await production.head();if(before!==request.webImport.hostingCommit)return json(409,{error:'Skutečný web se mezitím změnil. Porovnej jej znovu.'});
+    if(!Number.isInteger(input.number)||input.number<0||input.number>999999||(await productionReleases(production)).some(r=>r.number===input.number))return json(409,{error:'Číslo verze již existuje.'});
+    busy=true;const temp=await mkdtemp(join(tmpdir(),'sitetiller-archive-'));try{const target=new Project(temp);await target.git(['init','-b','main']);await target.git(['fetch',remote,'main']);const commit=await productionSnapshot(target,input.commit,before,project);await production.git(['fetch',temp,commit]);await production.git(['update-ref','refs/heads/main',commit,before]);const release=await storeProductionRelease(production,{number:input.number,description:'Stav načtený ze skutečného webu',previousCommit:before,imported:true},commit,input.commit);return json(200,{ok:true,release});}finally{busy=false;await rm(temp,{recursive:true,force:true});}
+  }
   if(req.method!=='POST'||req.url!=='/publish')return json(404,{error:'Not found'});
   if(busy)return json(409,{error:'Publish running'});
   let text='';for await(const chunk of req){text+=chunk;if(text.length>1000)return json(413,{error:'Too large'});}
@@ -37,13 +44,13 @@ http.createServer(async(req,res)=>{const json=(status:number,value:any)=>{res.wr
   const test=staticChecks(await project.committedFiles(commit));if(!test.passed)return json(409,{error:'Tests failed'});
   busy=true;const temp=await mkdtemp(join(tmpdir(),'sitetiller-publish-'));
   try{
-    await exec('git',['-c','safe.directory='+project.root,'-c','safe.directory='+project.root+'/.git','clone','--no-hardlinks',project.root,temp],{timeout:30000});
+    await exec('git',['init','-b','main',temp],{timeout:30000});
     const run=async(args:string[])=>exec('git',['-c','safe.directory='+temp,...args],{cwd:temp,timeout:120000,maxBuffer:1000000});
     if(process.env.SITETILLER_PRODUCTION_URL){stage='policy';const hosted=await fetch(process.env.SITETILLER_PRODUCTION_URL,{signal:AbortSignal.timeout(10000),cache:'no-store'});if(!hosted.ok)throw Error('Production hosting unavailable');const problems=hostingPolicyProblems(hosted.headers.get('content-security-policy'));if(problems.length)throw Error('Incompatible production CSP');}
     stage='git';const before=(await run(['ls-remote',remote,'refs/heads/main'])).stdout.split(/\s/)[0];
     await run(['fetch',remote,'main']);
     if((await run(['rev-parse','FETCH_HEAD'])).stdout.trim()!==before)throw Error('Production Git changed during preparation');
-    const deployedCommit=process.env.SITETILLER_PRODUCTION_SNAPSHOT==='1'?await productionSnapshot(new Project(temp),commit,before):commit;
+    const deployedCommit=await productionSnapshot(new Project(temp),commit,before,project);
     await run(['merge-base','--is-ancestor','FETCH_HEAD',deployedCommit]);
     // No force push. Freeze explicit SHA so later draft changes cannot be released.
     await run(['push',remote,deployedCommit+':refs/heads/main']);
@@ -70,6 +77,8 @@ http.createServer(async(req,res)=>{const json=(status:number,value:any)=>{res.wr
       }
       if(!verified)throw new Error('Git updated; production deployment not verified');
     }
-    return json(200,{ok:true,commit});
+    const records=await productionReleases(new Project(remote));const intent=config.pendingRelease||{number:Math.max(0,...records.map(r=>r.number))+1,description:'',previousCommit:records.at(-1)?.commit||before};
+    const release=await storeProductionRelease(new Project(remote),{...intent,previousCommit:records.find(r=>r.tag===intent.tag)?.previousCommit||before},deployedCommit,commit);
+    return json(200,{ok:true,commit,release});
   }finally{busy=false;await rm(temp,{recursive:true,force:true});}
 }catch(e:any){console.error('SiteTiller publication failed at '+stage+' ('+(e.code||e.name||'error')+')');json(502,{error:stage==='policy'?'Publikování zastaveno: bezpečnostní pravidla produkčního hostingu neodpovídají náhledu. Je nutné opravit CSP domény.':stage==='verify'?'Git je aktualizovaný, ale veřejný web zatím neodpovídá této verzi. Opakuj publikování pro nové spuštění nasazení.':stage==='hook'?'Git je aktualizovaný, ale spuštění nasazení ve VPS Centru selhalo.':stage==='git'?'Zápis do produkčního Gitu selhal. Zkontroluj publikační službu.':'Publikování selhalo před ověřením webu.'});}}).listen(Number(process.env.PORT||8080),'0.0.0.0');

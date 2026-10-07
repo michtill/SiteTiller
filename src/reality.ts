@@ -17,10 +17,10 @@ function normalized(files:Record<string,string>,binary:Record<string,Buffer>,url
  return result;
 }
 async function version(project:Project,commit:string,url:string,paths:Record<string,string>){const files=await project.committedFiles(commit),binary:Record<string,Buffer>={};for(const path of Object.keys(files).filter(raster))binary[path]=await project.binary(commit,path);return normalized(files,binary,url,paths);}
-export async function compareReality(project:Project,config:any,commit:string,snapshot:any){
- const head=await project.head();if(!/^[a-f0-9]{40}$/.test(commit))throw Error('Neplatná verze pro porovnání.');await project.git(['merge-base','--is-ancestor',commit,head]);
+export async function compareReality(project:Project,config:any,commit:string,snapshot:any,production?:Project|null){
+ const head=await project.head();if(!/^[a-f0-9]{40}$/.test(commit))throw Error('Neplatná verze pro porovnání.');const selectedProject=production&&config.releases.some((r:any)=>r.commit===commit)?production:project;if(selectedProject===project)await project.git(['merge-base','--is-ancestor',commit,head]);
  const url=snapshot.evidence.url,paths={...(config.realityPaths||{}),...sourcePaths(snapshot)};
- const selected=await version(project,commit,url,paths),baseline=config.publishedCommit?await version(project,config.publishedCommit,url,paths):null,live=normalized(snapshot.files,snapshot.binary,url,paths);
+ const selected=await version(selectedProject,commit,url,paths),baseline=config.publishedCommit?await version(production||project,config.publishedCommit,url,paths):null,live=normalized(snapshot.files,snapshot.binary,url,paths);
  const changes:any[]=[];for(const path of new Set([...Object.keys(selected),...Object.keys(live),...Object.keys(baseline||{})])){
   const same=selected[path]?.hash===live[path]?.hash;if(same&&(!baseline||selected[path]?.hash===baseline[path]?.hash))continue;
   const before=selected[path]?.text||'',after=live[path]?.text||'';let index=0;while(index<Math.min(before.length,after.length)&&before[index]===after[index])index++;const start=Math.max(0,index-100);

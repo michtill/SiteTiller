@@ -1,6 +1,6 @@
 import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';
 import type {Project} from './project.ts';import {staticChecks,browserChecks} from './checks.ts';import {raster} from './images.ts';
-export async function checkPublication(project:Project,commit:string,restoredFrom?:string,browserCheck=browserChecks,expectedHead=commit){
+export async function checkPublication(project:Project,commit:string,restoredFrom?:string,browserCheck=browserChecks,expectedHead=commit,restorationProject=project){
  if(!/^[a-f0-9]{40}$/.test(commit)||await project.head()!==expectedHead)throw Error('Návrh se mezitím změnil. Zobraz aktuální verzi.');
  try{await project.git(['merge-base','--is-ancestor',commit,expectedHead]);}catch{throw Error('Vybraný krok není součástí aktuálního návrhu.');}
  const files=await project.committedFiles(commit),checks=staticChecks(files);
@@ -8,7 +8,7 @@ export async function checkPublication(project:Project,commit:string,restoredFro
  let restoration:any=null;
  if(restoredFrom){
   if(!/^[a-f0-9]{40}$/.test(restoredFrom))throw Error('Neplatná obnovená verze.');
-  const actualTree=await project.git(['rev-parse',commit+':site']),expectedTree=await project.git(['rev-parse',restoredFrom+':site']);
+  const actualTree=await project.git(['rev-parse',commit+':site']),expectedTree=await restorationProject.git(['rev-parse',restoredFrom+':site']);
   restoration={restoredFrom,actualTree,expectedTree,identical:actualTree===expectedTree};if(!restoration.identical)throw Error('Obnovené soubory neodpovídají vybrané verzi.');
  }
  const root=await mkdtemp(join(tmpdir(),'sitetiller-publication-check-'));

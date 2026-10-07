@@ -118,6 +118,8 @@ const server=http.createServer(async(req,res)=>{try{
     if(path==='/api/settings'&&req.method==='POST'){
       if(busy)throw new Error('Počkej na dokončení úlohy.');const input=await body(req);
       if(!validTeam(input.roles)||!validImages(input.imageModels))throw new Error('Vyber model pro každou capability.');
+      const addressOnly=input.siteUrl!==undefined&&Object.entries(config.roles).every(([role,v]:[string,any])=>['provider','model','reasoningEffort'].every(k=>v[k]===input.roles[role]?.[k]))&&Object.entries(config.imageModels).every(([k,v])=>v===input.imageModels[k])&&!Object.values(input.keys||{}).some(v=>typeof v==='string'&&v.trim());
+      if(addressOnly){if(busy)throw Error('Počkej na dokončení úlohy.');if(typeof input.siteUrl!=='string'||input.siteUrl.length>2000)throw Error('Neplatná adresa webu.');const address=input.siteUrl.trim()?publicUrl(input.siteUrl.trim()).href:'';busy=true;try{config.siteUrl=address;realitySnapshots.clear();await save('config.json',config);return response(res,200,{ok:true});}finally{busy=false;}}
       const keys=providerKeys(),providers=structuredClone(config.providers);
       for(const provider of ['openai','anthropic'] as const){const value=input.keys?.[provider];if(value!==undefined){if(typeof value!=='string'||value.length>512)throw new Error('Neplatný klíč.');if(value.trim()){keys[provider]=value.trim();providers[provider]={key:seal(value.trim(),key)};}}}
       if(busy)throw new Error('Počkej na dokončení úlohy.');busy=true;try{

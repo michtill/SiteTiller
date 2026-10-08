@@ -9,8 +9,8 @@ the original request's language.
 
    ```js
    export const german={
-     'Aktuální návrh':'Aktueller Entwurf',
-     'Verze $1 byla publikována.':'Version $1 wurde veröffentlicht.'
+     current_draft:'Aktueller Entwurf',
+     version_published:'Version {version} wurde veröffentlicht.'
    };
    ```
 
@@ -21,20 +21,30 @@ the original request's language.
    ```
 
    Use a valid language code. The native `name` appears in Settings, and
-   `dateLocale` controls date formatting. Dictionary keys are the exact Czech
-   source strings used by the existing interface; use `public/translations.js`
-   as the complete English reference. Preserve whitespace in prefix/suffix keys.
-   Dynamic template keys use `$1`, `$2`, etc. as shown in that dictionary.
-   Missing entries fall back to English, then to the unchanged source text.
+   `dateLocale` controls date formatting. Dictionary keys are stable English
+   technical codes in lowercase snake_case, such as `current_draft`. Use
+   `public/translations.js` as the English reference; `translations.cs.js` uses
+   the same keys for Czech. Preserve whitespace in prefix/suffix values.
+   Dynamic messages use named parameters such as `{version}`, `{provider}` and
+   `{status}`. Missing entries fall back to English, then to the unchanged key.
 
 3. Set `SITETILLER_UI_LANGUAGE=de` if this should be the installation default,
    then rebuild/restart the studio. The server and Settings picker both use the
    registry; no additional language-specific conditions are needed.
 
 4. Run the localization tests and check the interface in a browser for text
-   overflow, translated labels, dates, and language switching. For a new dynamic
-   message shape, add its source pattern/template to `dynamicMessages` in
-   `public/locales.js` and its translations to the dictionaries.
+   overflow, translated labels, dates, and language switching.
+
+Use `t('current_draft')` in interface JavaScript, or
+`t('version_published', {version: '12.2'})` for parameters. Static HTML marks text
+with `data-i18n="current_draft"`, and attributes with, for example,
+`data-i18n-placeholder="prompt_placeholder"`. Keep English text in HTML as the initial fallback. Translation
+updates only these marked elements, never arbitrary document or website text.
+
+`tm()` / `translateMessage()` are compatibility adapters for existing server
+messages and persisted system history. They recognize older Czech messages and
+select technical keys; new interface labels must use `t()` and technical keys.
+Agent replies and user content bypass this compatibility translation.
 
 The browser stores its choice under `sitetiller-language`. Unknown language codes
 fall back to English. Switching languages reloads the editor and preserves unsent

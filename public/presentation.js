@@ -1,5 +1,5 @@
 import {t,locale,translateDocument} from './i18n.js';
-const phaseNames={orchestrate:t('výběr týmu'),design:t('návrh'),build:t('provádění'),test:t('kontrola'),verify:t('kontrola'),review:t('revize')};
+const phaseNames={orchestrate:t('selecting_capabilities'),design:t('designing'),build:t('implementing'),test:t('checking'),verify:t('checking'),review:t('reviewing')};
 function modelFor(events,roles,role){return [...events].reverse().find(e=>e.model)?.model||roles?.[role]?.model||'Model';}
 export function compactProgress(events,job=null,busy=false,roles={},requests=[],reviews=[]){
  const groups=[],byId=new Map();let legacy=null;
@@ -20,10 +20,10 @@ export function compactProgress(events,job=null,busy=false,roles={},requests=[],
  return all.map(group=>{
   const last=group.events.at(-1),request=group.request,failed=last?.stage==='failed'||job?.id===group.id&&['failed','rejected'].includes(job.status),done=['ready','published','restored'].includes(last?.stage)||failed;
   const row={key:group.id+'-status',running:!done,error:failed,events:group.events};
-  if(group.kind==='edit'){const phase=[...group.events].reverse().find(e=>['orchestrate','design','build','test','verify'].includes(e.stage))?.stage||'design';row.label=failed?t('Chyba'):done?t('Hotovo'):phase==='test'&&!group.events.some(e=>e.stage==='test'&&e.model)?t('Technická kontrola'):modelFor(group.events.filter(e=>e.stage===phase),request?.models||roles,({orchestrate:'primary',design:'ui',build:'primary',test:'verify',verify:'verify'})[phase]||phase)+': '+phaseNames[phase];}
-  else if(group.kind==='review')row.label=failed?t('Revize neprošla'):done?t('Revize hotovo'):modelFor(group.events,roles,'verify')+': revize';
-  else if(group.kind==='publish')row.label=failed?t('Publikování selhalo'):last?.stage==='published'?(last.release?t('Verze ')+last.release.number+(last.release.minor!==undefined?'.'+last.release.minor:'')+t(' publikována'):t('Publikováno')):t('Publikuji');
-  else{row.label=last?.stage==='published'?t('Publikováno'):t('Verze načtena');row.running=false;}
+  if(group.kind==='edit'){const phase=[...group.events].reverse().find(e=>['orchestrate','design','build','test','verify'].includes(e.stage))?.stage||'design';row.label=failed?t('error'):done?t('done'):phase==='test'&&!group.events.some(e=>e.stage==='test'&&e.model)?t('technical_checks'):modelFor(group.events.filter(e=>e.stage===phase),request?.models||roles,({orchestrate:'primary',design:'ui',build:'primary',test:'verify',verify:'verify'})[phase]||phase)+': '+phaseNames[phase];}
+  else if(group.kind==='review')row.label=failed?t('review_failed'):done?t('review_complete'):modelFor(group.events,roles,'verify')+': '+t('reviewing');
+  else if(group.kind==='publish')row.label=failed?t('publishing_failed'):last?.stage==='published'?(last.release?t('version')+last.release.number+(last.release.minor!==undefined?'.'+last.release.minor:'')+t('published_prefix'):t('published')):t('publishing_label');
+  else{row.label=last?.stage==='published'?t('published'):t('version_loaded');row.running=false;}
   return {...group,prompt:request?.prompt||group.events.find(e=>e.stage==='request')?.message||'',baseCommit:request?.baseCommit||group.events.find(e=>e.baseCommit)?.baseCommit,commit:request?.commit||group.events.findLast(e=>e.commit)?.commit,done:done&&!failed,rows:[row]};
  });
 }

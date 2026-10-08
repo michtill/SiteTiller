@@ -1,4 +1,9 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {compactProgress} from '../public/presentation.js';
+import test from 'node:test';import assert from 'node:assert/strict';
+// These assertions exercise Czech labels independently of the installation default.
+const previousStorage=globalThis.localStorage;
+Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:()=> 'cs'}});
+const {compactProgress}=await import('../public/presentation.js');
+Object.defineProperty(globalThis,'localStorage',{configurable:true,value:previousStorage});
 test('actual verifier model is shown while automatic tests have no invented model',()=>{
  const roles={primary:{model:'gpt-6.1-sol'},ui:{model:'claude-sonnet-5-5'},verify:{model:'gpt-6-luna'}};
  const events:any[]=[{jobId:'one',kind:'edit',stage:'build',model:'gpt-6.1-sol'},{jobId:'one',kind:'edit',stage:'test',status:'running'}];assert.equal(compactProgress(events,null,true,roles)[0].rows[0].label,'Technická kontrola');

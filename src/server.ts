@@ -1,3 +1,4 @@
+import {normalizeLocale} from '../public/locales.js';
 import {productionProject,syncProduction} from './production-history.ts';
 import {rebaseWorkspace} from './workspace-history.ts';
 import {restoreProduction} from './restore-production.ts';
@@ -280,9 +281,9 @@ const server=http.createServer(async(req,res)=>{try{
     return response(res,404,{error:'Nenalezeno.'});
   }
   if(req.method!=='GET'&&req.method!=='HEAD')return response(res,405,{error:'Nepovolená metoda.'});
-  const asset=path==='/'?'index.html':path.slice(1);if(!['index.html','app.js','theme.js','i18n.js','translations.js','presentation.js','messages.js','style.css'].includes(asset))return response(res,404,{error:'Nenalezeno.'});
+  const asset=path==='/'?'index.html':path.slice(1);if(!['index.html','app.js','theme.js','i18n.js','locales.js','translations.js','presentation.js','messages.js','style.css'].includes(asset)&&!/^translations\.[a-zA-Z0-9-]+\.js$/.test(asset))return response(res,404,{error:'Nenalezeno.'});
   res.setHeader('Content-Security-Policy',"default-src 'self'; style-src 'self'; script-src 'self'; frame-src 'self' https:; img-src 'self' blob: data:; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
-  res.setHeader('X-Robots-Tag','noindex, nofollow');res.writeHead(200,{'Content-Type':mime[extname(asset)],'Cache-Control':'no-store'});const assetBody=await readFile(join(root,'public',asset));res.end(asset==='index.html'?assetBody.toString().replace('<html lang="cs">','<html lang="'+(process.env.SITETILLER_UI_LANGUAGE==='en'?'en':'cs')+'">'):assetBody);
+  res.setHeader('X-Robots-Tag','noindex, nofollow');res.writeHead(200,{'Content-Type':mime[extname(asset)],'Cache-Control':'no-store'});const assetBody=await readFile(join(root,'public',asset));res.end(asset==='index.html'?assetBody.toString().replace('<html lang="en">','<html lang="'+normalizeLocale(process.env.SITETILLER_UI_LANGUAGE)+'">'):assetBody);
 }catch(e:any){response(res,400,{error:e.message||'Požadavek nelze dokončit.'});}});
 server.listen(PORT,HOST,()=>console.log(`SiteTiller listening on ${HOST}:${PORT}`));
 

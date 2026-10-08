@@ -46,6 +46,8 @@ Enter it in the login page and choose an administrator password of 12–256 char
 
 Default UI language is configurable with `SITETILLER_UI_LANGUAGE=en` or `cs`. Each browser can override it in Settings. Changing UI language preserves unsent text and already uploaded attachments. Finish an upload before switching languages.
 
+English is the default when no supported language is configured. Additional interface languages need a dictionary and one entry in the shared language registry; see [Adding a language](docs/localization.md).
+
 ### Optional production publishing
 
 The default installation edits and previews only. To enable the included static hosting/publisher, follow [the production setup](docs/deployment.md#included-production-hosting). You can also connect a fixed existing Git deployment target. Publication never happens just because an agent finishes an edit.

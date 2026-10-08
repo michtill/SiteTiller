@@ -1,4 +1,7 @@
 export const english={
+  'Verze $1 byla publikována.':'Version $1 was published.',
+  'Verze $1 publikována':'Version $1 published',
+  'Poskytovatel $1 vrátil HTTP $2. Ověř klíč, model a kredit.':'Provider $1 returned HTTP $2. Check the key, model, and credits.',
   "Přemýšlí": "Thinking",
   "Odpověď": "Answer",
   "Zobrazená verze se shoduje se skutečným webem. Není co načítat.": "The displayed version matches the live website. There is nothing to load.",

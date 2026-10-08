@@ -1,4 +1,5 @@
 import {decodeImage,imageMime,raster} from './images.ts';
+import {diagnosticFetch} from './diagnostics.ts';
 import {Project} from './project.ts';
 import {withRules} from './instructions.ts';
 import {initialImages,type ImageChoices} from './team.ts';
@@ -11,7 +12,7 @@ export async function generateImage(key:string,model:string,prompt:string,fetche
  if(!key||!/^gpt-image-[a-zA-Z0-9.-]+$/.test(model))throw Error('Generování obrázku potřebuje dostupný model a OpenAI API klíč.');
  if(typeof prompt!=='string'||!prompt.trim()||prompt.length>10000)throw Error('Neplatné zadání obrázku.');
  const format=options.format||'webp',background=options.background||'auto';if(!['auto','opaque','transparent'].includes(background)||background==='transparent'&&format==='jpeg')throw Error('Průhledné pozadí vyžaduje PNG nebo WebP.');if(!['png','webp','jpeg'].includes(format))throw Error('Neplatný formát obrázku.');
- const response=await fetcher('https://api.openai.com/v1/images/generations',{method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({model,prompt:withRules('image',prompt),size:'auto',quality:'medium',output_format:format,background,...(format==='png'?{}:{output_compression:85})}),signal:AbortSignal.timeout(300000)});
+ const response=await diagnosticFetch(fetcher,'https://api.openai.com/v1/images/generations',{method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({model,prompt:withRules('image',prompt),size:'auto',quality:'medium',output_format:format,background,...(format==='png'?{}:{output_compression:85})}),signal:AbortSignal.timeout(300000)});
  if(!response.ok)throw Error('Generování obrázku: OpenAI vrátil HTTP '+response.status+'.');
  const result:any=await response.json(),image=decodeImage({data:result.data?.[0]?.b64_json});
  if(image.mime!=='image/'+format)throw Error('Obrazový nástroj nevrátil požadovaný formát.');
@@ -46,7 +47,7 @@ export async function editImage(key:string,model:string,source:{data:string;mime
   body.append('image[]',new Blob([input.bytes],{type:input.mime}),input.id);
   body.set('size','auto');body.set('quality','medium');body.set('output_format',format);body.set('background',background);if(format!=='png')body.set('output_compression','85');
   if(/^gpt-image-1(?:\.5)?$/.test(model))body.set('input_fidelity','high');
-  const response=await fetcher('https://api.openai.com/v1/images/edits',{method:'POST',headers:{Authorization:'Bearer '+key},body,signal:AbortSignal.timeout(300000)});
+ const response=await diagnosticFetch(fetcher,'https://api.openai.com/v1/images/edits',{method:'POST',headers:{Authorization:'Bearer '+key},body,signal:AbortSignal.timeout(300000)});
   if(!response.ok)throw Error('Úprava obrázku: OpenAI vrátil HTTP '+response.status+'. Ověř klíč, dostupnost obrazového modelu a kredit. Původní obrázek i náhled zůstaly zachované.');
   const result:any=await response.json(),image=decodeImage({data:result.data?.[0]?.b64_json,name:'Upravený obrázek'});
   if(image.bytes.equals(input.bytes))throw Error('Obrazový model vrátil nezměněný obrázek.');

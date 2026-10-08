@@ -9,6 +9,7 @@ globalThis.fetch=async(url,options={})=>{
  if(address.includes('/models'))return new Response(JSON.stringify({data:address.includes('openai.com')?[{id:'gpt-design'},{id:'gpt-test'},{id:'gpt-image-1.5'},{id:'gpt-6.1-sol'},{id:'gpt-6-sol'},{id:'gpt-6-luna'},{id:'gpt-6-astra'},{id:'gpt-image-2.5-sunburst'},{id:'gpt-image-2.5-flare'},{id:'gpt-image-2'}]:[{id:'claude-build'},{id:'claude-review'},{id:'claude-sonnet-5-5'}],has_more:false}),{status:200});
  const body=JSON.parse(options.body),instruction=body.instructions||body.system,content=body.input||body.messages[0].content,input=JSON.parse(typeof content==='string'?content:body.input?content[0].content.find(c=>c.type==='input_text').text:content.find(c=>c.type==='text').text);
  let value;
+ if(input.request==='Fixture provider failure')return new Response(JSON.stringify({error:{type:'rate_limit_error',message:'Fixture provider failure; '+process.env.OPENAI_API_KEY}}),{status:429});
  if(process.env.SITETILLER_TEST_TRACE)await appendFile(process.env.SITETILLER_TEST_TRACE,JSON.stringify({model:body.model,reasoningEffort:body.reasoning?.effort||body.output_config?.effort,input})+'\n');
  if(instruction.includes('Act as WEB LEAD')){
   if(input.request==='Co znamená tato chyba?'){value={action:'answer',summary:'Chyba označuje neplatný odkaz na obrázek; web se nezměnil.'};}else if(input.scope==='create'){

@@ -74,6 +74,8 @@ Model mapping is configurable in Settings. Defaults are in `src/team.ts`; usable
 
 Back up `sitetiller_data` (configuration, encryption material, uploads and the draft Git repository) and, when enabled, `sitetiller_production`. Treat backups as private: they contain website history and provider credentials. Preserve both together before updates. Never add `.env`, `data/`, logs or backups to GitHub.
 
+Failed editing jobs and rejected reviews retain private diagnostic transcripts in `data/diagnostics/<job-id>.jsonl` (`/data/diagnostics` in Docker). They contain full provider prompts, supplied context, returned answers, image payloads, progress events and errors, including JSON retries. Credentials and private reasoning blocks are omitted. Transcripts are not sent to the browser or served over HTTP; administrators read them through server access. Successful jobs discard their temporary transcript. The latest 20 failed/rejected/interrupted recordings are retained when another failure completes. Treat these files as private website and conversation data. Older failures cannot recover provider exchanges that were never recorded.
+
 To update, pull the desired release, back up volumes, then rebuild/restart the services. Existing projects are not reinitialized. Publication history is retained. Read [deployment and recovery instructions](docs/deployment.md) before deploying to an existing website.
 
 ## Security and contributions

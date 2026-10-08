@@ -9,6 +9,14 @@ test('English is the default for missing and unsupported locales',()=>{
  assert.equal(normalizeLocale('cs'),'cs');assert.equal(translate('Aktuální návrh'),'Current draft');
  assert.equal(translate('Nesprávné heslo.','unknown'),'Incorrect password.');
 });
+test('English works when Czech is not registered',()=>{
+ const czech=languages.cs;delete languages.cs;
+ try{
+  assert.equal(normalizeLocale('cs'),'en');assert.equal(normalizeLocale(undefined),'en');
+  assert.equal(translate('Aktuální návrh'),'Current draft');
+  assert.equal(translate('Verze 12.2 byla publikována.'),'Version 12.2 was published.');
+ }finally{languages.cs=czech;}
+});
 test('registering a dictionary supports static and dynamic messages with English fallback',()=>{
  languages.de={name:'Deutsch',dateLocale:'de-DE',messages:{'Aktuální návrh':'Aktueller Entwurf','Verze $1 byla publikována.':'Version $1 wurde veröffentlicht.'}};
  try{

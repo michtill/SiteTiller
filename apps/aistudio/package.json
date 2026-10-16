@@ -1,0 +1,22 @@
+{
+  "name": "sitetiller",
+  "version": "0.23.14",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/server.ts",
+    "test": "node --test --test-concurrency=2 test/*.test.ts",
+    "start:website": "node src/website-server.ts"
+  },
+  "dependencies": {
+    "handlebars": "^4.7.10",
+    "nodemailer": "^10.0.16",
+    "playwright": "1.62.1",
+    "sanitize-html": "^2.18.0"
+  },
+  "packageManager": "pnpm@11.19.0"
+}

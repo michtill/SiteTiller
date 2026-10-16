@@ -1,0 +1,11 @@
+export function addRequest(config: any, request: any) {
+  const sequence =
+    (config.requests || []).reduce(
+      (n: number, r: any) => Math.max(n, r.sequence || 0),
+      Math.max(config.requestSequence || 0, config.reviewedThrough || 0),
+    ) + 1;
+  config.requestSequence = sequence;
+  const entry = { ...request, sequence };
+  config.requests = [...(config.requests || []), entry];
+  return entry;
+}

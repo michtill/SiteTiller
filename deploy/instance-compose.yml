@@ -1,0 +1,38 @@
+# One SiteTiller instance on a server. Values come from the .env file next to this file:
+#   SITETILLER_IMAGE        image, e.g. sitetiller-next:<commit>
+#   SITETILLER_USER         uid:gid owning the instance data and the production Git repository
+#   SITETILLER_INSTANCE_DIR instance data (see scripts/instance-adopt.mjs)
+#   SITETILLER_GIT_DIR      directory of the hosting's production Git (repository, .env of its hooks, logs)
+#   SITETILLER_SHELL_PORT   loopback port for the Shell (studios), proxied by nginx
+#   SITETILLER_WEB_PORT     loopback port for the published website, proxied by nginx
+services:
+  sitetiller:
+    image: ${SITETILLER_IMAGE}
+    user: ${SITETILLER_USER}
+    volumes:
+      - ${SITETILLER_INSTANCE_DIR}:/instance
+      # The same path inside, so the hosting's hooks find their .env and log directory.
+      - ${SITETILLER_GIT_DIR}:${SITETILLER_GIT_DIR}
+    ports:
+      - 127.0.0.1:${SITETILLER_SHELL_PORT}:4540
+      - 127.0.0.1:${SITETILLER_WEB_PORT}:4512
+    read_only: true
+    tmpfs: ['/tmp:size=512m']
+    shm_size: 256m
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    mem_limit: 1400m
+    pids_limit: 512
+    restart: unless-stopped
+    healthcheck:
+      # The Shell answers only its public host name, which nginx passes on.
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get({host:'127.0.0.1',port:4540,path:'/login',headers:{host:new URL(require('/instance/instance.json').public.editOrigin).host}},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3

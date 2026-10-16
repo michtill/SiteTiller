@@ -1,0 +1,1 @@
+{"version":1,"lists":{"pages":{"label":"Stránky","key":"id","display":"title","columns":{"id":{"type":"text","label":"ID"},"title":{"type":"text","label":"Nadpis"},"body":{"type":"text","label":"Text"}}}},"folders":{"files":{"type":"other","label":"Soubory"}}}

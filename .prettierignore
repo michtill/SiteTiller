@@ -1,0 +1,11 @@
+# Generated, installed or user/website content is not formatted.
+node_modules/
+dist/
+work/
+data/
+**/.sitetiller/
+apps/aistudio/seed/
+apps/aistudio/.volumes/
+pnpm-lock.yaml
+packages/i18n/*.json
+*.md

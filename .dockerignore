@@ -1,8 +1,8 @@
 .git
+**/node_modules
+apps/aistudio/dist
+apps/cmstudio/dist
+work
+*.log
 .env
 .env.*
-!.env.example
-data
-.volumes
-node_modules
-test

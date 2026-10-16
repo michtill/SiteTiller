@@ -1,0 +1,269 @@
+import test from 'node:test';
+// A modal dialog opened in this frame is not hit-testable yet; a person never clicks that fast.
+const dialogSettled = (page: any) =>
+  page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+import assert from 'node:assert/strict';
+import { mkdtemp, rm, writeFile, readFile, mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
+import { spawn, execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { scryptSync } from 'node:crypto';
+import { Project } from '../src/project.ts';
+import { initialTeam, initialImages } from '../src/team.ts';
+const exec = promisify(execFile);
+const gateway = 'fixture-gateway-token';
+for (const withCleanup of [false, true])
+  test(
+    'PU-08: publishing an intermediate step preserves newer snapshots and publication history (cleanup=' + withCleanup + ')',
+    async () => {
+      const data = await mkdtemp(join(tmpdir(), 'sitetiller-publish-step-'));
+      const children: any[] = [];
+      let browser: any;
+      let processLogs = '';
+      const pageErrors: string[] = [];
+      try {
+        const project = new Project(join(data, 'project'));
+        await project.init(null);
+        const html = (name: string) =>
+          '<!doctype html><html><head><title>' +
+          name +
+          '</title><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><h1>' +
+          name +
+          '</h1></body></html>';
+        await project.write({ 'site/index.html': html('Published') });
+        const base = await project.commit('Published');
+        await project.write({ 'site/index.html': html('Ready step') });
+        if (withCleanup) {
+          await mkdir(join(project.root, 'site/assets'));
+          await writeFile(
+            join(project.root, 'site/assets/unused.png'),
+            Buffer.from(
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZuoAAAAASUVORK5CYII=',
+              'base64',
+            ),
+          );
+        }
+        let first = await project.commit('Ready step');
+        await project.write({ 'site/index.html': html('Later draft') });
+        let head = await project.commit('Later draft');
+        const originalFirst = first,
+          originalHead = head,
+          originalTree = await project.git(['rev-parse', head + ':site']);
+        const production = join(data, 'production.git');
+        await exec('git', ['clone', '--bare', project.root, production]);
+        await exec('git', ['--git-dir=' + production, 'update-ref', 'refs/heads/main', base]);
+        const password = 'test-password-sitetiller',
+          salt = 'salt';
+        await writeFile(
+          join(data, 'config.json'),
+          JSON.stringify({
+            password: { salt, hash: scryptSync(password, salt, 64).toString('hex') },
+            roles: initialTeam(),
+            imageModels: initialImages(),
+            providers: { openai: { key: '' }, anthropic: { key: '' } },
+            agentArchitecture: 3,
+            automaticReasoningPolicy: 1,
+            publishedCommit: base,
+            publishedThrough: 0,
+            releases: [
+              {
+                id: 'release-1',
+                number: 1,
+                commit: base,
+                publishedAt: '2026-10-06T12:00:00Z',
+                previousCommit: null,
+                description: 'Original',
+                summary: '',
+              },
+            ],
+            requests: [
+              { id: 'first', sequence: 1, prompt: 'Ready step', status: 'ready', commit: first },
+              { id: 'later', sequence: 2, prompt: 'Later draft', status: 'ready', commit: head },
+              { id: 'failed', sequence: 3, prompt: 'Later failed attempt', status: 'failed' },
+            ],
+          }),
+        );
+        const port = 20700 + Math.floor(Math.random() * 100),
+          pubPort = 20900 + Math.floor(Math.random() * 100),
+          origin = 'http://127.0.0.1:' + port,
+          url = 'http://127.0.0.1:' + pubPort + '/publish',
+          env = {
+            ...process.env,
+            SITETILLER_UI_LANGUAGE: 'cs',
+            SITETILLER_DATA_DIR: data,
+            HOST: '127.0.0.1',
+            PORT: String(port),
+            SITETILLER_ORIGIN: origin,
+            SITETILLER_PUBLISH_URL: url,
+            SITETILLER_PUBLISH_TOKEN: 'test-token',
+            OPENAI_API_KEY: 'fixture-key',
+            ANTHROPIC_API_KEY: 'fixture-key',
+          };
+        children.push(
+          spawn(process.execPath, [fileURLToPath(new URL('./fixtures/provider-server.mjs', import.meta.url))], {
+            windowsHide: true,
+            env,
+            stdio: 'pipe',
+          }),
+          spawn(process.execPath, [fileURLToPath(new URL('../src/publisher.ts', import.meta.url))], {
+            windowsHide: true,
+            env: {
+              ...env,
+              PORT: String(pubPort),
+              SITETILLER_PRODUCTION_GIT: production,
+              SITETILLER_PRODUCTION_URL: '',
+            },
+            stdio: 'pipe',
+          }),
+        );
+        for (const child of children) {
+          for (const stream of [child.stdout, child.stderr])
+            stream.on('data', (b: any) => {
+              processLogs = (processLogs + b.toString()).slice(-6000);
+            });
+        }
+        for (let i = 0; i < 100; i++) {
+          try {
+            if ((await fetch(origin + '/health')).ok && (await fetch(url)).status === 401) break;
+          } catch {}
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        const cookie = gateway,
+          state = async () =>
+            (await (await fetch(origin + '/api/state', { headers: { 'x-sitetiller-gateway': cookie } })).json()) as any,
+          post = (input: any) =>
+            fetch(origin + '/api/publish', {
+              method: 'POST',
+              headers: { Origin: origin, 'x-sitetiller-gateway': cookie, 'Content-Type': 'application/json' },
+              body: JSON.stringify(input),
+            });
+        assert.equal((await post({ commit: first, expectedHead: base, confirmCmsPublication: true })).status, 409);
+        assert.equal((await post({ commit: base, expectedHead: head, confirmCmsPublication: true })).status, 409);
+        assert.equal(await project.head(), head);
+        const { chromium } = await import('playwright');
+        browser = await chromium.launch({
+          ...(process.env.SITETILLER_BROWSER_EXECUTABLE
+            ? { executablePath: process.env.SITETILLER_BROWSER_EXECUTABLE }
+            : {}),
+          headless: true,
+        });
+        const page = await browser.newPage();
+        page.on('pageerror', (e) => pageErrors.push(e.message));
+        await page.context().setExtraHTTPHeaders({ 'x-sitetiller-gateway': cookie });
+        await page.goto(origin);
+        await page.locator('#timeline .show-version[data-commit="' + first + '"]').click();
+        await page.waitForFunction(() => document.querySelector('#publish')?.textContent === 'Publikovat tento krok');
+        await page.locator('#publish').waitFor({ state: 'visible' });
+        assert.equal(await page.locator('#publish').textContent(), 'Publikovat tento krok');
+        await page.locator('#publish').click();
+        await dialogSettled(page);
+        assert.ok(
+          (await page.locator('#confirm-description').textContent())?.includes('Novější rozpracované úpravy zůstanou'),
+        );
+        await page.locator('#cancel-publish').click();
+        await page.locator('#publish').click();
+        await dialogSettled(page);
+        await page.locator('#release-description').fill('Only ready step');
+        assert.equal(await page.locator('#confirm-publish').isDisabled(), false);
+        const started = page.waitForRequest((r) => r.url() === origin + '/api/publish' && r.method() === 'POST', {
+          timeout: 10000,
+        });
+        await page.locator('#confirm-publish').click();
+        await started.catch(async (e) => {
+          throw Error(
+            'Publication click did not start a request: ' +
+              e +
+              '; page errors: ' +
+              pageErrors.join('; ') +
+              '; open dialogs: ' +
+              (await page.locator('dialog[open]').evaluateAll((nodes) => nodes.map((n) => n.id))) +
+              '; process logs: ' +
+              processLogs,
+          );
+        });
+        try {
+          await page.locator('#publish-confirm').waitFor({ state: 'hidden', timeout: 90000 });
+        } catch (error) {
+          throw Error(
+            String(error) +
+              '; publication status: ' +
+              (await page.locator('#publish-result').textContent()) +
+              '; server error: ' +
+              ((await state()).job?.error || '') +
+              '; process logs: ' +
+              processLogs +
+              '; page errors: ' +
+              pageErrors.join('; '),
+          );
+        }
+        await page.waitForFunction(() =>
+          document.querySelector('#publish-status')?.textContent.startsWith('Aktuální verze 2 · '),
+        );
+        let s = await state();
+        if (withCleanup) {
+          first = s.publishedCommit;
+          head = s.head;
+          assert.notEqual(first, originalFirst);
+          assert.notEqual(head, originalHead);
+          assert.equal(await project.git(['rev-parse', head + ':site']), originalTree);
+          assert.ok(!Object.hasOwn(await project.committedFiles(first), 'site/assets/unused.png'));
+          assert.ok(Object.hasOwn(await project.committedFiles(head), 'site/assets/unused.png'));
+        }
+        assert.equal(s.head, head);
+        assert.equal(s.publishedCommit, first);
+        // The published step stays as the first step of the draft, now on the release commit.
+        assert.deepEqual(
+          s.requests.map((r: any) => [r.id, r.prompt]),
+          [
+            ['first', 'Ready step'],
+            ['later', 'Later draft'],
+            ['failed', 'Later failed attempt'],
+          ],
+        );
+        assert.equal(s.requests[0].commit, first);
+        assert.equal(s.releases.at(-1).number, 2);
+        assert.equal(s.releases.at(-1).summary, 'Ready step');
+        assert.equal(s.contentChanged, true);
+        assert.ok(s.publishableCommits.includes(head));
+        assert.ok(s.history.some((h: any) => h.commit === head));
+        assert.equal(
+          (await exec('git', ['--git-dir=' + production, 'rev-parse', 'main:site'])).stdout.trim(),
+          await project.git(['rev-parse', first + ':site']),
+        );
+        assert.equal((await fetch(origin + '/preview/versions/' + head + '/')).status, 200);
+        assert.equal(JSON.parse(await readFile(join(data, 'config.json'), 'utf8')).publishedThrough, 1);
+        assert.equal((await post({ commit: first, expectedHead: head })).status, 422);
+        const latest = await post({ commit: head, expectedHead: head });
+        assert.equal(latest.status, 200, await latest.text());
+        s = await state();
+        if (withCleanup) {
+          assert.notEqual(s.head, head);
+          head = s.head;
+        }
+        assert.equal(s.head, head);
+        assert.equal(s.publishedCommit, head);
+        assert.deepEqual(
+          s.requests.map((r: any) => r.id),
+          ['later', 'failed'],
+        );
+        assert.equal(s.releases.at(-1).number, 3);
+        assert.equal(s.contentChanged, false);
+        assert.deepEqual(s.publishableCommits, []);
+        assert.equal(
+          (await exec('git', ['--git-dir=' + production, 'rev-parse', 'main:site'])).stdout.trim(),
+          await project.git(['rev-parse', head + ':site']),
+        );
+      } finally {
+        await browser?.close();
+        for (const child of children)
+          if (child.exitCode === null) {
+            const ended = new Promise((r) => child.once('exit', r));
+            child.kill();
+            await ended;
+          }
+        await rm(data, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+      }
+    },
+  );

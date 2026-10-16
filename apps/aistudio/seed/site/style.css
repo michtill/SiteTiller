@@ -1,0 +1,2 @@
+body{margin:0;font:18px/1.6 system-ui,sans-serif;background:#f5f6f8;color:#20242b}main{max-width:800px;margin:15vh auto;padding:24px}h1{font-size:clamp(2rem,5vw,4rem);line-height:1.15}
+:root{--acid:#d6fa72}.button{background:var(--acid);color:#20242b;display:inline-block;padding:12px 20px;border-radius:8px;text-decoration:none}

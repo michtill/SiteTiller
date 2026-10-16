@@ -1,12 +1,14 @@
-data/
-.volumes/
+node_modules/
+dist/
 .env
 .env.*
 !.env.example
+work/
 *.log
-node_modules/
-backups/
-*.bundle
-*.tar
-*.tar.gz
-.DS_Store
+# Local instance data, keys and certificates never belong in the repository.
+.volumes/
+.sitetiller/
+*.pem
+*.key
+*.p12
+*.pfx

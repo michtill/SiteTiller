@@ -15,7 +15,8 @@ export async function productionSnapshot(
   const sourceTree = await workspace.git(['rev-parse', source + ':site']),
     marker = 'SiteTiller-Source: ' + source;
   if (production) {
-    const tree = await target.git(['rev-parse', production + ':site']),
+    // A production Git deployed by other means may have no site/ yet.
+    const tree = await target.git(['rev-parse', production + ':site']).catch(() => ''),
       message = await target.git(['show', '-s', '--format=%B', production]);
     if (tree === sourceTree && message.split('\n').includes(marker)) return production;
   }

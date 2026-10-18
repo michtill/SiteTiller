@@ -205,7 +205,7 @@ http
           }
           attempts.set(ip, prior);
           if (prior.count >= 8) result.error = t('too_many_attempts_short');
-          else if (next.length < 12 || next.length > 256 || next !== confirmed)
+          else if (next.length < 8 || next.length > 256 || next !== confirmed)
             result.error = t('new_password_requirements');
           else {
             const state = await fetch('http://127.0.0.1:' + process.env.AISTUDIO_PORT + '/api/state', {
@@ -435,3 +435,19 @@ http
     }
   })
   .listen(port, process.env.EDIT_HOST || '127.0.0.1');
+// With its own port the public preview answers there on any host name; the studios are never reachable on it.
+if (publicPreviewOrigin && process.env.SITETILLER_PUBLIC_PREVIEW_PORT)
+  http
+    .createServer(async (req, res) => {
+      try {
+        await servePublicPreview(req, res, {
+          origin: publicPreviewOrigin,
+          data,
+          previewPort: Number(process.env.PREVIEW_PORT),
+        });
+      } catch {
+        if (!res.headersSent) res.writeHead(500);
+        res.end();
+      }
+    })
+    .listen(Number(process.env.SITETILLER_PUBLIC_PREVIEW_PORT), process.env.EDIT_HOST || '127.0.0.1');

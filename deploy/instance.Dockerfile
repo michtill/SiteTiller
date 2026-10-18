@@ -12,9 +12,10 @@ COPY . .
 RUN node scripts/build.mjs
 
 FROM node:24-bookworm-slim
-# git for the histories, Chromium for the checks, php for the hosting's Git deploy hooks.
+# git for the histories, ssh for a remote production Git, nss_wrapper for running under any user id (a hosting
+# panel uses the domain's user), Chromium for the checks, php for the hosting's Git deploy hooks of a mounted Git.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends git chromium php-cli php-curl ca-certificates fonts-dejavu-core \
+  && apt-get install -y --no-install-recommends git openssh-client libnss-wrapper chromium php-cli php-curl ca-certificates fonts-dejavu-core \
   && rm -rf /var/lib/apt/lists/* \
   && git config --system safe.directory '*'
 WORKDIR /app

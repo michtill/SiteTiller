@@ -1,0 +1,37 @@
+# One SiteTiller instance as an application of a hosting panel (VPS Centrum): the panel builds this service, runs it
+# under the domain's user and maps each port to a host name. The instance data is the volume `instance`
+# (prepared with scripts/instance-adopt.mjs, see deploy/). Ports:
+#   4540  Shell: the studios (e.g. edit.example.com)
+#   4512  the published website (the domain)
+#   4541  the public draft preview (e.g. new.example.com), only with ports.publicPreview in instance.json
+# Optional .env next to this file: mail for contact forms (SITETILLER_SMTP_*, SITETILLER_MAIL_FROM).
+services:
+  sitetiller:
+    build:
+      context: .
+      dockerfile: deploy/instance.Dockerfile
+    volumes:
+      - instance:/instance
+    ports:
+      - '4540'
+      - '4512'
+      - '4541'
+    env_file:
+      - path: .env
+        required: false
+    mem_limit: 1400m
+    restart: unless-stopped
+    healthcheck:
+      # The Shell answers only its public host name.
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get({host:'127.0.0.1',port:4540,path:'/login',headers:{host:new URL(require('/instance/instance.json').public.editOrigin).host}},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+volumes:
+  instance:

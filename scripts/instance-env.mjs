@@ -12,6 +12,9 @@ export const services = [
   ['website', 'apps/website/server.ts'],
   ['shell', 'apps/shell/server.ts'],
 ];
+// A production Git given as an SSH address (ssh://user@host/path.git) is remote: the instance keeps a mirror of it
+// and reaches it with its own key and the server's known host key (both in settings/, see production-remote.ts).
+export const remoteGit = (address) => /^ssh:\/\//.test(address || '');
 export function instancePaths(root) {
   return {
     root,
@@ -28,7 +31,10 @@ export async function instanceEnvironment(repo, root, instance) {
     local = (port) => 'http://127.0.0.1:' + port,
     editOrigin = external.editOrigin || local(p.shell),
     siteUrl = external.siteUrl || local(p.website) + '/',
-    productionGit = external.productionGit || join(paths.production, 'repository.git'),
+    remote = remoteGit(external.productionGit) ? external.productionGit : '',
+    productionGit = remote
+      ? join(paths.production, 'remote.git')
+      : external.productionGit || join(paths.production, 'repository.git'),
     // The public draft preview needs its own host name: locally localhost, on a server its own address.
     previewOrigin = instance.public ? external.previewOrigin || '' : 'http://localhost:' + p.shell;
   return {
@@ -71,7 +77,19 @@ export async function instanceEnvironment(repo, root, instance) {
     SITETILLER_FORMS_RUNTIME: '1',
     SITETILLER_UI_LANGUAGE: 'cs',
     EDIT_HOST: '127.0.0.1',
-    ...(external.retryDeployHook ? { SITETILLER_RETRY_DEPLOY_HOOK: '1' } : {}),
+    ...(remote
+      ? {
+          SITETILLER_PRODUCTION_REMOTE: remote,
+          GIT_SSH_COMMAND: [
+            'ssh',
+            '-i',
+            JSON.stringify(join(paths.settings, 'production-git.key')),
+            '-o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes',
+            '-o UserKnownHostsFile=' + JSON.stringify(join(paths.settings, 'production-git.known_hosts')),
+          ].join(' '),
+        }
+      : {}),
+    ...(external.retryDeployHook && !remote ? { SITETILLER_RETRY_DEPLOY_HOOK: '1' } : {}),
     ...(external.browser ? { SITETILLER_BROWSER_EXECUTABLE: external.browser } : {}),
   };
 }
@@ -82,7 +100,13 @@ export function serviceEnvironment(env, instance, name) {
   return {
     ...env,
     ...(name === 'aistudio' ? {} : { SITETILLER_NETWORK_MODE: 'offline', SITETILLER_OFFLINE: '1' }),
-    ...(name === 'shell' ? { EDIT_HOST: listen } : {}),
+    ...(name === 'shell'
+      ? {
+          EDIT_HOST: listen,
+          // A separate port for the public draft preview (a hosting panel maps one port to one host name).
+          ...(instance.ports.publicPreview ? { SITETILLER_PUBLIC_PREVIEW_PORT: String(instance.ports.publicPreview) } : {}),
+        }
+      : {}),
     ...(name === 'website' ? { HOST: listen } : {}),
     PORT: String(instance.ports[name]),
   };

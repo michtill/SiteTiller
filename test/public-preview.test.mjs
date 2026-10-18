@@ -35,10 +35,11 @@ test('SH-10: the public preview path reaches only the current draft with the wor
   ])
     assert.equal(publicPreviewPath(path), null, path);
 });
-test('SH-10: the Shell serves the public preview on its own address only while it is switched on', async () => {
+test('SH-10: the Shell serves the public preview on its own address (and its own port) only while it is switched on', async () => {
   const root = await mkdtemp(join(tmpdir(), 'sitetiller-public-preview-')),
     previewPort = await freePort(),
     shellPort = await freePort(),
+    previewOnlyPort = await freePort(),
     seen = [];
   // The preview service stand-in records what reaches it.
   const preview = http
@@ -74,6 +75,7 @@ test('SH-10: the Shell serves the public preview on its own address only while i
         SITETILLER_GATEWAY_TOKEN: 'g'.repeat(64),
         PREVIEW_PORT: String(previewPort),
         SITETILLER_PUBLIC_PREVIEW_ORIGIN: 'http://' + publicHost,
+        SITETILLER_PUBLIC_PREVIEW_PORT: String(previewOnlyPort),
       },
       stdio: 'ignore',
     });
@@ -88,7 +90,7 @@ test('SH-10: the Shell serves the public preview on its own address only while i
         const req = http.request(
           {
             host: '127.0.0.1',
-            port: shellPort,
+            port: options.port || shellPort,
             path,
             method: options.method || 'GET',
             headers: { host: publicHost, ...(options.headers || {}) },
@@ -119,6 +121,17 @@ test('SH-10: the Shell serves the public preview on its own address only while i
     assert.equal((await request('/sources/published/')).status, 404);
     assert.equal((await request('/', { method: 'POST', headers: { origin: 'http://' + publicHost } })).status, 404);
     assert.equal(seen.length, before);
+    // Its own port (a hosting panel maps one port to one host name) serves the same preview under any host name
+    // and never the studios: their paths are draft pages there.
+    const own = await request('/contact/', { port: previewOnlyPort, headers: { host: 'new.example.cz' } });
+    assert.equal(own.status, 200);
+    assert.equal(own.body, '<h1>Draft</h1>');
+    assert.equal((await request('/site/', { port: previewOnlyPort, headers: { host: 'new.example.cz' } })).status, 200);
+    assert.equal(seen.at(-1).url, '/sources/unpublished/site/');
+    assert.equal(
+      (await request('/versions/' + 'a'.repeat(40) + '/', { port: previewOnlyPort })).status,
+      404,
+    );
     // The studios' own address is unchanged: it still asks for the password.
     assert.equal((await fetch(origin + '/site/', { redirect: 'manual' })).status, 303);
     // The switch in the common settings, with the preview address beside it.
@@ -147,8 +160,9 @@ test('SH-10: the Shell serves the public preview on its own address only while i
       redirect: 'manual',
     });
     assert.equal(saved.status, 303);
-    // Switched off: gone at once.
+    // Switched off: gone at once, on both.
     assert.equal((await request('/')).status, 404);
+    assert.equal((await request('/', { port: previewOnlyPort })).status, 404);
   } finally {
     if (shell) {
       const exited = new Promise((r) => shell.once('exit', r));

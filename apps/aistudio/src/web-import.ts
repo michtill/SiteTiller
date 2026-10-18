@@ -5,6 +5,7 @@ import https from 'node:https';
 import { createHash } from 'node:crypto';
 import { posix } from 'node:path';
 import { safeSitePath } from './core.ts';
+import { appVersion } from './app-version.ts';
 const types: Record<string, string> = {
   'text/html': 'html',
   'text/css': 'css',
@@ -117,7 +118,7 @@ export async function fetchPublic(
       const request = (url.protocol === 'https:' ? https : http).get(
         url,
         {
-          headers: { 'User-Agent': 'SiteTiller/0.21 website importer', 'Accept-Encoding': 'identity' },
+          headers: { 'User-Agent': 'SiteTiller/' + appVersion + ' website importer', 'Accept-Encoding': 'identity' },
           lookup: ((_host: any, options: any, callback: any) =>
             options.all ? callback(null, [pinned]) : callback(null, pinned.address, pinned.family)) as any,
         },

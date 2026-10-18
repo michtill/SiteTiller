@@ -55,7 +55,8 @@ export function staticChecks(files: Record<string, string>) {
 // Browser for the checks: SITETILLER_BROWSER_EXECUTABLE when set, else Playwright's own Chromium, else the installed
 // Chrome or Edge (Playwright's browser download is optional and disappears with every Playwright update).
 export async function launchBrowser(chromium: any) {
-  const options = { headless: true };
+  // A container may have only 64 MB of /dev/shm; Chromium then keeps its shared memory in /tmp.
+  const options = { headless: true, args: ['--disable-dev-shm-usage'] };
   if (process.env.SITETILLER_BROWSER_EXECUTABLE)
     return chromium.launch({ ...options, executablePath: process.env.SITETILLER_BROWSER_EXECUTABLE });
   try {

@@ -1,4 +1,5 @@
 import { Problem } from './problem.ts';
+import { appVersion } from './app-version.ts';
 import { readResponseLanguage } from './final-answer.ts';
 import { deleteStepTarget } from './delete-step.ts';
 import { finishConfirmedPublication } from './publication-finish.ts';
@@ -282,7 +283,7 @@ async function state() {
   return {
     networkMode: process.env.SITETILLER_NETWORK_MODE || 'offline',
     name: 'SiteTiller',
-    version: '0.23.14',
+    version: appVersion,
     versionActions: 1,
     siteUrl: await siteUrl(),
     publicationInProgress: config.pendingRelease?.confirmedRelease

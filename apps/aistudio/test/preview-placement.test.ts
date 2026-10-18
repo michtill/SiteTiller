@@ -323,7 +323,14 @@ test('HI-04: bottom Delete uses exact latest predecessor and exact named snapsho
   }));
 test('HI-01: content popover crosses split above iframe at wide/narrow chat widths, remains clickable on resize/scroll, closes Escape/outside', () =>
   fixture(async ({ page }) => {
-    for (const width of [350, 280]) {
+    // The chat column is set narrower than the popover, so the popover must cross the split whatever the fonts.
+    await page.locator('#cms-preview-choice summary').click();
+    await page.locator('#content-source-popover').waitFor({ state: 'visible' });
+    const popoverWidth = await page
+      .locator('#content-source-popover')
+      .evaluate((el) => Math.floor(el.getBoundingClientRect().width));
+    await page.keyboard.press('Escape');
+    for (const width of [popoverWidth - 20, popoverWidth - 80]) {
       await page.evaluate(
         (width) => (document.getElementById('workspace')!.style.gridTemplateColumns = width + 'px 10px 1fr'),
         width,

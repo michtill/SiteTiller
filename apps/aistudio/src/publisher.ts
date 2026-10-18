@@ -18,13 +18,18 @@ import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Project } from './project.ts';
+import { productionTarget, syncProductionMirror, pushProductionRefs, productionRemote } from './production-remote.ts';
 import { raster, binaryAsset } from './images.ts';
 const exec = promisify(execFile),
   dataDirectory = process.env.SITETILLER_DATA_DIR || '/data',
   project = new Project(dataDirectory + '/project');
-const remote = process.env.SITETILLER_PRODUCTION_GIT;
-if (!remote || !process.env.SITETILLER_PUBLISH_TOKEN)
+// history = the local production repository (or the mirror of a remote one), remote = where publications go.
+const history = process.env.SITETILLER_PRODUCTION_GIT,
+  remote = productionTarget();
+if (!history || !remote || !process.env.SITETILLER_PUBLISH_TOKEN)
   throw new Error('Publisher requires a fixed Git target and token.');
+// The mirror of a remote production Git is refreshed at start; failures are retried before each use.
+await syncProductionMirror().catch((e) => console.error('Production Git not reachable: ' + (e.code || e.name)));
 let busy = false,
   stage = '';
 const journalDirectory = join(dataDirectory, 'publisher-transactions');
@@ -51,12 +56,12 @@ async function finishRecord(record: any) {
   }
   // A previous push may have succeeded while its deploy hook failed. Retry the
   // existing, fixed production hook when Git already contains this exact SHA.
-  if (record.committed && process.env.SITETILLER_RETRY_DEPLOY_HOOK === '1') {
+  if (record.committed && process.env.SITETILLER_RETRY_DEPLOY_HOOK === '1' && !productionRemote()) {
     stage = 'hook';
     await new Promise<void>((resolve, reject) => {
       const child = execFile(
         'php',
-        [join(remote, 'hooks/post-receive')],
+        [join(history, 'hooks/post-receive')],
         { windowsHide: true, timeout: 45000, maxBuffer: 100000 },
         (error) => (error ? reject(Error('Deployment hook failed')) : resolve()),
       );
@@ -103,18 +108,20 @@ async function finishRecord(record: any) {
     }
     if (!verified) throw new Error('Git updated; production deployment not verified');
   }
-  const records = await productionReleases(new Project(remote));
+  await syncProductionMirror();
+  const records = await productionReleases(new Project(history));
   const intent = record.intent || {
     number: Math.max(0, ...records.map((r) => r.number)) + 1,
     description: '',
     previousCommit: records.at(-1)?.commit || before,
   };
   const release = await storeProductionRelease(
-    new Project(remote),
+    new Project(history),
     { ...intent, previousCommit: records.find((r) => r.tag === intent.tag)?.previousCommit || before },
     deployedCommit,
     commit,
   );
+  await pushProductionRefs(['refs/tags/' + release.tag]);
   return release;
 }
 const recordOps = {
@@ -194,8 +201,9 @@ http
           return json(501, { error: 'Čtení nasazeného webu není nastavené.' });
         busy = true;
         try {
+          await syncProductionMirror();
           const snapshot = await hostedSnapshot(
-            new Project(remote),
+            new Project(history),
             process.env.SITETILLER_PRODUCTION_URL,
             fetch,
             process.env.SITETILLER_SITE_URL || process.env.SITETILLER_PRODUCTION_URL,
@@ -223,7 +231,8 @@ http
           approval = await readApproval(dataDirectory, 'archive');
         if (!approval || approval.commit !== input.commit || input.commit !== (await project.head()))
           return json(409, { error: 'Chybí ověřený snímek skutečného webu.' });
-        const production = new Project(remote),
+        await syncProductionMirror();
+        const production = new Project(history),
           before = await production.head();
         if (before !== approval.hostingCommit)
           return json(409, { error: 'Skutečný web se mezitím změnil. Porovnej jej znovu.' });
@@ -244,6 +253,7 @@ http
           const commit = await productionSnapshot(target, input.commit, before, project);
           await production.git(['fetch', temp, commit]);
           await production.git(['update-ref', 'refs/heads/main', commit, before]);
+          await pushProductionRefs([commit + ':refs/heads/main']);
           const release = await storeProductionRelease(
             production,
             {
@@ -255,6 +265,7 @@ http
             commit,
             input.commit,
           );
+          await pushProductionRefs(['refs/tags/' + release.tag]);
           return json(200, { ok: true, release });
         } finally {
           busy = false;

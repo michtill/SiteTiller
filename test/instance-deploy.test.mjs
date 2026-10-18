@@ -173,3 +173,107 @@ test('OP-03: adopting a copied instance keeps its draft and switches to the serv
     await rm(base, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   }
 });
+test('OP-06: a production Git given as an SSH address is reached through a mirror with the instance key', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'sitetiller-instance-remote-'));
+  try {
+    await settings(root);
+    const instance = {
+      ports: { ...ports, publicPreview: 4541 },
+      networkMode: 'providers',
+      public: {
+        editOrigin: 'https://edit.example.cz',
+        siteUrl: 'https://example.cz/',
+        previewOrigin: 'https://new.example.cz',
+        productionGit: 'ssh://site@host.example.cz/git/site/www.git',
+        listen: '0.0.0.0',
+        retryDeployHook: true,
+      },
+    };
+    const env = await instanceEnvironment(repo, root, instance);
+    assert.equal(env.SITETILLER_PRODUCTION_REMOTE, 'ssh://site@host.example.cz/git/site/www.git');
+    assert.equal(env.SITETILLER_PRODUCTION_GIT, join(root, '.production', 'remote.git'));
+    assert.equal(env.SITETILLER_PRODUCTION_HISTORY_DIR, join(root, '.production', 'remote.git'));
+    assert.ok(env.GIT_SSH_COMMAND.includes(JSON.stringify(join(root, 'settings', 'production-git.key'))));
+    assert.ok(env.GIT_SSH_COMMAND.includes(JSON.stringify(join(root, 'settings', 'production-git.known_hosts'))));
+    assert.match(env.GIT_SSH_COMMAND, /StrictHostKeyChecking=yes/);
+    assert.match(env.GIT_SSH_COMMAND, /BatchMode=yes/);
+    // The hosting's deploy hooks run on the server, not in the container.
+    assert.equal(env.SITETILLER_RETRY_DEPLOY_HOOK, undefined);
+    assert.equal(serviceEnvironment(env, instance, 'shell').SITETILLER_PUBLIC_PREVIEW_PORT, '4541');
+    assert.equal(serviceEnvironment(env, instance, 'website').SITETILLER_PUBLIC_PREVIEW_PORT, undefined);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+test('OP-07: onto a production Git without SiteTiller versions, adopting publishes the draft as Version 0 only when asked', async () => {
+  const base = await mkdtemp(join(tmpdir(), 'sitetiller-instance-adopt-v0-')),
+    root = join(base, 'instance'),
+    git = join(base, 'site.git');
+  try {
+    const { Project } = await import('../apps/aistudio/src/project.ts');
+    // A hosted website committed by hand: no release tags.
+    const hosted = join(base, 'hosted'),
+      inHosted = (args) =>
+        exec('git', ['-c', 'user.name=Host', '-c', 'user.email=host@example.cz', '-C', hosted, ...args]);
+    await mkdir(hosted);
+    await exec('git', ['init', '-b', 'main', hosted]);
+    await writeFile(join(hosted, 'index.html'), '<!doctype html><title>Hosted</title><h1>Hosted</h1>');
+    await inHosted(['add', '.']);
+    await inHosted(['commit', '-m', 'Hosted website']);
+    const main = (await inHosted(['rev-parse', 'HEAD'])).stdout.trim();
+    await exec('git', ['init', '--bare', '-b', 'main', git]);
+    await inHosted(['push', git, 'main']);
+    await settings(root);
+    await writeFile(
+      join(root, 'instance.json'),
+      JSON.stringify({ kind: 'sitetiller-next-playground', root: 'C:\old', ports, networkMode: 'providers' }),
+    );
+    const draft = new Project(join(root, '.sitetiller', 'project'));
+    await draft.init(null);
+    await draft.write({ 'site/index.html': '<!doctype html><title>Draft</title><h1>Draft</h1>' });
+    const step = await draft.commit('Draft');
+    await writeFile(join(root, '.sitetiller/config.json'), JSON.stringify({ requests: [], siteUrl: '' }));
+    const deployment = join(base, 'deployment.json');
+    await writeFile(
+      deployment,
+      JSON.stringify({
+        sourceRoot: 'C:\Dev\play',
+        editOrigin: 'https://edit.example.cz',
+        siteUrl: 'https://example.cz/',
+        productionGit: git,
+        publicPreviewPort: 4541,
+      }),
+    );
+    const adopt = () =>
+      exec(process.execPath, [join(repo, 'scripts/instance-adopt.mjs'), deployment], {
+        env: { ...process.env, SITETILLER_INSTANCE: root },
+      });
+    // Without the explicit choice nothing is published (the live website would change).
+    await assert.rejects(adopt(), /createVersion0FromDraft/);
+    assert.equal((await exec('git', ['--git-dir=' + git, 'rev-parse', 'main'])).stdout.trim(), main);
+    await rm(join(root, '.production'), { recursive: true, force: true });
+    await writeFile(deployment, JSON.stringify({ ...JSON.parse(await readFile(deployment, 'utf8')), createVersion0FromDraft: true }));
+    await adopt();
+    const config = JSON.parse(await readFile(join(root, '.sitetiller/config.json'), 'utf8')),
+      instance = JSON.parse(await readFile(join(root, 'instance.json'), 'utf8'));
+    const published = (await exec('git', ['--git-dir=' + git, 'rev-parse', 'main'])).stdout.trim();
+    assert.deepEqual(
+      config.releases.map((r) => [r.number, r.commit, r.sourceCommit, r.previousCommit]),
+      [[0, published, step, main]],
+    );
+    assert.equal(config.publishedCommit, published);
+    // Version 0 = the draft's site on top of the hosted main, whose own files stay.
+    assert.equal((await exec('git', ['--git-dir=' + git, 'rev-parse', 'main^'])).stdout.trim(), main);
+    assert.equal(
+      (await exec('git', ['--git-dir=' + git, 'rev-parse', 'main:site'])).stdout.trim(),
+      await draft.git(['rev-parse', step + ':site']),
+    );
+    assert.match((await exec('git', ['--git-dir=' + git, 'show', 'main:index.html'])).stdout, /Hosted/);
+    assert.equal(instance.ports.publicPreview, 4541);
+    assert.equal(instance.ports.shell, 4540);
+    const tags = await exec('git', ['--git-dir=' + git, 'tag', '--list', 'sitetiller/published/*']);
+    assert.equal(tags.stdout.trim(), 'sitetiller/published/v0');
+  } finally {
+    await rm(base, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  }
+});

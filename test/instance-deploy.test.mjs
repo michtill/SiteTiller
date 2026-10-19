@@ -277,3 +277,19 @@ test('OP-07: onto a production Git without SiteTiller versions, adopting publish
     await rm(base, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   }
 });
+test('OP-08: services and adoption run as the owner of the instance; a user with a passwd entry stays as it is', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'sitetiller-instance-user-'));
+  try {
+    const { runAsInstanceOwner, withPasswdEntry } = await import('../scripts/instance-user.mjs'),
+      uid = process.getuid?.();
+    // Not root (or not POSIX): nothing to switch.
+    if (uid !== 0) {
+      await runAsInstanceOwner(root);
+      assert.equal(process.getuid?.(), uid);
+    }
+    // The tests run as a user with an /etc/passwd entry (or on Windows): no nss_wrapper.
+    assert.deepEqual(await withPasswdEntry({ KEEP: '1' }), { KEEP: '1' });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

@@ -14,8 +14,11 @@ import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { atomicJson, readJson } from '../packages/settings/index.mjs';
 import { remoteGit, instanceEnvironment } from './instance-env.mjs';
+import { prepareInstanceUser } from './instance-user.mjs';
 const root = resolve(process.env.SITETILLER_INSTANCE || '/instance'),
   deployment = JSON.parse(await readFile(process.argv[2], 'utf8'));
+// Like the services: as the owner of the instance, with a passwd entry for Git over SSH.
+await prepareInstanceUser(root);
 for (const key of ['sourceRoot', 'editOrigin', 'siteUrl', 'productionGit'])
   if (typeof deployment[key] !== 'string' || !deployment[key]) throw Error('deployment.json: missing ' + key);
 const data = join(root, '.sitetiller'),

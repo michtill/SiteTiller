@@ -1,7 +1,7 @@
 // Runs all six services of one instance in the foreground (the server container). Logs go to standard output with
 // the service name; when any service stops, the others stop too and the container restarts them together.
 import { spawn } from 'node:child_process';
-import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { runAsInstanceOwner, withPasswdEntry } from './instance-user.mjs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readJson } from '../packages/settings/index.mjs';
@@ -11,26 +11,10 @@ const repo = resolve(fileURLToPath(new URL('..', import.meta.url))),
   instance = await readJson(join(root, 'instance.json'));
 if (instance.kind !== 'sitetiller-next-instance' || resolve(instance.root) !== root)
   throw Error('Not a SiteTiller instance: ' + root);
-const env = await instanceEnvironment(repo, root, instance),
+// The services run as the owner of the instance (see instance-user.mjs).
+await runAsInstanceOwner(root);
+const env = await withPasswdEntry(await instanceEnvironment(repo, root, instance)),
   children = new Map();
-// A hosting panel runs the container under the domain's user, an id without an /etc/passwd entry. Git over SSH needs
-// one, so nss_wrapper (when the image has it) adds the user from a passwd file in /tmp.
-async function withPasswdEntry(env) {
-  const uid = process.getuid?.(),
-    gid = process.getgid?.();
-  if (uid === undefined) return env;
-  const passwd = await readFile('/etc/passwd', 'utf8').catch(() => '');
-  if (passwd.split('\n').some((line) => line.split(':')[2] === String(uid))) return env;
-  for (const dir of await readdir('/usr/lib').catch(() => [])) {
-    const library = join('/usr/lib', dir, 'libnss_wrapper.so');
-    if (!(await readFile(library).then(() => true, () => false))) continue;
-    const file = '/tmp/sitetiller-passwd';
-    await writeFile(file, passwd + 'sitetiller:x:' + uid + ':' + gid + ':SiteTiller:/tmp:/usr/sbin/nologin\n');
-    return { ...env, LD_PRELOAD: library, NSS_WRAPPER_PASSWD: file, NSS_WRAPPER_GROUP: '/etc/group' };
-  }
-  return env;
-}
-Object.assign(env, await withPasswdEntry(env));
 let stopping = false,
   exitCode = 1;
 function stop(code) {

@@ -26,9 +26,7 @@ jobs:
       - run: node scripts/check.mjs
       # Integration tests start whole service stacks; run them one file at a time.
       - run: node --test --test-concurrency=1 test/*.test.mjs
-      # Non-blocking until AI Studio passes in CI once.
       - run: pnpm test:aistudio
-        continue-on-error: true
       - run: pnpm test
         working-directory: apps/cmstudio
       - run: pnpm test:browser

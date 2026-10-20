@@ -4,7 +4,7 @@
 #   4540  Shell: the studios (e.g. edit.example.com)
 #   4512  the published website (the domain)
 #   4541  the public draft preview (e.g. new.example.com), only with ports.publicPreview in instance.json
-# Optional .env next to this file: mail for contact forms (SITETILLER_SMTP_*, SITETILLER_MAIL_FROM).
+# Optional .env next to this file. Mail is set up in the app (Common settings → Sending e-mail).
 services:
   sitetiller:
     build:

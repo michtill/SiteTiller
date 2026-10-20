@@ -12,7 +12,7 @@ const slots = [
   criteria = [{ id: 'exact', category: 'required', description: 'Preserve calculations', basis: 'User request' }],
   check = async () => ({ passed: true, errors: [], checks: [], screenshots: [] });
 async function fixture(run) {
-  const root = await mkdtemp(join(tmpdir(), 'next-bounded-'));
+  const root = await mkdtemp(join(tmpdir(), 'example-bounded-'));
   try {
     const project = new Project(join(root, 'project'));
     await project.init(null);

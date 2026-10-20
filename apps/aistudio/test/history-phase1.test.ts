@@ -21,7 +21,7 @@ const schema = {
   html =
     '<!doctype html><html><head><title>Fixture</title><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><main><h1>{{value "items" "one" "title"}}</h1><a href="/cms/files/docs/book.pdf">PDF</a></main></body></html>';
 async function fixture(run: any) {
-  const root = await mkdtemp(join(tmpdir(), 'next-history-phase1-')),
+  const root = await mkdtemp(join(tmpdir(), 'example-history-phase1-')),
     old = process.env.SITETILLER_CMS_ROOT;
   try {
     const cms = join(root, 'cms');

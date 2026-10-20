@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for your interest in SiteTiller Next.
+Thank you for your interest in SiteTiller Muse.
 
 - Open an issue first for larger changes, so the approach can be agreed before work starts.
 - Keep pull requests focused on one change and include tests for new behaviour.

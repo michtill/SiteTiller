@@ -1,5 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { liveCms } from './cms-live.ts';
+import { readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { sendMail } from '../../../packages/settings/mail.mjs';
 export type FormField = {
   name: string;
   label: string;
@@ -230,33 +233,21 @@ export async function serveForm(
     });
   }
 }
+// Sends through the instance's mail server (Settings → Sending e-mail, documentation 2.8). Without a recipient from
+// the content the message goes to the administrator's e-mail (2.4).
 export async function smtpDelivery(mail: Mail) {
-  const env = process.env,
-    host = env.SITETILLER_SMTP_HOST,
-    from = env.SITETILLER_MAIL_FROM,
-    to = mail.to || env.SITETILLER_MAIL_TO;
-  if (!host || !from || !to || !validAddress(from) || !validAddress(to)) throw Error('Mail is not configured');
-  const port = Number(env.SITETILLER_SMTP_PORT || 587);
-  const localRelay = port === 25 && ['127.0.0.1', 'localhost', '::1'].includes(host);
-  if (![465, 587].includes(port) && !localRelay) throw Error('Unsupported SMTP port');
-  const { default: nodemailer } = await import('nodemailer');
-  const transport = nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    requireTLS: !localRelay,
-    ignoreTLS: localRelay,
-    auth: env.SITETILLER_SMTP_USER ? { user: env.SITETILLER_SMTP_USER, pass: env.SITETILLER_SMTP_PASSWORD } : undefined,
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
-    disableFileAccess: true,
-    disableUrlAccess: true,
-  });
+  const settings = dirname(process.env.SITETILLER_SHARED_SETTINGS_FILE || '');
+  if (!process.env.SITETILLER_SHARED_SETTINGS_FILE) throw Error('Mail is not configured');
+  const to = mail.to || (await adminEmail(settings));
+  if (!to || !validAddress(to)) throw Error('Mail is not configured');
+  await sendMail(settings, { ...mail, to });
+}
+// The administrator's e-mail from the common settings, '' when it is not set.
+export async function adminEmail(settings: string) {
   try {
-    const result = await transport.sendMail({ ...mail, from, to });
-    if (!result.accepted?.length || result.rejected?.length) throw Error('Mail rejected');
-  } finally {
-    transport.close();
+    const shared = JSON.parse(await readFile(join(settings, 'shared.json'), 'utf8'));
+    return typeof shared.adminEmail === 'string' ? shared.adminEmail : '';
+  } catch {
+    return '';
   }
 }

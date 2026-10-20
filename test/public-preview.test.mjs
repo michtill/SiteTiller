@@ -61,7 +61,7 @@ test('SH-10: the Shell serves the public preview on its own address (and its own
       JSON.stringify({ password: passwordHash('fixture-password-12') }),
     );
     const settings = (value) =>
-      writeFile(join(root, 'settings/shared.json'), JSON.stringify({ name: 'Modrý Kocour', theme: 'green', ...value }));
+      writeFile(join(root, 'settings/shared.json'), JSON.stringify({ name: 'Modrý Kocour', theme: 'green', adminEmail: 'admin@example.test', ...value }));
     await settings({});
     const origin = 'http://127.0.0.1:' + shellPort,
       publicHost = 'localhost:' + shellPort;
@@ -159,7 +159,7 @@ test('SH-10: the Shell serves the public preview on its own address (and its own
       }).toString(),
       redirect: 'manual',
     });
-    assert.equal(saved.status, 303);
+    assert.equal(saved.status, 200);
     // Switched off: gone at once, on both.
     assert.equal((await request('/')).status, 404);
     assert.equal((await request('/', { port: previewOnlyPort })).status, 404);

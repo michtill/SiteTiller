@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { seal } from '../../apps/aistudio/src/core.ts';
 import { initialTeam } from '../../apps/aistudio/src/team.ts';
 const root = resolve(process.env.SITETILLER_INSTANCE_ROOT || '');
-if (!root.includes('next-real-integration-') || !root.startsWith(resolve('work') + sep))
+if (!root.includes('example-real-integration-') || !root.startsWith(resolve('work') + sep))
   throw Error('Fixture refuses non-disposable instance');
 const data = join(root, '.sitetiller'),
   config = JSON.parse(await readFile(join(data, 'config.json'), 'utf8'));

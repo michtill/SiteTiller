@@ -139,8 +139,9 @@ test('AI-28: generated form submits in isolated browser with honest preview feed
 test('AI-28: production runtime serves exported site and fails honestly when mail is unconfigured', async () => {
   const { websiteServer } = await import('../src/website-server.ts');
   const root = await mkdtemp(join(tmpdir(), 'form-production-')),
-    oldHost = process.env.SITETILLER_SMTP_HOST;
-  delete process.env.SITETILLER_SMTP_HOST;
+    oldSettings = process.env.SITETILLER_SHARED_SETTINGS_FILE;
+  // Common settings without Sending e-mail (documentation 2.8).
+  process.env.SITETILLER_SHARED_SETTINGS_FILE = join(root, 'settings/shared.json');
   let server: any;
   try {
     await mkdir(join(root, 'cms/data'), { recursive: true });
@@ -160,8 +161,8 @@ test('AI-28: production runtime serves exported site and fails honestly when mai
     assert.equal((await response.json()).ok, false);
   } finally {
     if (server) await new Promise<void>((r) => server.close(() => r()));
-    if (oldHost === undefined) delete process.env.SITETILLER_SMTP_HOST;
-    else process.env.SITETILLER_SMTP_HOST = oldHost;
+    if (oldSettings === undefined) delete process.env.SITETILLER_SHARED_SETTINGS_FILE;
+    else process.env.SITETILLER_SHARED_SETTINGS_FILE = oldSettings;
     await rm(root, { recursive: true, force: true });
   }
 });

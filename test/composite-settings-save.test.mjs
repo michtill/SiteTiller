@@ -111,7 +111,7 @@ test('SH-04: concurrent settings saves wait in one queue; a failed save changes 
     assert.ok(firstHtml.includes('name="name" value="First"'));
     assert.ok(firstHtml.includes('value="live" selected'));
     // The first save failed without changing the file, so the waiting save still matches and goes through.
-    assert.equal((await second).status, 303);
+    assert.equal((await second).status, 200);
     const saved = JSON.parse(await readFile(sharedPath, 'utf8'));
     assert.equal(saved.name, 'Přihlásit se');
     assert.equal(saved.language, 'en');

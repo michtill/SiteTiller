@@ -52,7 +52,7 @@ test(
   'PU-04: pre-first-publication wrapper probes fixed prepared target while public root remains503; absent/unready target blocks',
   { timeout: 60000 },
   async () => {
-    const base = await mkdtemp(join(tmpdir(), 'next-first-policy-')),
+    const base = await mkdtemp(join(tmpdir(), 'example-first-policy-')),
       root = join(base, 'production'),
       prepared = join(base, 'prepared');
     let child;
@@ -124,7 +124,7 @@ test(
   'PU-04: publisher checks externally effective target CSP before any production writes; operator override only and idle status protected',
   { timeout: 240000 },
   async () => {
-    const base = await mkdtemp(join(tmpdir(), 'next-policy-write-gate-')),
+    const base = await mkdtemp(join(tmpdir(), 'example-policy-write-gate-')),
       data = join(base, 'studio'),
       target = join(base, 'prepared'),
       production = join(base, 'production.git');

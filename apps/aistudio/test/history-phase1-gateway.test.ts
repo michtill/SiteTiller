@@ -35,7 +35,7 @@ test('HI-11: snapshot credentials bind id+commit, reject tampering/other snapsho
   }
 });
 test('HI-11: actual Shell routes signed frozen modules/JSON to dedicated preview; cookies stay private and wrong-key/bare-ID requests cannot use gateway auth', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'next-saved-gateway-')),
+  const root = await mkdtemp(join(tmpdir(), 'example-saved-gateway-')),
     previous = process.env.SITETILLER_CMS_ROOT;
   delete process.env.SITETILLER_CMS_ROOT;
   const children: any[] = [];
@@ -156,6 +156,8 @@ test('HI-11: actual Shell routes signed frozen modules/JSON to dedicated preview
     });
     const page = await browser.newPage();
     page.setDefaultTimeout(180000);
+    // Available models: AI Studio does not lead to the AI models screen by itself.
+    await page.route('**/site/api/models', (route) => route.fulfill({ json: { models: [], issues: [], optionalIssues: [] } }));
     await page.goto(origin + '/login?next=%2Fsite%2F');
     await page.locator('input[name="password"]').fill(password);
     await page.locator('button:not(.show-password)').click();
@@ -179,8 +181,6 @@ test('HI-11: actual Shell routes signed frozen modules/JSON to dedicated preview
         !document.querySelector('#workspace').hidden &&
         !document.querySelector('#workspace').hasAttribute('aria-busy'),
     );
-    await studio.waitForSelector('#settings[open]');
-    await studio.locator('#close-settings').click();
     await studio.locator('#drafts-tab').click();
     const leaseReply = page.waitForResponse((r) => r.url().endsWith('/site/api/drafts/preview'), { timeout: 180000 });
     await studio.locator('.saved-draft-card').first().click();

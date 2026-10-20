@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { Store } from '../server/store.ts';
 import { schemaSnapshot, recoverStructure } from '../server/structure.ts';
 test('ST-01: Změna struktury zachová obsah, doplní výchozí hodnoty a chrání vztahy i souběžné změny', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'tillerova-structure-'));
+  const root = await mkdtemp(join(tmpdir(), 'example-structure-'));
   try {
     await mkdir(join(root, 'schema'));
     await mkdir(join(root, 'data'));

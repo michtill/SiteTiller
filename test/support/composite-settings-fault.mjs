@@ -3,7 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { syncBuiltinESMExports } from 'node:module';
 const root = process.env.SITETILLER_INSTANCE_ROOT;
-if (!root?.includes('next-real-integration-')) throw Error('Fixture only');
+if (!root?.includes('example-real-integration-')) throw Error('Fixture only');
 const rename = fs.promises.rename;
 fs.promises.rename = async function (from, to) {
   if (String(to) === join(root, 'settings/shared.json')) {

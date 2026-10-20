@@ -38,7 +38,7 @@ test('AI-18: deterministic browser checks detect page errors and mobile overflow
     await rm(root, { recursive: true, force: true });
   }
 });
-test('CO-01: legacy settings migrate once without changing credentials/history; settings UI exposes four capabilities and two image models', async () => {
+test('CO-01: legacy settings migrate once without changing credentials/history; the studio has no settings window of its own', async () => {
   const data = await mkdtemp(join(tmpdir(), 'sitetiller-migrate-'));
   let child: any, browser: any;
   try {
@@ -108,56 +108,11 @@ test('CO-01: legacy settings migrate once without changing credentials/history; 
     await page.setExtraHTTPHeaders({ 'x-sitetiller-gateway': gateway });
     await page.goto(origin);
     await page.locator('#workspace').waitFor({ state: 'visible' });
-    await page.waitForFunction(() => !(document.getElementById('settings-button') as HTMLButtonElement).disabled);
-    if (await page.locator('#settings').isVisible()) await page.locator('#close-settings').click();
-    await page.locator('#studio-switcher summary').click();
-    await page.locator('#settings-button').click();
-    await page
-      .waitForFunction(() => document.querySelectorAll('#role-primary option').length > 4, {}, { timeout: 5000 })
-      .catch(async () => {
-        throw Error(
-          'UI diagnostics: ' +
-            JSON.stringify({
-              errors,
-              alert: await page.locator('#model-alert').textContent(),
-              options: await page.locator('#role-primary option').allTextContents(),
-            }),
-        );
-      });
-    await page.locator('#role-escalation').waitFor();
-    assert.equal(await page.locator('#role-models select[id^="role-"]').count(), 4);
-    assert.equal(await page.locator('#role-models select[id^="image-"]').count(), 2);
-    assert.equal(await page.locator('#orchestrator-model').count(), 0);
-    assert.deepEqual(await page.locator('#settings .settings-heading').allTextContents(), [
-      'API klíče',
-      'Modely pro tým',
-      'Obrazové nástroje',
-    ]);
-    assert.ok((await page.locator('#key-anthropic').locator('..').textContent()).includes('API klíč Anthropic'));
-    assert.equal(await page.locator('#settings').getByText('Claude / Anthropic', { exact: false }).count(), 0);
-    assert.equal(await page.locator('#role-primary').inputValue(), 'openai|gpt-6.1-sol');
-    assert.equal(await page.locator('#effort-primary').inputValue(), 'auto');
-    assert.equal(await page.locator('#image-precise').inputValue(), 'gpt-image-2.5-sunburst');
-    for (const width of [1280, 390]) {
-      await page.setViewportSize({ width, height: 900 });
-      const model = await page.locator('#role-primary').boundingBox(),
-        effort = await page.locator('#effort-primary').boundingBox();
-      assert.ok(model && effort);
-      assert.ok(Math.abs(model.y - effort.y) < 2);
-      assert.ok(effort.x >= model.x + model.width);
-    }
-    await page.setViewportSize({ width: 1280, height: 900 });
+    // AI models are a settings screen of the Shell (tested in test/ai-models-page.test.mjs).
+    await page.waitForFunction(() => !document.getElementById('workspace')!.hasAttribute('aria-busy'));
     assert.equal(await page.locator('#request-mode').count(), 0);
     assert.equal(await page.locator('#undo').count(), 0);
     assert.equal(await page.locator('#request-effort').count(), 0);
-    // Every team role has its own reasoning effort, including automatic.
-    assert.equal(await page.locator('#effort-ui,#effort-verify').count(), 2);
-    assert.equal(await page.locator('#effort-escalation').inputValue(), 'high');
-    assert.equal(await page.locator('#effort-escalation').isDisabled(), false);
-    assert.equal(await page.locator('#effort-escalation option[value="auto"]').count(), 1);
-    assert.equal(await page.locator('#effort-primary option[value="auto"]').count(), 1);
-    await page.locator('#settings-form button[type="submit"]').click();
-    await page.locator('#settings').waitFor({ state: 'hidden' });
     assert.deepEqual(errors, []);
     const pixel = Buffer.from(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZuoAAAAASUVORK5CYII=',

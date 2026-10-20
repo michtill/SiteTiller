@@ -16,8 +16,7 @@ import {
 } from '../packages/settings/index.mjs';
 import { settingsSiteUrl } from '../apps/aistudio/src/settings-site-url.ts';
 import { isolatedStack } from './support/stack.mjs';
-import { launchBrowser, studioFrame, openAiSettings } from './support/browser.mjs';
-let studio;
+import { launchBrowser } from './support/browser.mjs';
 test(
   'SH-09: shared address migration preserves legacy file, existing/empty authority, CAS and omitted address',
   { timeout: 10000 },
@@ -26,7 +25,7 @@ test(
     try {
       const path = join(dir, 'shared.json'),
         legacy = join(dir, 'legacy.json'),
-        initial = { name: 'Fixture', theme: 'green' };
+        initial = { name: 'Fixture', theme: 'green', adminEmail: 'admin@example.test' };
       await atomicJson(path, initial);
       await atomicJson(legacy, { siteUrl: 'https://legacy.example/a', providers: { fixture: 'unchanged' } });
       const legacyBytes = await readFile(legacy, 'utf8');
@@ -100,19 +99,19 @@ test(
           redirect: 'manual',
         });
       let saved = await save({ siteUrl: 'https://source.example/path' });
-      assert.equal(saved.status, 303);
-      assert.equal(saved.headers.get('location'), '/site/?from=settings');
+      assert.equal(saved.status, 200);
+      assert.ok((await saved.text()).includes('class="shell-back" href="/site/?from=settings"'));
       shared = await readJson(path);
       const getState = async () => await (await fetch(stack.origin + '/site/api/state', { headers })).json();
       let state = await getState();
       assert.equal(state.siteUrl, 'https://source.example/path');
       saved = await save({ name: 'Updated' });
-      assert.equal(saved.status, 303);
+      assert.equal(saved.status, 200);
       shared = await readJson(path);
       assert.equal(shared.siteUrl, 'https://source.example/path');
       const staleRevision = revision(shared);
       saved = await save({ siteUrl: '' });
-      assert.equal(saved.status, 303);
+      assert.equal(saved.status, 200);
       shared = await readJson(path);
       assert.equal((await getState()).siteUrl, '');
       assert.equal((await save({ siteUrl: 'https://stale.example/' }, staleRevision)).status, 409);
@@ -140,11 +139,10 @@ test(
       await page.goto(stack.origin + '/settings?returnTo=%2Fsite%2F');
       await page.getByRole('textbox', { name: 'Adresa skutečného webu', exact: true }).fill('https://source.example/');
       await page.getByRole('button', { name: 'Uložit', exact: true }).click();
-      await page.waitForURL(stack.origin + '/site/');
-      studio = await studioFrame(page, 'site');
-      await studio.waitForFunction(() => !document.getElementById('settings-button').disabled);
-      if (!(await studio.locator('#settings').isVisible())) await openAiSettings(studio);
-      assert.equal(await studio.locator('#site-url').count(), 0);
+      await page.getByText('Uloženo', { exact: true }).waitFor();
+      // The address lives only in the interface settings; AI models have no such field.
+      await page.goto(stack.origin + '/settings/aiapi');
+      assert.equal(await page.locator('[name=siteUrl]').count(), 0);
       assert.equal((await getState()).siteUrl, 'https://source.example/');
       assert.equal(await readFile(legacyPath, 'utf8'), legacyBefore);
     } finally {

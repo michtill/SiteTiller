@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { Project } from '../../src/project.ts';
 import { captureCmsPublication } from '../../src/cms-publication.ts';
 const data = process.env.SITETILLER_DATA_DIR!;
-if (!data.includes('next-real-integration-')) throw Error('Fixture import only');
+if (!data.includes('example-real-integration-')) throw Error('Fixture import only');
 const project = new Project(join(data, 'project'));
 await captureCmsPublication(project, process.env.SITETILLER_CMS_ROOT!);
 const base = await project.head();

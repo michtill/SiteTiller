@@ -3370,3 +3370,62 @@ aside .studio-header::after {
   font-size: 1em;
   font-weight: 600;
 }
+
+/* AI models: the same switch between the settings screens as in the Shell. */
+#settings .settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 26px;
+}
+#settings .settings-nav a {
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: var(--set-sidebar-text);
+  text-decoration: none;
+  font-size: 14px;
+}
+#settings .settings-nav a:hover {
+  background: color-mix(in srgb, var(--set-sidebar-strong) 10%, transparent);
+}
+#settings .settings-nav a[aria-current='page'] {
+  background: color-mix(in srgb, var(--set-sidebar-strong) 16%, transparent);
+  color: var(--set-sidebar-strong);
+  font-weight: 600;
+}
+/* AI models: the groups look like those of the e-mail settings. */
+#settings .settings-group {
+  margin: 22px 0 0;
+  padding: 4px 16px 16px;
+  border: 1px solid #d7ddd6;
+  border-radius: 8px;
+}
+#settings .settings-group legend {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #3d5144;
+}
+/* AI models follow the Shell's settings screens exactly: same width, group spacing and help text. */
+#settings .settings-card {
+  width: min(560px, 100%);
+}
+#settings :is(.provider-keys, .role-models) {
+  display: block;
+  margin: 0;
+}
+#settings .settings-group > :first-child:not(legend),
+#settings .settings-group > legend + * {
+  margin-top: 8px;
+}
+#settings .hint,
+#settings .settings-group p {
+  display: block;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 6px 0 0;
+  color: #788477;
+}
+#settings .settings-group .model-choice {
+  margin-top: 16px;
+}

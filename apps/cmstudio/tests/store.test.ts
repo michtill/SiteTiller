@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Store } from '../server/store.ts';
 test('ED-01: Validace vztahů, konfliktů, čistých dat, pořadí a záloh', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'tillerova-cms-'));
+  const root = await mkdtemp(join(tmpdir(), 'example-cms-'));
   try {
     await mkdir(join(root, 'schema'));
     await mkdir(join(root, 'data'));

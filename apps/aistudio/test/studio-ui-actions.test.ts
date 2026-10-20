@@ -137,7 +137,7 @@ test('HI-01: real Studio UI menu, language priority, responsive tabs, version ac
     await page.goto(origin);
     await page.waitForFunction(
       () =>
-        !document.getElementById('settings-button')!.disabled &&
+        !document.getElementById('workspace')!.hasAttribute('aria-busy') &&
         !document.querySelector('.release-actions')!.hasAttribute('hidden'),
     );
     assert.equal(await page.locator('html').getAttribute('lang'), 'cs');
@@ -147,10 +147,8 @@ test('HI-01: real Studio UI menu, language priority, responsive tabs, version ac
     assert.equal(await page.locator('.release-actions #save-draft').count(), 1);
     await page.locator('#studio-switcher summary').click();
     const labels = await page.locator('#studio-switcher nav>:is(a,button)').allTextContents();
-    assert.deepEqual(labels, ['Editor obsahu', 'AI Studio', 'Společné nastavení', 'AI modely', 'Odhlásit']);
-    await page.locator('#settings-button').click();
-    await page.locator('#settings').waitFor({ state: 'visible' });
-    await page.locator('#close-settings').click();
+    assert.deepEqual(labels, ['Editor obsahu', 'AI Studio', 'Nastavení', 'Odhlásit']);
+    await page.locator('#studio-switcher summary').click();
     await page.evaluate(() => (document.getElementById('workspace')!.style.gridTemplateColumns = '700px 1fr'));
     let ys = await page
       .locator('.workspace-tabs button')

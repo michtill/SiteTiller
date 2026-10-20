@@ -5,8 +5,7 @@ import { join } from 'node:path';
 import { catalog } from '../apps/aistudio/src/catalog.ts';
 import { allowedNetworkURL } from '../scripts/network-policy.mjs';
 import { isolatedStack } from './support/stack.mjs';
-import { launchBrowser, studioFrame, openAiSettings } from './support/browser.mjs';
-let studio;
+import { launchBrowser } from './support/browser.mjs';
 test('OP-05: provider mode allows only intended APIs; fixture offline remains explicit', () => {
   assert.equal(allowedNetworkURL('offline', 'https://api.openai.com/v1/models'), false);
   assert.equal(allowedNetworkURL('providers', 'https://api.openai.com/v1/models'), true);
@@ -106,8 +105,14 @@ test(
     }
   },
 );
-test('AI-33: UI loads models then submits and retains encrypted keys after reload', { timeout: 240000 }, async () => {
-  const { chromium } = await import('playwright');
+// AI models are a settings screen of the Shell (documentation 2.4, /settings/aiapi).
+async function signIn(page, stack) {
+  await page.goto(stack.origin + '/login');
+  await page.locator('input[name=password]').fill(stack.password);
+  await page.locator('button:not(.show-password)').click();
+  await page.waitForURL('**/content/');
+}
+test('AI-33: AI models save keys encrypted, never show them again and keep them when the fields stay empty', { timeout: 240000 }, async () => {
   const stack = await isolatedStack({
     networkMode: 'providers',
     controllerImports: ['test/fixtures/provider-catalog-mock.mjs'],
@@ -117,109 +122,56 @@ test('AI-33: UI loads models then submits and retains encrypted keys after reloa
     browser = await launchBrowser();
     const page = await browser.newPage();
     page.setDefaultTimeout(30000);
-    await page.goto(stack.origin + '/login');
-    await page.locator('input[name=password]').fill(stack.password);
-    await page.locator('button:not(.show-password)').click();
-    await page.waitForURL('**/content/');
-    studio = await studioFrame(page, 'content');
-    await page.goto(stack.origin + '/site/');
-    studio = await studioFrame(page, 'site');
-    await studio.locator('#workspace').waitFor({ state: 'visible' });
-    await studio.locator('#settings').waitFor({ state: 'visible' });
-    await studio.locator('#key-openai').fill('fixture-openai-key');
-    await studio.locator('#key-anthropic').fill('fixture-anthropic-key');
-    const catalog = page.waitForResponse(
-      (r) => r.url().endsWith('/site/api/models') && r.request().method() === 'POST',
-    );
-    await studio.locator('#check-models').click();
-    assert.equal((await catalog).status(), 200);
-    assert.equal(await studio.locator('#key-openai').inputValue(), 'fixture-openai-key');
-    assert.equal(await studio.locator('#key-anthropic').inputValue(), 'fixture-anthropic-key');
-    const save = page.waitForResponse((r) => r.url().endsWith('/site/api/settings') && r.request().method() === 'POST');
-    await studio.locator('#settings-form button[type=submit]').click();
-    const response = await save;
-    assert.equal(response.status(), 200, JSON.stringify(await response.json()));
-    await studio.locator('#settings').waitFor({ state: 'hidden' });
+    await signIn(page, stack);
+    await page.goto(stack.origin + '/settings/aiapi?returnTo=%2Fsite%2F');
+    const load = page.getByRole('button', { name: 'Uložit a načíst modely', exact: true });
+    // Save and load models appears only once a new key is typed in.
+    assert.equal(await load.isVisible(), false);
+    await page.locator('input[name=key_openai]').fill('fixture-openai-key');
+    await page.locator('input[name=key_anthropic]').fill('fixture-anthropic-key');
+    assert.equal(await load.isVisible(), true);
+    await load.click();
+    await page.getByText('Klíče jsou uložené a seznam modelů je načtený.', { exact: true }).waitFor();
+    // The keys are never sent back to the browser.
+    assert.equal(await page.locator('input[name=key_openai]').inputValue(), '');
+    assert.doesNotMatch(await page.content(), /fixture-openai-key|fixture-anthropic-key/);
+    assert.ok((await page.locator('select[name=role_primary] option').count()) > 0);
     const text = await readFile(join(stack.root, '.sitetiller/config.json'), 'utf8');
     assert.doesNotMatch(text, /fixture-openai-key|fixture-anthropic-key/);
-    await page.reload();
-    studio = await studioFrame(page, 'site');
-    await studio.locator('#workspace').waitFor({ state: 'visible' });
-    const state = await studio.evaluate(async () => await (await fetch('/site/api/state')).json());
+    const state = await (await page.request.get(stack.origin + '/site/api/state')).json();
     assert.ok(state.providers.every((p) => p.hasKey));
-    await openAiSettings(studio);
-    await studio.locator('#settings').waitFor({ state: 'visible' });
-    assert.equal(await studio.locator('#key-openai').inputValue(), '');
-    assert.equal(await studio.locator('#key-anthropic').inputValue(), '');
-    const retained = page.waitForResponse(
-      (r) => r.url().endsWith('/site/api/settings') && r.request().method() === 'POST',
-    );
-    await studio.locator('#settings-form button[type=submit]').click();
-    assert.equal((await retained).status(), 200);
-    assert.equal(await readFile(join(stack.root, '.sitetiller/config.json'), 'utf8'), text);
+    // Saving with empty key fields keeps the saved keys.
+    await page.getByRole('button', { name: 'Uložit', exact: true }).click();
+    await page.getByText('Uloženo', { exact: true }).waitFor();
+    assert.ok((await (await page.request.get(stack.origin + '/site/api/state')).json()).providers.every((p) => p.hasKey));
   } finally {
     await browser?.close();
     await stack.close();
   }
 });
-test('AI-33: delayed startup/open catalog preserves typed keys and role edits before save', { timeout: 240000 }, async () => {
-  const { chromium } = await import('playwright');
+test('AI-33: AI models save new keys and team choices together with one Save', { timeout: 240000 }, async () => {
   const stack = await isolatedStack({
     networkMode: 'providers',
     controllerImports: ['test/fixtures/provider-catalog-mock.mjs'],
   });
   let browser;
-  let release;
-  const held = new Promise((r) => (release = r));
   try {
     browser = await launchBrowser();
     const page = await browser.newPage();
     page.setDefaultTimeout(30000);
-    let getCount = 0;
-    await page.route('**/site/api/models', async (route) => {
-      if (route.request().method() === 'GET') {
-        getCount++;
-        await held;
-        await route.continue();
-      } else await route.continue();
-    });
-    await page.goto(stack.origin + '/login');
-    await page.locator('input[name=password]').fill(stack.password);
-    await page.locator('button:not(.show-password)').click();
-    await page.waitForURL('**/content/');
-    studio = await studioFrame(page, 'content');
-    await page.goto(stack.origin + '/site/');
-    studio = await studioFrame(page, 'site');
-    await studio.locator('#workspace').waitFor({ state: 'visible' });
-    await openAiSettings(studio);
-    await studio.locator('#settings').waitFor({ state: 'visible' });
-    await studio.locator('#key-openai').fill('fixture-openai-key');
-    await studio.locator('#key-anthropic').fill('fixture-anthropic-key');
-    await studio.locator('#effort-ui').selectOption('high');
-    release();
-    await studio.waitForFunction(() => document.getElementById('effort-ui').value === 'high');
-    await new Promise((r) => setTimeout(r, 500));
-    assert.ok(getCount >= 2);
-    assert.equal(await studio.locator('#key-openai').inputValue(), 'fixture-openai-key');
-    assert.equal(await studio.locator('#key-anthropic').inputValue(), 'fixture-anthropic-key');
-    assert.equal(await studio.locator('#effort-ui').inputValue(), 'high');
-    const list = page.waitForResponse((r) => r.url().endsWith('/site/api/models') && r.request().method() === 'POST');
-    await studio.locator('#check-models').click();
-    assert.equal((await list).status(), 200);
-    assert.equal(await studio.locator('#effort-ui').inputValue(), 'high');
-    const pending = page.waitForResponse(
-      (r) => r.url().endsWith('/site/api/settings') && r.request().method() === 'POST',
-    );
-    await studio.locator('#settings-form button[type=submit]').click();
-    assert.equal((await pending).status(), 200);
-    await studio.locator('#settings').waitFor({ state: 'hidden' });
-    const state = await studio.evaluate(async () => await (await fetch('/site/api/state')).json());
+    await signIn(page, stack);
+    await page.goto(stack.origin + '/settings/aiapi');
+    await page.locator('input[name=key_openai]').fill('fixture-openai-key');
+    await page.locator('input[name=key_anthropic]').fill('fixture-anthropic-key');
+    await page.locator('select[name=effort_ui]').selectOption('high');
+    await page.getByRole('button', { name: 'Uložit', exact: true }).click();
+    await page.getByText('Uloženo', { exact: true }).waitFor();
+    assert.equal(await page.locator('select[name=effort_ui]').inputValue(), 'high');
+    const state = await (await page.request.get(stack.origin + '/site/api/state')).json();
     assert.ok(state.providers.every((p) => p.hasKey));
     assert.equal(state.roles.ui.reasoningEffort, 'high');
-    const raw = await readFile(join(stack.root, '.sitetiller/config.json'), 'utf8');
-    assert.doesNotMatch(raw, /fixture-openai-key|fixture-anthropic-key/);
+    assert.doesNotMatch(await readFile(join(stack.root, '.sitetiller/config.json'), 'utf8'), /fixture-openai-key|fixture-anthropic-key/);
   } finally {
-    release();
     await browser?.close();
     await stack.close();
   }

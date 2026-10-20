@@ -15,12 +15,3 @@ export async function studioFrame(page, name) {
   await frame.waitForLoadState('domcontentloaded');
   return frame;
 }
-// AI settings live in the studio menu: open the menu, then the dialog. Without usable models (offline
-// fixtures) the studio opens the dialog by itself shortly after loading; then it is already open.
-export async function openAiSettings(frame) {
-  await frame.waitForFunction(() => !document.getElementById('settings-button')?.disabled);
-  for (let i = 0; i < 20 && !(await frame.locator('#settings[open]').count()); i++) await frame.waitForTimeout(150);
-  if (await frame.locator('#settings[open]').count()) return;
-  await frame.locator('#studio-switcher summary').click();
-  await frame.locator('#settings-button').click();
-}

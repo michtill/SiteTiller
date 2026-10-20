@@ -49,7 +49,7 @@ if (remote || remoteGit(deployment.websiteGit))
 await atomicJson(join(root, 'instance.json'), {
   ...(await readJson(join(root, 'instance.json'))),
   ...(deployment.networkMode ? { networkMode: deployment.networkMode } : {}),
-  kind: 'sitetiller-next-instance',
+  kind: 'sitetiller-instance',
   root,
   public: {
     editOrigin: deployment.editOrigin,

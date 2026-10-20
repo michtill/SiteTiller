@@ -79,8 +79,16 @@ export function validateShared(value, { current = {}, validateSiteUrl } = {}) {
       );
     }
   }
+  // The administrator's e-mail (documentation 2.8): required on the Sending e-mail screen, which saves it here.
+  if (Object.hasOwn(value, 'adminEmail')) {
+    result.adminEmail = String(value.adminEmail ?? '').trim();
+    if (!validEmail(result.adminEmail)) throw Object.assign(Error('Vyplňte platný e-mail správce.'), { status: 422 });
+  }
   return result;
 }
+// A plain e-mail address (the same rule for the administrator, the sender and form recipients).
+export const validEmail = (value) =>
+  typeof value === 'string' && value.length <= 254 && /^[^\s@<>"',;]+@[^\s@<>"',;]+\.[^\s@<>"',;]+$/.test(value);
 export async function migrateSharedSiteUrl(path, legacyPath, validateSiteUrl, fallback = '') {
   for (let attempt = 0; attempt < 3; attempt++) {
     const current = await readJson(path);

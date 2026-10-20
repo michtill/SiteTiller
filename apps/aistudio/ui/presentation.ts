@@ -217,3 +217,13 @@ export function displayMessage(event: any, translate: (value: string) => string 
 export function releaseNumber(release: any) {
   return release.number + (release.minor !== undefined ? '.' + release.minor : '');
 }
+// The offer "Do you already have a website at …?" (documentation 4.5): only for a draft that has nothing yet. Never
+// when the website at the address was published by SiteTiller itself (a release that is not an import).
+export function realityOffered(current: any) {
+  return !(
+    !current ||
+    current.hasLoadedReality ||
+    current.releases.some((r: any) => !r.imported) ||
+    (current.releases.length && (current.hasDraftSteps || current.events.length))
+  );
+}

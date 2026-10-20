@@ -1,6 +1,6 @@
 import { Project } from '../apps/aistudio/src/project.ts';
 import { restoredContent, restoreContentState, applyRestoredContent } from '../apps/aistudio/src/restore-content.ts';
-import { launchBrowser, studioFrame, openAiSettings } from './support/browser.mjs';
+import { launchBrowser, studioFrame } from './support/browser.mjs';
 let studio;
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -92,6 +92,8 @@ test(
       assert.equal((await api('/content/api/edit-mode', 'POST', { autoPublish: true }, after.token)).status, 409);
       const pointerBefore = await readFile(join(root, '.production/current.json'), 'utf8');
       assert.doesNotMatch(await (await fetch(website + '/')).text(), /Genuine CM draft/);
+      // Offline there are no usable models; answering with none keeps AI Studio from leading to AI models.
+      await page.route('**/site/api/models', (route) => route.fulfill({ json: { models: [], issues: [], optionalIssues: [] } }));
       await page.goto(origin + '/site/');
       studio = await studioFrame(page, 'site');
       await studio.locator('#workspace').waitFor({ state: 'visible' });
@@ -181,6 +183,7 @@ test(
       await page.locator('input[name=name]').fill('Shared genuine fixture');
       await page.locator('select[name=theme]').selectOption('blue');
       await page.getByRole('button', { name: 'Uložit', exact: true }).click();
+      await page.getByText('Uloženo', { exact: true }).waitFor();
       assert.equal((await readJson(join(root, 'settings/shared.json'))).name, 'Shared genuine fixture');
       await page.goto(origin + '/content/');
       studio = await studioFrame(page, 'content');

@@ -11,9 +11,10 @@ import net from 'node:net';
 import { randomBytes } from 'node:crypto';
 import { atomicJson, passwordHash, readJson } from '../packages/settings/index.mjs';
 import { services, instancePaths, instanceEnvironment, serviceEnvironment } from './instance-env.mjs';
+import { instancesDirectory } from './instances-dir.mjs';
 const repo = resolve(fileURLToPath(new URL('..', import.meta.url))),
-  instances = resolve(process.env.SITETILLER_NEXT_INSTANCES || 'C:/Dev/sitetiller-next-instances');
-const name = process.env.SITETILLER_NEXT_INSTANCE || 'playground';
+  instances = instancesDirectory();
+const name = process.env.SITETILLER_INSTANCE_NAME || 'playground';
 if (!/^[a-z][a-z0-9-]{0,40}$/.test(name)) throw Error('Invalid instance name');
 const root = join(instances, name),
   command = process.argv[2] || 'status';
@@ -62,12 +63,17 @@ if (command === 'init') {
   await cp(join(fixture, 'pages.json'), join(root, 'data/pages.json'));
   await cp(join(fixture, 'fixture.txt'), join(root, 'media/files/fixture.txt'));
   await atomicJson(join(root, 'instance.json'), {
-    kind: 'sitetiller-next-playground',
+    kind: 'sitetiller-playground',
     root,
     ports,
     networkMode: 'offline',
   });
-  await atomicJson(join(paths.settings, 'shared.json'), { name: 'SiteTiller playground', theme: 'green' });
+  // The administrator e-mail (documentation 2.4) is required; SITETILLER_ADMIN_EMAIL sets it at installation.
+  await atomicJson(join(paths.settings, 'shared.json'), {
+    name: 'SiteTiller playground',
+    theme: 'green',
+    ...(process.env.SITETILLER_ADMIN_EMAIL ? { adminEmail: process.env.SITETILLER_ADMIN_EMAIL } : {}),
+  });
   const password = randomBytes(18).toString('base64url');
   await atomicJson(join(paths.settings, 'auth.json'), { password: passwordHash(password) });
   await writeFile(join(paths.settings, 'playground-password.txt'), password + '\n', { mode: 0o600 });
@@ -127,7 +133,7 @@ if (command === 'init') {
   );
 } else if (command === 'start') {
   const instance = await readJson(join(root, 'instance.json'));
-  if (instance.kind !== 'sitetiller-next-playground' || resolve(instance.root) !== root)
+  if (instance.kind !== 'sitetiller-playground' || resolve(instance.root) !== root)
     throw Error('Not an isolated playground');
   for (const [name, entry] of services) {
     if (!existsSync(join(repo, entry))) throw Error('Missing ' + entry + '; CMStudio must be supplied by its owner.');
@@ -189,7 +195,7 @@ if (command === 'init') {
   }
 } else if (command === 'network' || command === 'restart') {
   const instance = await readJson(join(root, 'instance.json'));
-  if (instance.kind !== 'sitetiller-next-playground' || resolve(instance.root) !== root)
+  if (instance.kind !== 'sitetiller-playground' || resolve(instance.root) !== root)
     throw Error('Not an isolated instance');
   const records = await readJson(join(root, 'processes.json')).catch(() => []),
     controller = records.find((r) => r.name === 'aistudio');

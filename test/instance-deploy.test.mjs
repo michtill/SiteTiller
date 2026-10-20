@@ -84,7 +84,7 @@ test('OP-03: adopting a copied instance keeps its draft and switches to the serv
     await settings(root);
     await writeFile(
       join(root, 'instance.json'),
-      JSON.stringify({ kind: 'sitetiller-next-playground', root: 'C:\\old', ports, networkMode: 'providers' }),
+      JSON.stringify({ kind: 'sitetiller-playground', root: 'C:\\old', ports, networkMode: 'providers' }),
     );
     const draft = new Project(join(root, '.sitetiller', 'project'));
     await draft.init(null);
@@ -115,13 +115,13 @@ test('OP-03: adopting a copied instance keeps its draft and switches to the serv
     await mkdir(join(root, '.cms-publication/releases/r1'), { recursive: true });
     await writeFile(
       join(root, '.cms-publication/current.json'),
-      JSON.stringify({ id: 'r1', directory: 'C:\\Dev\\play\\.cms-publication\\releases\\r1' }),
+      JSON.stringify({ id: 'r1', directory: 'C:\\Example\\play\\.cms-publication\\releases\\r1' }),
     );
     const deployment = join(base, 'deployment.json');
     await writeFile(
       deployment,
       JSON.stringify({
-        sourceRoot: 'C:\\Dev\\play',
+        sourceRoot: 'C:\\Example\\play',
         editOrigin: 'https://edit.example.cz',
         siteUrl: 'https://example.cz/',
         productionGit: git,
@@ -136,7 +136,7 @@ test('OP-03: adopting a copied instance keeps its draft and switches to the serv
       events = JSON.parse(await readFile(join(root, '.sitetiller/events.json'), 'utf8')),
       cms = JSON.parse(await readFile(join(root, '.cms-publication/current.json'), 'utf8')),
       current = JSON.parse(await readFile(join(root, '.production/current.json'), 'utf8'));
-    assert.equal(instance.kind, 'sitetiller-next-instance');
+    assert.equal(instance.kind, 'sitetiller-instance');
     assert.equal(instance.root, root);
     assert.equal(instance.public.editOrigin, 'https://edit.example.cz');
     assert.equal(JSON.parse(await readFile(join(root, 'settings/shared.json'), 'utf8')).siteUrl, 'https://example.cz/');
@@ -226,7 +226,7 @@ test('OP-07: onto a production Git without SiteTiller versions, adopting publish
     await settings(root);
     await writeFile(
       join(root, 'instance.json'),
-      JSON.stringify({ kind: 'sitetiller-next-playground', root: 'C:\old', ports, networkMode: 'providers' }),
+      JSON.stringify({ kind: 'sitetiller-playground', root: 'C:\old', ports, networkMode: 'providers' }),
     );
     const draft = new Project(join(root, '.sitetiller', 'project'));
     await draft.init(null);
@@ -237,7 +237,7 @@ test('OP-07: onto a production Git without SiteTiller versions, adopting publish
     await writeFile(
       deployment,
       JSON.stringify({
-        sourceRoot: 'C:\Dev\play',
+        sourceRoot: 'C:\Example\play',
         editOrigin: 'https://edit.example.cz',
         siteUrl: 'https://example.cz/',
         productionGit: git,
@@ -328,7 +328,7 @@ test('OP-07: an empty production Git (a new hosting repository) gets the draft a
     await settings(root);
     await writeFile(
       join(root, 'instance.json'),
-      JSON.stringify({ kind: 'sitetiller-next-playground', root: 'C:\old', ports, networkMode: 'providers' }),
+      JSON.stringify({ kind: 'sitetiller-playground', root: 'C:\old', ports, networkMode: 'providers' }),
     );
     const draft = new Project(join(root, '.sitetiller', 'project'));
     await draft.init(null);
@@ -338,7 +338,7 @@ test('OP-07: an empty production Git (a new hosting repository) gets the draft a
     await writeFile(
       deployment,
       JSON.stringify({
-        sourceRoot: 'C:\Dev\play',
+        sourceRoot: 'C:\Example\play',
         editOrigin: 'https://edit.example.cz',
         siteUrl: 'https://example.cz/',
         productionGit: git,
@@ -374,6 +374,7 @@ test('OP-09: a new server instance is empty, reaches the providers, shows its pa
         siteUrl: 'https://example.cz/',
         presentation: 'external',
         websiteGit: git,
+        adminEmail: 'admin@example.cz',
       }),
     );
     const create = () =>
@@ -386,7 +387,9 @@ test('OP-09: a new server instance is empty, reaches the providers, shows its pa
       shared = JSON.parse(await readFile(join(root, 'settings/shared.json'), 'utf8')),
       schema = JSON.parse(await readFile(join(root, 'schema/structure.json'), 'utf8')),
       config = JSON.parse(await readFile(join(root, '.sitetiller/config.json'), 'utf8'));
-    assert.equal(instance.kind, 'sitetiller-next-instance');
+    assert.equal(instance.kind, 'sitetiller-instance');
+    // The administrator e-mail is set at installation (documentation 2.4).
+    assert.equal(shared.adminEmail, 'admin@example.cz');
     assert.equal(instance.networkMode, 'providers');
     assert.equal(instance.public.presentation, 'external');
     assert.equal(instance.public.websiteGit, git);

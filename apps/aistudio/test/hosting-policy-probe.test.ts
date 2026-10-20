@@ -105,7 +105,7 @@ test('PU-04: preflight has exact ten-second abort deadline and no retry fallback
   }
 });
 test('PU-04: website endpoint probes fixed runtime root and returns only CSP/status/no-store, HEAD-only', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'next-host-policy-')),
+  const root = await mkdtemp(join(tmpdir(), 'example-host-policy-')),
     server = websiteServer(root, 'http://127.0.0.1');
   try {
     await writeFile(join(root, 'index.html'), 'Prepared target body must not be returned');

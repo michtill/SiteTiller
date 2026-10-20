@@ -50,8 +50,8 @@ test(
           body: new URLSearchParams({ returnTo: destination, revision, name: 'Fixture', theme: 'green' }),
           redirect: 'manual',
         });
-        assert.equal(saved.status, 303);
-        assert.equal(saved.headers.get('location'), safe);
+        assert.equal(saved.status, 200);
+        assert.ok((await saved.text()).includes('class="shell-back" href="' + safe + '"'));
       }
       browser = await launchBrowser();
       const page = await browser.newPage();
@@ -65,6 +65,8 @@ test(
         await route.continue();
       });
       await page.route('**/site/api/design-content-status', (route) => route.fulfill({ json: { unpublished: true } }));
+      // Available models: AI Studio does not lead to the AI models screen by itself.
+      await page.route('**/site/api/models', (route) => route.fulfill({ json: { models: [], issues: [], optionalIssues: [] } }));
       await page.goto(stack.origin + '/site/?origin=test', { waitUntil: 'domcontentloaded' });
       let ai = await studioFrame(page, 'site');
       await ai.locator('#workspace').waitFor({ state: 'visible' });
@@ -76,7 +78,7 @@ test(
         /returnTo=%2Fsite%2F%3Forigin%3Dtest/,
       );
       release();
-      await ai.waitForFunction(() => !document.getElementById('settings-button').disabled);
+      await ai.waitForFunction(() => !document.getElementById('workspace')?.hasAttribute('aria-busy'));
       assert.equal(await ai.locator('#cms-preview-source').inputValue(), 'unpublished');
       assert.equal(await ai.locator('#prompt-form').evaluate((n) => n.inert), false);
       assert.equal(await ai.locator('#workspace').getAttribute('aria-busy'), null);
@@ -85,9 +87,7 @@ test(
           await page.goto(stack.origin + source, { waitUntil: 'domcontentloaded' });
           if (source.startsWith('/site/')) {
             ai = await studioFrame(page, 'site');
-            await ai.waitForFunction(() => !document.getElementById('settings-button').disabled);
-            for (let i = 0; i < 20 && !(await ai.locator('#settings[open]').count()); i++) await ai.waitForTimeout(150);
-            if (await ai.locator('#settings[open]').count()) await ai.locator('#close-settings').click();
+            await ai.waitForFunction(() => !document.getElementById('workspace')?.hasAttribute('aria-busy'));
             await ai.locator('#studio-switcher summary').click();
             await ai.locator('#shared-settings-link').click();
           } else if (source.includes('/structure')) {
@@ -95,12 +95,16 @@ test(
           } else {
             const cm = await studioFrame(page, 'content');
             await cm.locator('.studio-switcher summary').click();
-            await cm.getByText('Společné nastavení', { exact: true }).click();
+            await cm.locator('#shared-settings-link').click();
           }
           await page.waitForURL('**/settings?**');
           assert.equal(await page.locator('input[name=returnTo]').inputValue(), source);
-          if (action === 'back') await page.getByRole('link', { name: 'Zpět', exact: true }).click();
-          else await page.getByRole('button', { name: 'Uložit', exact: true }).click();
+          // Save only saves (the screen stays open); Back returns where the user came from.
+          if (action === 'save') {
+            await page.getByRole('button', { name: 'Uložit', exact: true }).click();
+            await page.getByText('Uloženo', { exact: true }).waitFor();
+          }
+          await page.getByRole('link', { name: 'Zpět', exact: true }).click();
           await page.waitForURL(stack.origin + source);
         }
       }

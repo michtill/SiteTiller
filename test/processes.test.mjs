@@ -12,8 +12,8 @@ test(
     );
     assert.equal(stdout.trim(), 'fixture-ok');
     const code =
-      "const {spawn}=require('node:child_process');const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)','next-owned-process-fixture'],{windowsHide:true,stdio:'ignore'});console.log(child.pid);setInterval(()=>{},1000)";
-    const child = spawnHidden(process.execPath, ['-e', code, 'next-owned-process-fixture'], {
+      "const {spawn}=require('node:child_process');const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)','example-owned-process-fixture'],{windowsHide:true,stdio:'ignore'});console.log(child.pid);setInterval(()=>{},1000)";
+    const child = spawnHidden(process.execPath, ['-e', code, 'example-owned-process-fixture'], {
       stdio: ['ignore', 'pipe', 'ignore'],
     });
     let descendant;
@@ -25,7 +25,7 @@ test(
       assert.ok(Number.isInteger(descendant));
       const before = await windowsProcesses([child.pid, descendant]);
       assert.equal(before.length, 2);
-      assert.ok(before.every((p) => p.command.includes('next-owned-process-fixture')));
+      assert.ok(before.every((p) => p.command.includes('example-owned-process-fixture')));
       await stopOwnedChild(child);
       assert.deepEqual(await windowsProcesses([child.pid, descendant]), []);
     } finally {

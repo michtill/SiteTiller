@@ -319,3 +319,90 @@ button.show-password[aria-pressed='true'] .eye-open,
 button.show-password:not([aria-pressed='true']) .eye-closed {
   display: none;
 }
+
+/* Common settings: the link to Sending e-mail right under the administrator's e-mail, with its warning. */
+.mail-link {
+  margin: 8px 0 0;
+  font-size: 14px;
+}
+.warning {
+  color: #9a5b00;
+}
+.notice {
+  color: #2f6b45;
+}
+/* A second action next to the main one (Send a test e-mail). */
+button.secondary {
+  background: transparent;
+  color: inherit;
+  border: 1px solid currentColor;
+}
+/* Sending e-mail: the e-mail addresses and the SMTP server as two groups. */
+fieldset {
+  margin: 22px 0 0;
+  padding: 4px 16px 16px;
+  border: 1px solid #d7ddd6;
+  border-radius: 8px;
+}
+legend {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #3d5144;
+}
+/* The settings screens: one switch in the side band, the open screen highlighted. */
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 26px;
+}
+.settings-nav a {
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: var(--sidebar-text);
+  text-decoration: none;
+  font-size: 14px;
+}
+.settings-nav a:hover {
+  background: color-mix(in srgb, var(--sidebar-strong) 10%, transparent);
+}
+.settings-nav a[aria-current='page'] {
+  background: color-mix(in srgb, var(--sidebar-strong) 16%, transparent);
+  color: var(--sidebar-strong);
+  font-weight: 600;
+}
+/* AI models: the model and its reasoning effort side by side under one label. */
+.model-row {
+  display: flex;
+  gap: 10px;
+}
+.model-row select:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.model-row select:last-child {
+  flex: 0 0 190px;
+}
+@media (max-width: 760px) {
+  .model-row {
+    flex-direction: column;
+    gap: 0;
+  }
+  .model-row select:last-child {
+    flex-basis: auto;
+  }
+}
+/* E-mails not set up yet: a mark beside the item in the settings band. */
+.nav-warning {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 8px;
+  border-radius: 50%;
+  background: #d98a00;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}

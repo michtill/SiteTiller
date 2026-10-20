@@ -13,3 +13,5 @@ work/
 *.p12
 *.pfx
 .volumes
+# Machine-local settings (for example where the local instances live).
+.sitetiller-local.json

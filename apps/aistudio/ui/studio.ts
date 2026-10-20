@@ -437,12 +437,9 @@ export async function checkModels(autoOpen = false) {
     if (autoOpen) openForIssues([t('cannot_verify_model_availability')]);
   }
 }
-let settingsOpener: (load: boolean) => void = () => {};
-export function useSettingsOpener(open: (load: boolean) => void) {
-  settingsOpener = open;
-}
-export function openSettingsDialog(load = true) {
-  settingsOpener(load);
+// AI models are a settings screen of the Shell (documentation 2.10); Back returns to AI Studio.
+export function openSettingsDialog(_load = true) {
+  navigateStudio('/settings/aiapi?returnTo=' + encodeURIComponent('/site/'));
 }
 
 export async function afterRender() {

@@ -9,7 +9,7 @@ import { readJson, revision, validateShared } from '../packages/settings/index.m
 import { sharedLanguage } from '../packages/settings/shared-ui.mjs';
 import { renderPage } from '../apps/shell/pages.ts';
 test('I18-01: shared cs/en validates without migration; HTML language overrides browser-local preference and preserves authored names', async () => {
-  const old = { name: 'Přihlásit se', theme: 'green', siteUrl: '' };
+  const old = { name: 'Přihlásit se', theme: 'green', siteUrl: '', adminEmail: 'admin@example.test' };
   assert.equal(sharedLanguage(old), 'cs');
   assert.equal(validateShared({ ...old, language: 'en' }, { current: old, validateSiteUrl: (v) => v }).language, 'en');
   assert.throws(() => validateShared({ ...old, language: 'xx' }, { current: old, validateSiteUrl: (v) => v }));
@@ -57,8 +57,9 @@ test('SH-03: real shared settings use CM authority/CAS, return destination, shar
       }),
       redirect: 'manual',
     });
-    assert.equal(r.status, 303);
-    assert.equal(r.headers.get('location'), '/site/');
+    assert.equal(r.status, 200);
+    // Save only saves: the screen stays open and Back still leads where the user came from.
+    assert.ok((await r.text()).includes('class="shell-back" href="/site/"'));
     const cmOrigin = 'http://127.0.0.1:' + stack.ports.cmstudio;
     assert.equal((await readJson(join(stack.root, 'settings/shared.json'))).contentDefault, 'live');
     assert.equal(await readFile(join(stack.root, '.production/current.json'), 'utf8'), beforePublic);
@@ -82,25 +83,25 @@ test('SH-03: real shared settings use CM authority/CAS, return destination, shar
       }),
       redirect: 'manual',
     });
-    assert.equal(r.status, 303);
+    assert.equal(r.status, 200);
     browser = await launchBrowser();
     const page = await browser.newPage();
     await page.context().addCookies([{ name: sessionCookie(stack.origin), value: cookie.split('=')[1], url: stack.origin }]);
     await page.route('**/site/api/models', (route) =>
       route.fulfill({ json: { models: [], issues: [], optionalIssues: [] } }),
     );
-    await page.goto(stack.origin + '/site/?settings=ai');
+    // AI models are a settings screen of the Shell, in the shared language.
+    await page.goto(stack.origin + '/settings/aiapi?returnTo=%2Fsite%2F');
+    assert.equal(await page.locator('html').getAttribute('lang'), 'en');
+    assert.equal(await page.locator('h1').textContent(), 'AI models');
+    await page.getByRole('link', { name: 'Back', exact: true }).click();
     const ai = await studioFrame(page, 'site');
-    await ai.locator('#settings').waitFor({ state: 'visible' });
     assert.equal(await ai.locator('html').getAttribute('data-shared-language'), 'en');
-    assert.equal(await ai.locator('#interface-language').count(), 0);
-    await ai.locator('#close-settings').click();
     await ai.locator('#studio-switcher summary').click();
     assert.deepEqual(await ai.locator('#studio-switcher nav>:is(a,button)').allTextContents(), [
       'Content editor',
       'AI Studio',
-      'Common settings',
-      'AI models',
+      'Settings',
       'Log out',
     ]);
     assert.equal(await ai.locator('#shared-settings-link').getAttribute('href'), '/settings?returnTo=%2Fsite%2F');
@@ -110,8 +111,7 @@ test('SH-03: real shared settings use CM authority/CAS, return destination, shar
     assert.deepEqual(await cm.locator('.studio-switcher nav>:is(a,button)').allTextContents(), [
       'Content editor',
       'AI Studio',
-      'Common settings',
-      'AI models',
+      'Settings',
       'Log out',
     ]);
     const content = await (await fetch(stack.origin + '/content/', { headers })).text();
@@ -142,7 +142,7 @@ test('SH-03: real shared settings use CM authority/CAS, return destination, shar
       redirect: 'manual',
     });
     // The default is only a setting: it saves even with unpublished changes and does not switch the open Editor.
-    assert.equal(r.status, 303);
+    assert.equal(r.status, 200);
     assert.notEqual(await readFile(join(stack.root, 'settings/shared.json'), 'utf8'), sharedBefore);
     assert.equal((await readJson(join(stack.root, 'settings/shared.json'))).contentDefault, 'live');
     assert.equal((await (await fetch(cmOrigin + '/api/edit-mode')).json()).autoPublish, false);

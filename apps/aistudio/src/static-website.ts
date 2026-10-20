@@ -11,6 +11,8 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { readRelease, staticExport } from './static-export.ts';
 import { atomicJson } from '../../../packages/settings/index.mjs';
+import { mailSettings } from '../../../packages/settings/mail.mjs';
+import { adminEmail } from './contact-forms.ts';
 const exec = promisify(execFile);
 export const websiteGit = () => process.env.SITETILLER_WEBSITE_GIT || '';
 const branch = () => process.env.SITETILLER_WEBSITE_BRANCH || 'main';
@@ -58,13 +60,19 @@ async function writeWebsite({ force = false }: { force?: boolean }) {
     throw e;
   }
 }
+async function websiteMail() {
+  const settings = process.env.SITETILLER_SHARED_SETTINGS_FILE ? dirname(process.env.SITETILLER_SHARED_SETTINGS_FILE) : '';
+  if (!settings) return {};
+  const mail = await mailSettings(settings);
+  return { mailFrom: mail.from || undefined, mailTo: (await adminEmail(settings)) || undefined };
+}
 async function write(previous: any, force: boolean) {
   const target = websiteGit(),
     pointer = JSON.parse(await readFile(join(production(), 'current.json'), 'utf8')),
     files = await staticExport(await readRelease(pointer.directory), {
       siteUrl: process.env.SITETILLER_SITE_URL || 'http://localhost/',
-      mailFrom: process.env.SITETILLER_MAIL_FROM,
-      mailTo: process.env.SITETILLER_MAIL_TO,
+      // Sender from Sending e-mail and the administrator's e-mail as the default recipient (documentation 7.7).
+      ...(await websiteMail()),
     });
   // A local copy of the website Git to build commits in.
   const cache = join(production(), 'website.git'),

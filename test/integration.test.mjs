@@ -1,5 +1,5 @@
 import { stopOwnedChild } from '../scripts/processes.mjs';
-import { launchBrowser, studioFrame, openAiSettings } from './support/browser.mjs';
+import { launchBrowser, studioFrame } from './support/browser.mjs';
 let studio;
 import { pathToFileURL } from 'node:url';
 import { test } from 'node:test';
@@ -34,7 +34,7 @@ async function ready(port, child) {
   throw Error('Timeout on ' + port);
 }
 test('SH-04: shared settings CAS rejects simultaneous stale writers', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'next-settings-'));
+  const dir = await mkdtemp(join(tmpdir(), 'example-settings-'));
   try {
     const path = join(dir, 'shared.json'),
       old = { name: 'Original', theme: 'green' };
@@ -53,7 +53,7 @@ test(
   'IN-01: shell, real AI/preview/website use isolated fixture content and shell-owned auth',
   { timeout: 90000 },
   async () => {
-    const base = await mkdtemp(join(tmpdir(), 'sitetiller-next-integration-')),
+    const base = await mkdtemp(join(tmpdir(), 'example-integration-')),
       root = join(base, 'playground'),
       children = [];
     let cms;
@@ -61,7 +61,7 @@ test(
       await execute(process.execPath, ['scripts/playground.mjs', 'init'], {
         windowsHide: true,
         cwd: repo,
-        env: { ...process.env, SITETILLER_NEXT_INSTANCES: base },
+        env: { ...process.env, SITETILLER_INSTANCES: base, SITETILLER_ADMIN_EMAIL: 'admin@example.test' },
         timeout: 30000,
       });
       const ports = {};
@@ -237,6 +237,8 @@ test(
         await page.locator('button:not(.show-password)').first().click();
         await page.waitForURL('**/content/');
         studio = await studioFrame(page, 'content');
+        // Offline there are no usable models; answering with none keeps AI Studio from leading to AI models.
+        await page.route('**/site/api/models', (route) => route.fulfill({ json: { models: [], issues: [], optionalIssues: [] } }));
         await page.goto(origin + '/site/');
         studio = await studioFrame(page, 'site');
         await studio.locator('#workspace').waitFor({ state: 'visible' });
@@ -244,8 +246,8 @@ test(
         await studio.waitForFunction(() => document.getElementById('preview').src.includes('/preview/access/'));
         await studio.frameLocator('#preview').locator('h1').waitFor();
         assert.equal(await studio.frameLocator('#preview').locator('h1').textContent(), 'SiteTiller playground');
-        if (!(await studio.locator('#settings').isVisible())) await openAiSettings(studio);
-        await studio.locator('#settings').waitFor({ state: 'visible' });
+        await page.goto(origin + '/settings/aiapi?returnTo=%2Fsite%2F');
+        await page.locator('h1').filter({ hasText: 'AI modely' }).waitFor();
         assert.equal(errors.length, 0, errors.join('\n'));
       } finally {
         await browser.close();

@@ -15,6 +15,7 @@ import {
 import { settingsReturnTo } from './settings-return.mjs';
 import { servePublicPreview } from './public-preview.ts';
 import { sessionCookie } from './session-cookie.mjs';
+import { mailSettings, saveMailSettings, sendMail, validEmail } from '../../packages/settings/mail.mjs';
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -81,6 +82,44 @@ async function shared() {
     site: typeof settings.name === 'string' && settings.name.trim() ? settings.name.trim() : 'SiteTiller',
   };
 }
+const settingsDirectory = join(data, 'settings'),
+  resetFile = join(settingsDirectory, 'password-reset.json');
+async function adminEmail() {
+  try {
+    const value = (await readJson(join(settingsDirectory, 'shared.json'))).adminEmail;
+    return validEmail(value) ? value : '';
+  } catch {
+    return '';
+  }
+}
+// The password reset (documentation 2.9) needs the administrator's e-mail and a configured mail server.
+async function resetAvailable() {
+  return !!(await adminEmail()) && (await mailSettings(settingsDirectory)).configured;
+}
+// One reset link at a time: only its SHA-256 and expiry are stored, with the send times of the last hour.
+async function resetState() {
+  try {
+    const value = await readJson(resetFile);
+    return { token: value.token || '', expires: Number(value.expires) || 0, sent: (value.sent || []).filter((at: number) => at > Date.now() - 3600000) };
+  } catch {
+    return { token: '', expires: 0, sent: [] as number[] };
+  }
+}
+async function readForm(req: http.IncomingMessage) {
+  let text = '';
+  for await (const part of req) {
+    text += part;
+    if (Buffer.byteLength(text) > 4000) throw Object.assign(Error('Too large'), { status: 413 });
+  }
+  return new URLSearchParams(text);
+}
+// Signs out everywhere: a new password ends every session and preview access.
+async function endSessions() {
+  sessions.clear();
+  previewAccess.clear();
+  issuedPreviewKeys.clear();
+  await persistSessions();
+}
 http
   .createServer(async (req, res) => {
     try {
@@ -106,7 +145,14 @@ http
           override: Partial<typeof look> = {},
         ) => {
           res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });
-          res.end(await renderPage(name, props, { ...look, ...override }));
+          // Settings screens mark E-mails in the side band until sending e-mail is set up (documentation 2.8).
+          const settingsScreen = ['settings', 'mail', 'aiapi', 'password'].includes(name);
+          res.end(
+            await renderPage(name, settingsScreen ? { ...props, mailWarning: !(await resetAvailable()) } : props, {
+              ...look,
+              ...override,
+            }),
+          );
         };
       const url = new URL(req.url || '/', origin);
       const previewForm =
@@ -166,6 +212,7 @@ http
           return page(401, 'login', {
             action: '/login?next=' + encodeURIComponent(destination),
             error: t('incorrect_password'),
+            resetAvailable: await resetAvailable(),
           });
         }
         attempts.delete(ip);
@@ -184,7 +231,8 @@ http
       }
       if (url.pathname === '/password') {
         if (!token) return redirect('/login?next=%2Fcontent%2F');
-        let error = '';
+        let error = '',
+          passwordReturnTo = url.searchParams.get('returnTo');
         if (req.method === 'POST') {
           let text = '';
           for await (const part of req) {
@@ -195,6 +243,7 @@ http
             }
           }
           const params = new URLSearchParams(text);
+          passwordReturnTo = params.get('returnTo');
           let result: any = {},
             ok = false;
           const current = params.get('currentPassword') || '',
@@ -246,7 +295,7 @@ http
           }
           error = typeof result.error === 'string' ? result.error : t('password_change_failed');
         }
-        return page(200, 'password', { error });
+        return page(200, 'password', { error, returnTo: settingsReturnTo(passwordReturnTo) });
       }
       if (url.pathname === '/logout') {
         if (token) {
@@ -257,9 +306,61 @@ http
         res.setHeader('Set-Cookie', cookieName + '=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');
         return redirect('/login');
       }
+      // Forgot password (documentation 2.9): one button, the link goes to the administrator's e-mail.
+      if (url.pathname === '/forgot') {
+        const available = await resetAvailable();
+        if (req.method !== 'POST') return page(200, 'forgot', { available, error: '', notice: '' });
+        await readForm(req);
+        if (!available) return page(200, 'forgot', { available, error: '', notice: '' });
+        const state = await resetState();
+        if (state.sent.length >= 3) return page(429, 'forgot', { available, error: t('reset_link_limit'), notice: '' });
+        const secretToken = randomBytes(32).toString('hex'),
+          link = origin + '/reset/' + secretToken;
+        try {
+          await sendMail(settingsDirectory, {
+            to: await adminEmail(),
+            subject: translate('reset_email_subject', language, { site: look.site }),
+            text: translate('reset_email_body', language, { link }),
+          });
+        } catch (e: any) {
+          console.error('Password reset e-mail not sent: ' + (e.code || e.name));
+          return page(502, 'forgot', { available, error: t('reset_link_failed'), notice: '' });
+        }
+        await atomicJson(resetFile, { token: hashed(secretToken), expires: Date.now() + 1800000, sent: [...state.sent, Date.now()] });
+        return page(200, 'forgot', { available, error: '', notice: t('reset_link_sent') });
+      }
+      const resetMatch = url.pathname.match(/^\/reset\/([a-f0-9]{64})$/);
+      if (resetMatch) {
+        const state = await resetState(),
+          action = '/reset/' + resetMatch[1],
+          valid = !!state.token && state.token === hashed(resetMatch[1]) && state.expires > Date.now();
+        if (!valid) return page(410, 'reset', { valid: false, action, error: '' });
+        if (req.method !== 'POST') return page(200, 'reset', { valid, action, error: '' });
+        const params = await readForm(req),
+          next = params.get('newPassword') || '';
+        if (next.length < 8 || next.length > 256 || next !== (params.get('confirmPassword') || ''))
+          return page(422, 'reset', { valid, action, error: t('new_password_requirements') });
+        const config = await readJson(join(settingsDirectory, 'auth.json'));
+        await updateSettings(join(settingsDirectory, 'auth.json'), { ...config, password: passwordHash(next) }, revision(config));
+        await atomicJson(resetFile, { token: '', expires: 0, sent: state.sent });
+        await endSessions();
+        // The new password signs the user in at once.
+        const session = randomBytes(32).toString('hex');
+        sessions.set(hashed(session), Date.now() + 8 * 3600000);
+        await persistSessions();
+        res.setHeader(
+          'Set-Cookie',
+          cookieName + '=' + session + '; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800' + (origin.startsWith('https:') ? '; Secure' : ''),
+        );
+        return redirect('/content/');
+      }
       if (!token && !previewForm && !hasPreviewAccess) {
         if (url.pathname !== '/login') return redirect('/login?next=' + encodeURIComponent(url.pathname + url.search));
-        return page(200, 'login', { action: '/login?next=' + encodeURIComponent(destination), error: '' });
+        return page(200, 'login', {
+          action: '/login?next=' + encodeURIComponent(destination),
+          error: '',
+          resetAvailable: await resetAvailable(),
+        });
       }
       if (url.pathname === '/login') return redirect('/');
       if (url.pathname === '/') return page(200, 'home');
@@ -268,6 +369,7 @@ http
         const path = join(data, 'settings/shared.json');
         let current = await readJson(path),
           error = '',
+          notice = '',
           returnTo = settingsReturnTo(url.searchParams.get('returnTo')),
           entered: any = null;
         if (req.method === 'POST') {
@@ -281,7 +383,9 @@ http
           }
           const input = new URLSearchParams(body);
           entered = Object.fromEntries(
-            [...input].filter(([key]) => ['name', 'theme', 'language', 'siteUrl', 'contentDefault'].includes(key)),
+            [...input].filter(([key]) =>
+              ['name', 'theme', 'language', 'siteUrl', 'contentDefault'].includes(key),
+            ),
           );
           // An unchecked box sends nothing; the form marks that it offered the switch.
           if (publicPreviewOrigin && input.has('publicPreviewOffered'))
@@ -305,7 +409,10 @@ http
                 throw Object.assign(Error('Nastavení se mezitím změnilo.'), { status: 409 });
               await updateSettings(path, candidate, input.get('revision'));
             });
-            return redirect(returnTo);
+            // Save only saves; Back leaves the settings.
+            current = await readJson(path);
+            entered = null;
+            notice = t('saved');
           } catch (e: any) {
             error = e.message;
             res.statusCode = e.status || 500;
@@ -327,12 +434,171 @@ http
           {
             fields,
             error: error ? settingsError(error, shown) : '',
+            notice: notice ? translate('saved', shown) : '',
             returnTo,
             revision: revision(current),
             publicPreviewUrl: publicPreviewOrigin ? publicPreviewOrigin + '/' : '',
+            mailConfigured: await resetAvailable(),
           },
           { language: shown },
         );
+      }
+
+      // Sending e-mail with the administrator's e-mail (documentation 2.8): everything about mail on one screen.
+      if (url.pathname === '/settings/mail') {
+        let error = '',
+          notice = '',
+          mail = await mailSettings(settingsDirectory),
+          shownAdmin = await adminEmail(),
+          mailReturnTo = url.searchParams.get('returnTo');
+        if (req.method === 'POST') {
+          const input = await readForm(req);
+          mailReturnTo = input.get('returnTo');
+          shownAdmin = (input.get('adminEmail') || '').trim();
+          try {
+            const sharedPath = join(settingsDirectory, 'shared.json');
+            await withSharedSettingsSave(sharedPath, async () => {
+              const current = await readJson(sharedPath),
+                candidate = validateShared({ name: current.name, theme: current.theme, adminEmail: shownAdmin }, { current });
+              await updateSettings(sharedPath, candidate, revision(current));
+            });
+            mail = await saveMailSettings(settingsDirectory, Object.fromEntries(input));
+            notice = t('mail_settings_saved');
+            if (input.get('action') === 'test') {
+              const to = await adminEmail();
+              if (!to) throw Object.assign(Error(t('test_email_needs_admin')), { test: true });
+              try {
+                await sendMail(settingsDirectory, {
+                  to,
+                  subject: translate('test_email_subject', language, { site: look.site }),
+                  text: translate('test_email_body', language, { site: look.site }),
+                });
+                notice = translate('test_email_sent', language, { email: to });
+              } catch (e: any) {
+                throw Object.assign(Error(translate('test_email_failed', language, { detail: e.message })), { test: true });
+              }
+            }
+          } catch (e: any) {
+            error = e.test ? e.message : settingsError(e.message, language);
+            notice = '';
+            res.statusCode = e.test ? 200 : e.status || 500;
+          }
+        }
+        return page(res.statusCode || 200, 'mail', {
+          mail,
+          adminEmail: shownAdmin,
+          error,
+          notice,
+          returnTo: settingsReturnTo(mailReturnTo),
+        });
+      }
+
+      // AI models (documentation 2.10): the AI Studio's keys, team models and image tools, edited here.
+      if (url.pathname === '/settings/aiapi') {
+        let error = '',
+          notice = '',
+          back = url.searchParams.get('returnTo');
+        const ai = async (path: string, value?: unknown) => {
+          const response = await fetch('http://127.0.0.1:' + process.env.AISTUDIO_PORT + '/api/' + path, {
+            method: value === undefined ? 'GET' : 'POST',
+            headers: {
+              'x-sitetiller-gateway': secret,
+              origin: 'http://127.0.0.1:' + process.env.AISTUDIO_PORT,
+              'content-type': 'application/json',
+            },
+            ...(value === undefined ? {} : { body: JSON.stringify(value) }),
+            signal: AbortSignal.timeout(60000),
+          });
+          const result: any = await response.json().catch(() => ({}));
+          if (!response.ok) throw Error(result.error || t('studio_starting'));
+          return result;
+        };
+        let entered: any = null;
+        if (req.method === 'POST') {
+          const input = await readForm(req);
+          back = input.get('returnTo');
+          const roles = Object.fromEntries(
+            ['primary', 'ui', 'verify', 'escalation'].map((role) => {
+              const value = input.get('role_' + role) || '',
+                separator = value.indexOf('|');
+              return [
+                role,
+                { provider: value.slice(0, separator), model: value.slice(separator + 1), reasoningEffort: input.get('effort_' + role) || 'auto' },
+              ];
+            }),
+          );
+          entered = { roles, imageModels: { precise: input.get('image_precise') || 'none', fast: input.get('image_fast') || 'none' } };
+          try {
+            // Save and load models: the keys with the saved team, then the fresh model lists; the choices on the
+            // page stay as entered so they can be picked from the new lists.
+            const keysOnly = input.get('action') === 'keys',
+              saved = keysOnly ? await ai('state') : null;
+            await ai('settings', {
+              keys: { openai: input.get('key_openai') || '', anthropic: input.get('key_anthropic') || '' },
+              ...(keysOnly ? { roles: saved.roles, imageModels: saved.imageModels } : entered),
+            });
+            if (!keysOnly) entered = null;
+            notice = keysOnly ? t('keys_saved_models_loaded') : t('saved');
+          } catch (e: any) {
+            error = e.message;
+            res.statusCode = 422;
+          }
+        }
+        let state: any = {},
+          catalog: any = { models: [], issues: [], optionalIssues: [] };
+        try {
+          state = await ai('state');
+          catalog = await ai('models', { keys: {} });
+        } catch (e: any) {
+          error = error || e.message;
+        }
+        const provider = (id: string) => (id === 'openai' ? 'OpenAI' : 'Anthropic'),
+          usable = (catalog.models || []).filter((m: any) => m.usable),
+          withSaved = (options: any[], value: string, label: string) =>
+            value && value !== 'none' && !options.some((o) => o.value === value)
+              ? [...options, { value, label: label + t('availability_unconfirmed') }]
+              : options,
+          chosen = entered?.roles || state.roles || {},
+          imageChoice = entered?.imageModels || state.imageModels || {};
+        const roleLabels: Record<string, string> = {
+          primary: t('web_lead_primary_agent'),
+          ui: t('ui_code_specialist_larger_implementations'),
+          verify: t('verifier_independent_verification'),
+          escalation: t('escalation_repeated_failure'),
+        };
+        const roles = Object.entries(roleLabels).map(([id, label]) => {
+          const choice = chosen[id] || {},
+            value = choice.provider ? choice.provider + '|' + choice.model : '';
+          return {
+            id,
+            label,
+            value,
+            effort: choice.reasoningEffort || (id === 'escalation' ? 'high' : 'auto'),
+            options: withSaved(
+              usable.map((m: any) => ({ value: m.provider + '|' + m.id, label: provider(m.provider) + ' · ' + m.name })),
+              value,
+              choice.provider ? provider(choice.provider) + ' · ' + choice.model : '',
+            ),
+          };
+        });
+        const imageOptions = (catalog.models || [])
+          .filter((m: any) => m.provider === 'openai' && /^gpt-image-/.test(m.id))
+          .map((m: any) => ({ value: m.id, label: m.name }));
+        const images = [
+          ['precise', t('images_precise_editing')],
+          ['fast', t('images_fast_generation')],
+        ].map(([id, label]) => ({ id, label, value: imageChoice[id] || 'none', options: withSaved(imageOptions, imageChoice[id], imageChoice[id]) }));
+        const keys = Object.fromEntries((state.providers || []).map((p: any) => [p.provider, !!p.hasKey]));
+        return page(res.statusCode || 200, 'aiapi', {
+          error,
+          notice,
+          alerts: [...(catalog.issues || []), ...(catalog.optionalIssues || [])],
+          networkMode: state.networkMode,
+          keys,
+          roles,
+          images,
+          returnTo: settingsReturnTo(back),
+        });
       }
 
       // Studios stay alive: a top-level visit of a studio screen gets the frame page, which loads the studio into an

@@ -1,9 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
+import { instancesDirectory } from './instances-dir.mjs';
 const root = join(
-  process.env.SITETILLER_NEXT_INSTANCES || 'C:/Dev/sitetiller-next-instances',
-  process.env.SITETILLER_NEXT_INSTANCE || 'playground',
+  instancesDirectory(),
+  process.env.SITETILLER_INSTANCE_NAME || 'playground',
 );
 const instance = JSON.parse(await readFile(join(root, 'instance.json'), 'utf8')),
   origin = 'http://127.0.0.1:' + instance.ports.shell,

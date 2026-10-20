@@ -1,6 +1,6 @@
 import { computed, ref, onBeforeUpdate, onUpdated } from 'vue';
 import { t, tm } from './i18n.ts';
-import { compactProgress, discussionBundles, displayMessage, releaseNumber } from './presentation.ts';
+import { compactProgress, discussionBundles, displayMessage, releaseNumber, realityOffered } from './presentation.ts';
 import { s, APP_BASE, displayedPresentationCommit } from './studio.ts';
 import TimelineBlock from './timeline-block.ts';
 // The conversation: one block per request (or publication), its progress, result and the eye that shows it.
@@ -187,14 +187,7 @@ export default {
     const timeline = ref<HTMLElement | null>(null);
     const welcome = computed(() => {
       const current = s.current;
-      if (
-        !current ||
-        current.hasLoadedReality ||
-        // The website at the address was published by SiteTiller itself: nothing to load back.
-        current.releases.some((r: any) => !r.imported) ||
-        (current.releases.length && (current.hasDraftSteps || current.events.length))
-      )
-        return '';
+      if (!realityOffered(current)) return '';
       return current.siteUrl
         ? t('do_you_already_have_a_website_at') + new URL(current.siteUrl).hostname + '?'
         : t('do_you_already_have_a_website');

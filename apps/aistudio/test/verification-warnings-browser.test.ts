@@ -15,7 +15,7 @@ const html =
     },
   ];
 test('AI-15: timeouts warn with failed scenario evidence; actual JS and local HTTP errors still block; invalid schemas throw', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'next-unverified-browser-'));
+  const root = await mkdtemp(join(tmpdir(), 'example-unverified-browser-'));
   try {
     const result = await browserChecks(root, { 'site/index.html': html }, scenario);
     assert.equal(result.passed, true);
@@ -46,7 +46,7 @@ test('AI-15: timeouts warn with failed scenario evidence; actual JS and local HT
   }
 });
 test('AI-15: a change in one page keeps a shared module working (geometry, colors, callback payload, destroy) for every page that uses it', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'next-shared-consumers-'));
+  const root = await mkdtemp(join(tmpdir(), 'example-shared-consumers-'));
   try {
     const renderer =
       'export function render(){document.querySelector("main").innerHTML=\'<svg viewBox="0 0 400 300"><path class="hit-area" fill="red" d="M0 0H400V300H0Z"></path></svg><output id="payload"></output><output id="cleanup"></output>\';} export function attach(callback){document.querySelector(".hit-area").onclick=()=>callback({item:7});return {destroy(){document.querySelector("#cleanup").textContent="destroyed";}};}';

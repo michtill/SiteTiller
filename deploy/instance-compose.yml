@@ -1,5 +1,5 @@
 # One SiteTiller instance on a server. Values come from the .env file next to this file:
-#   SITETILLER_IMAGE        image, e.g. sitetiller-next:<commit>
+#   SITETILLER_IMAGE        image, e.g. sitetiller:<commit>
 #   SITETILLER_USER         uid:gid owning the instance data and the production Git repository
 #   SITETILLER_INSTANCE_DIR instance data (see scripts/instance-adopt.mjs)
 #   SITETILLER_GIT_DIR      directory of the hosting's production Git (repository, .env of its hooks, logs)

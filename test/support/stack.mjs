@@ -20,7 +20,7 @@ export async function isolatedStack({ networkMode = 'offline', controllerImports
   delete fixtureEnv.NODE_TEST_CONTEXT;
   const repo = resolve('.');
   await mkdir(join(repo, 'work'), { recursive: true });
-  const base = await mkdtemp(join(repo, 'work', 'next-real-integration-')),
+  const base = await mkdtemp(join(repo, 'work', 'example-real-integration-')),
     root = join(base, 'playground'),
     children = [],
     originNames = ['shell', 'cmstudio', 'aistudio', 'preview', 'publisher', 'website'];
@@ -29,7 +29,7 @@ export async function isolatedStack({ networkMode = 'offline', controllerImports
     if (closed) return;
     closed = true;
     await Promise.all(children.map(stopOwnedChild));
-    if (!resolve(base).startsWith(resolve(join(repo, 'work')) + sep) || !base.includes('next-real-integration-'))
+    if (!resolve(base).startsWith(resolve(join(repo, 'work')) + sep) || !base.includes('example-real-integration-'))
       throw Error('Unsafe fixture cleanup target');
     await rm(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   };
@@ -37,7 +37,7 @@ export async function isolatedStack({ networkMode = 'offline', controllerImports
     await execute(process.execPath, ['scripts/playground.mjs', 'init'], {
       windowsHide: true,
       cwd: repo,
-      env: { ...fixtureEnv, SITETILLER_NEXT_INSTANCES: base },
+      env: { ...fixtureEnv, SITETILLER_INSTANCES: base, SITETILLER_ADMIN_EMAIL: 'admin@example.test' },
       timeout: 120000,
     });
     const ports = {};
@@ -48,7 +48,7 @@ export async function isolatedStack({ networkMode = 'offline', controllerImports
       } while (Object.values(ports).includes(port));
       ports[name] = port;
     }
-    await atomicJson(join(root, 'instance.json'), { kind: 'sitetiller-next-playground', root, ports, networkMode });
+    await atomicJson(join(root, 'instance.json'), { kind: 'sitetiller-playground', root, ports, networkMode });
     const config = await readJson(join(root, '.sitetiller/config.json'));
     config.siteUrl = 'http://127.0.0.1:' + ports.website + '/';
     await atomicJson(join(root, '.sitetiller/config.json'), config);
@@ -62,7 +62,7 @@ export async function isolatedStack({ networkMode = 'offline', controllerImports
     const { stdout } = await execute(process.execPath, ['scripts/playground.mjs', 'env'], {
       windowsHide: true,
       cwd: repo,
-      env: { ...fixtureEnv, SITETILLER_NEXT_INSTANCES: base },
+      env: { ...fixtureEnv, SITETILLER_INSTANCES: base },
       timeout: 10000,
     });
     const env = {

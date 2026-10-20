@@ -1,6 +1,6 @@
-# SiteTiller Next
+# SiteTiller Muse
 
-SiteTiller Next is a self-hosted tool for running a small website: edit its content, let AI propose changes, check them in a preview and publish a frozen release.
+SiteTiller Muse is a self-hosted tool for running a small website: edit its content, let AI propose changes, check them in a preview and publish a frozen release.
 
 It consists of several local services behind one login:
 
@@ -35,7 +35,7 @@ node scripts/playground.mjs stop
 ```
 
 - Open the shell at http://127.0.0.1:4540/. The generated password is stored in `<instance>/settings/playground-password.txt`; it is never printed.
-- Instances are created in `C:/Dev/sitetiller-next-instances/<name>` by default. Set `SITETILLER_NEXT_INSTANCES` (base directory) and `SITETILLER_NEXT_INSTANCE` (name, default `playground`) to use a different location.
+- Instances are created in `~/sitetiller-instances/<name>` (your home directory) by default. Set `SITETILLER_INSTANCES` (base directory) or put `{ "instances": "<directory>" }` into the untracked file `.sitetiller-local.json` at the repository root to use a different location; `SITETILLER_INSTANCE_NAME` sets the name (default `playground`).
 - `init` refuses an existing instance and never resets it.
 - AI features need an OpenAI or Anthropic API key, entered in the AI Studio settings.
 - The Playground scripts are currently developed and tested on Windows.

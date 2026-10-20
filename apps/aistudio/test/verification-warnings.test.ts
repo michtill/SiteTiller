@@ -19,7 +19,7 @@ const slots = [
     '<!doctype html><html><head><title>Fixture</title><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><main>Working</main><script src="app.js"></script></body></html>',
   baselineArchitecture = 'app.js owns interactions; runtime is the host website server.';
 async function fixture(run: any) {
-  const root = await mkdtemp(join(tmpdir(), 'next-verification-warnings-'));
+  const root = await mkdtemp(join(tmpdir(), 'example-verification-warnings-'));
   try {
     const project = new Project(join(root, 'project'));
     await project.init(null);

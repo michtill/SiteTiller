@@ -42,7 +42,7 @@ async function setup(root: string) {
   return { cms, project, initial: await project.head() };
 }
 test('AI-03: real content-only workflow produces a durable content step with its own preview, then combined changes', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'next-history-workflow-')),
+  const root = await mkdtemp(join(tmpdir(), 'example-history-workflow-')),
     previous = { root: process.env.SITETILLER_CMS_ROOT, url: process.env.SITETILLER_CMS_URL };
   let owner: any;
   try {
@@ -117,7 +117,7 @@ test('AI-03: real content-only workflow produces a durable content step with its
   }
 });
 test('HI-10: named save/list/frozen preview/continue UI keeps the last step selected after restart and restores only unpublished content with CAS', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'next-history-ui-'));
+  const root = await mkdtemp(join(tmpdir(), 'example-history-ui-'));
   let child: any, owner: any, browser: any;
   try {
     const { cms, project, initial } = await setup(root),
@@ -224,14 +224,17 @@ test('HI-10: named save/list/frozen preview/continue UI keeps the last step sele
     // header would turn their cross-origin module requests into preflights that a real browser never sends.
     await page.route('**/*', (route) => {
       const request = route.request();
+      // The AI models screen belongs to the Shell; here it is only the place AI Studio leads to.
+      if (request.url().includes('/settings/aiapi')) return route.fulfill({ body: 'AI models', contentType: 'text/plain' });
       if (request.frame() !== page.mainFrame() && request.resourceType() !== 'document') return route.continue();
       return route.continue({ headers: { ...request.headers(), 'x-sitetiller-gateway': gateway } });
     });
+    // Unavailable models lead to the AI models screen of the Shell once the studio is ready; then back to the studio.
+    await page.goto(origin);
+    await page.waitForURL('**/settings/aiapi?returnTo=%2Fsite%2F');
     await page.goto(origin);
     await page.waitForSelector('#workspace:not([hidden])');
     await page.waitForFunction(() => !document.querySelector('#workspace').hasAttribute('aria-busy'));
-    await page.waitForSelector('#settings[open]');
-    await page.locator('#close-settings').click();
     await page.locator('#cms-preview-choice > summary').click();
     await page.locator('[data-content-source="unpublished"]').click();
     await page.waitForFunction(
@@ -329,8 +332,9 @@ test('HI-10: named save/list/frozen preview/continue UI keeps the last step sele
     await page.reload();
     await page.waitForSelector('#workspace:not([hidden])');
     await page.waitForFunction(() => !document.querySelector('#workspace').hasAttribute('aria-busy'));
-    // The same model problem opens the AI settings only once per browser.
-    assert.equal(await page.locator('#settings[open]').count(), 0);
+    // The same model problem leads to AI models only once per browser.
+    await new Promise((r) => setTimeout(r, 500));
+    assert.ok(!page.url().includes('/settings/aiapi'));
     await page.waitForFunction(
       () =>
         document.querySelector('[data-group-id="content"] .show-version')?.getAttribute('aria-pressed') === 'true',

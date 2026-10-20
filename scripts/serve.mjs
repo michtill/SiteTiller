@@ -9,7 +9,7 @@ import { services, instanceEnvironment, serviceEnvironment } from './instance-en
 const repo = resolve(fileURLToPath(new URL('..', import.meta.url))),
   root = resolve(process.env.SITETILLER_INSTANCE || '/instance'),
   instance = await readJson(join(root, 'instance.json'));
-if (instance.kind !== 'sitetiller-next-instance' || resolve(instance.root) !== root)
+if (instance.kind !== 'sitetiller-instance' || resolve(instance.root) !== root)
   throw Error('Not a SiteTiller instance: ' + root);
 // The services run as the owner of the instance (see instance-user.mjs).
 await runAsInstanceOwner(root);

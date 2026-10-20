@@ -3348,3 +3348,25 @@ aside .studio-header::after {
 .more-links-menu a:hover {
   background: #8a98aa22;
 }
+
+/* External presentation: someone else changed the website Git, or the last write failed. */
+.website-notice {
+  margin: 8px 12px;
+  padding: 10px 12px;
+  border: 1px solid #d9a400;
+  border-radius: 8px;
+  background: rgba(255, 216, 77, 0.18);
+}
+.website-notice p {
+  margin: 0 0 8px;
+}
+.website-notice p:last-child {
+  margin: 0;
+}
+
+/* The first step that stands for a published version or saved draft (documentation 4.9). */
+.first-step-title {
+  margin: 0 0 6px;
+  font-size: 1em;
+  font-weight: 600;
+}

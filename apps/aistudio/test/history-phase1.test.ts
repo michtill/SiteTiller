@@ -46,7 +46,7 @@ async function fixture(run: any) {
     await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 }
-test('AI-03: content/doc/snapshot/media checkpoints keep last presentation head; combined template changes advance it; JSON formatting does not', () =>
+test('AI-03: content steps advance the shown step like presentation steps; JSON formatting does not', () =>
   fixture(async ({ project, initial }: any) => {
     await project.write({
       'site/cms/data/items.json': '[{"id":"one","title":"Content changed"}]',
@@ -54,7 +54,8 @@ test('AI-03: content/doc/snapshot/media checkpoints keep last presentation head;
     });
     const content = await project.commit('Content and doc');
     const result = await stepChanges(project, initial, content);
-    assert.equal(result.presentationChanged, false);
+    // A content-only step has its own preview too (documentation 4.2) and becomes the shown step.
+    assert.equal(result.presentationChanged, true);
     assert.equal(result.changeKind, 'content');
     const config = {
       presentationHead: initial,
@@ -63,8 +64,8 @@ test('AI-03: content/doc/snapshot/media checkpoints keep last presentation head;
         { id: 'content', status: 'ready', sequence: 2, commit: content, ...result },
       ],
     };
-    assert.equal(presentationState(config, content).presentationHead, initial);
-    assert.equal(presentationState(JSON.parse(JSON.stringify(config)), content).presentationStepId, 'presentation');
+    assert.equal(presentationState(config, content).presentationHead, content);
+    assert.equal(presentationState(JSON.parse(JSON.stringify(config)), content).presentationStepId, 'content');
     await project.write({
       'site/templates/home.txt': html.replace('<h1>', '<h1 class="changed">'),
       'site/cms/data/items.json': '[{"id":"one","title":"Both"}]',
@@ -82,7 +83,7 @@ test('AI-03: content/doc/snapshot/media checkpoints keep last presentation head;
     const structure = await project.commit('Reorder fields');
     const ordering = await stepChanges(project, formatting, structure);
     assert.equal(ordering.changeKind, 'content');
-    assert.equal(ordering.presentationChanged, false);
+    assert.equal(ordering.presentationChanged, true);
   }));
 test('AI-03: actual website binary edits count presentation; private content staging asset sources do not unless used in website code', () =>
   fixture(async ({ project, initial }: any) => {
@@ -90,7 +91,7 @@ test('AI-03: actual website binary edits count presentation; private content sta
     await writeFile(join(project.root, 'site/assets/staging.png'), Buffer.from([1, 2, 3]));
     await project.write({ 'site/cms/data/items.json': '[{"id":"one","title":"Photo"}]' });
     const stage = await project.commit('Content staging');
-    assert.equal((await stepChanges(project, initial, stage, ['site/assets/staging.png'])).presentationChanged, false);
+    assert.equal((await stepChanges(project, initial, stage, ['site/assets/staging.png'])).changeKind, 'content');
     assert.equal((await stepChanges(project, initial, stage)).presentationChanged, true);
     await project.write({
       'site/templates/home.txt': html.replace('</main>', '<img src="/assets/staging.png"></main>'),

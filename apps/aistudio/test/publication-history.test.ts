@@ -59,3 +59,22 @@ test('PU-08: without a confirmed publication no work is removed', () => {
   assert.equal(closePublishedHistory(config, events).removed, 0);
   assert.equal(config.requests.length, 1);
 });
+test('AI-03: a content-only step that stays first after a publication becomes the starting version with its own preview', () => {
+  const config: any = {
+    publishedCommit: 'published',
+    closedThrough: 1,
+    releases: [{ id: 'two', number: 2, commit: 'published', publishedAt: '2026-10-19T21:31:52Z' }],
+    presentationHead: 'old',
+    requests: [
+      { id: 'a', sequence: 1, status: 'ready', commit: 'old', presentationChanged: true },
+      { id: 'b', sequence: 2, status: 'ready', commit: 'published', presentationChanged: false, changeKind: 'content' },
+    ],
+  };
+  closePublishedHistory(config, []);
+  assert.deepEqual(
+    config.requests.map((r: any) => [r.id, r.presentationChanged, r.changeKind]),
+    [['b', true, 'version']],
+  );
+  assert.equal(config.presentationHead, 'published');
+  assert.equal(config.presentationStepId, 'b');
+});

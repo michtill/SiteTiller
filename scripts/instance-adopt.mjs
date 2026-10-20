@@ -1,10 +1,13 @@
 // Takes over a copied instance (for example the Playground) on a server: the server's addresses, and the server's
 // own publication history instead of the copied one. Run once, before the first start, inside the image:
 //   node scripts/instance-adopt.mjs <deployment.json>
-// deployment.json: { sourceRoot, editOrigin, siteUrl, productionGit, previewOrigin?, publicPreviewPort?, browser?, listen?,
-//   retryDeployHook?, productionGitKey?, productionGitKnownHosts?, createVersion0FromDraft? }
-// productionGit is a local path or an SSH address (ssh://user@host/path.git); an SSH address needs the private key
-// and the server's known_hosts line(s) as files, which are copied to the instance's settings/.
+// deployment.json: { sourceRoot, editOrigin, siteUrl, productionGit?, previewOrigin?, publicPreviewPort?, browser?,
+//   listen?, retryDeployHook?, productionGitKey?, productionGitKnownHosts?, createVersion0FromDraft?, networkMode?,
+//   presentation?, websiteGit?, websiteBranch? }
+// productionGit (the version history) is a local path or an SSH address (older layout); without it the history is the
+// instance's own .production/repository.git. presentation "external" sends only the static website to websiteGit
+// (documentation 7.7). An SSH address needs the private key and the server's known_hosts line(s) as files, which are
+// copied to the instance's settings/.
 // A production Git without any SiteTiller version (a website deployed by other means) gets Version 0 only with
 // createVersion0FromDraft: the copied draft is published on top of its main, which changes the live website.
 // The copied draft (steps, saved drafts, content, settings, keys) stays; none of its steps counts as published,
@@ -19,7 +22,7 @@ const root = resolve(process.env.SITETILLER_INSTANCE || '/instance'),
   deployment = JSON.parse(await readFile(process.argv[2], 'utf8'));
 // Like the services: as the owner of the instance, with a passwd entry for Git over SSH.
 await prepareInstanceUser(root);
-for (const key of ['sourceRoot', 'editOrigin', 'siteUrl', 'productionGit'])
+for (const key of ['sourceRoot', 'editOrigin', 'siteUrl'])
   if (typeof deployment[key] !== 'string' || !deployment[key]) throw Error('deployment.json: missing ' + key);
 const data = join(root, '.sitetiller'),
   exists = (path) =>
@@ -31,8 +34,9 @@ const config = await readJson(join(data, 'config.json'));
 if (config.pendingRelease) throw Error('The copied instance has an unfinished publication; finish it first.');
 if (await exists(join(root, '.production')))
   throw Error('.production exists; the copy must not bring its own published website.');
+if (deployment.presentation === 'external' && !deployment.websiteGit) throw Error('deployment.json: missing websiteGit');
 const remote = remoteGit(deployment.productionGit);
-if (remote)
+if (remote || remoteGit(deployment.websiteGit))
   for (const [key, name] of [
     ['productionGitKey', 'production-git.key'],
     ['productionGitKnownHosts', 'production-git.known_hosts'],
@@ -44,12 +48,20 @@ if (remote)
 // 1. The instance and its addresses.
 await atomicJson(join(root, 'instance.json'), {
   ...(await readJson(join(root, 'instance.json'))),
+  ...(deployment.networkMode ? { networkMode: deployment.networkMode } : {}),
   kind: 'sitetiller-next-instance',
   root,
   public: {
     editOrigin: deployment.editOrigin,
     siteUrl: deployment.siteUrl,
-    productionGit: deployment.productionGit,
+    ...(deployment.productionGit ? { productionGit: deployment.productionGit } : {}),
+    ...(deployment.presentation === 'external'
+      ? {
+          presentation: 'external',
+          websiteGit: deployment.websiteGit,
+          ...(deployment.websiteBranch ? { websiteBranch: deployment.websiteBranch } : {}),
+        }
+      : {}),
     ...(deployment.previewOrigin ? { previewOrigin: deployment.previewOrigin } : {}),
     ...(deployment.browser ? { browser: deployment.browser } : {}),
     ...(deployment.listen ? { listen: deployment.listen } : {}),
@@ -92,12 +104,19 @@ const { syncProduction, productionProject, storeProductionRelease } = await impo
   { productionSnapshot } = await import('../apps/aistudio/src/production-snapshot.ts'),
   { deploySite } = await import('../apps/aistudio/deploy/site-release.mjs');
 await syncProductionMirror();
+// Without a given history Git the instance keeps its own (a new, empty one gets Version 0 below).
+if (!deployment.productionGit) {
+  const history = process.env.SITETILLER_PRODUCTION_HISTORY_DIR;
+  await mkdir(join(history, '..'), { recursive: true });
+  const { execFile } = await import('node:child_process');
+  await new Promise((ok, fail) => execFile('git', ['init', '--bare', '-b', 'main', history], (e) => (e ? fail(e) : ok())));
+}
 await syncProduction(config);
 if (!config.publishedCommit) {
   if (deployment.createVersion0FromDraft !== true)
     throw Error('The production history has no published version (createVersion0FromDraft publishes the draft as Version 0).');
   const production = new Project(process.env.SITETILLER_PRODUCTION_HISTORY_DIR),
-    main = await production.head().catch(() => null),
+    main = (await production.git(['rev-parse', '--verify', '--quiet', 'refs/heads/main']).catch(() => '')) || null,
     draft = new Project(join(data, 'project')),
     source = await draft.head(),
     temp = await mkdtemp(join(tmpdir(), 'sitetiller-adopt-v0-'));
@@ -145,7 +164,7 @@ console.log(
     ': ' +
     config.releases.length +
     ' published version(s) from ' +
-    deployment.productionGit +
+    process.env.SITETILLER_PRODUCTION_HISTORY_DIR +
     '; ' +
     config.requests.length +
     ' draft step(s) kept as unpublished work.',

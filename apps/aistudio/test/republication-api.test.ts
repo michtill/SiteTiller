@@ -160,11 +160,27 @@ test('PU-07: subversion through the dialog appends a numbered publication and up
     let s = await state();
     assert.equal(s.head, head);
     assert.equal(s.publishedCommit, first);
-    // The published step stays as the first step of the draft.
+    // A new first step "Published version" replaces the published step (documentation 4.9).
     assert.deepEqual(
-      s.requests.map((r: any) => r.id),
-      ['first', 'later', 'failed'],
+      s.requests.map((r: any) => (r.firstStep ? 'first:' + r.firstStep : r.id)),
+      ['first:published', 'later', 'failed'],
     );
+    // The new first step shows its title and is highlighted while its version is shown.
+    const firstBlock = page.locator('[data-group-id="' + s.requests[0].id + '"]');
+    await firstBlock.locator('.first-step-title').waitFor();
+    assert.match(await firstBlock.locator('.first-step-title').textContent(), /^Publikovaná verze 2/);
+    await page.waitForFunction(
+      (id) => document.querySelector('[data-group-id="' + id + '"] .show-version')?.getAttribute('aria-pressed') === 'true',
+      s.requests[0].id,
+    );
+    // Clicking the step shows it as a step; the version card stays highlighted with it.
+    await firstBlock.locator('.show-version').click();
+    await page.locator('#history-toggle').click();
+    await page.waitForFunction(
+      (id) => document.querySelector('.publication-card[data-release-id="' + id + '"]')?.getAttribute('aria-pressed') === 'true',
+      s.requests[0].releaseId,
+    );
+    await page.locator('#edits-tab').click();
     assert.equal(s.releases.at(-1).number, 2);
     assert.equal(s.releases.at(-1).summary, 'Ready step');
     assert.equal(s.contentChanged, true);
@@ -232,10 +248,15 @@ test('PU-07: subversion through the dialog appends a numbered publication and up
     assert.equal(s.releases.at(-1).minor, 1);
     assert.equal(s.head, head);
     assert.equal(s.publishedCommit, head);
-    // The published step stays as the first step of the draft.
+    // The published subversion 2.1 replaces the steps through it by a new first step (documentation 4.9).
     assert.deepEqual(
-      s.requests.map((r: any) => r.id),
-      ['later', 'failed'],
+      s.requests.map((r: any) => (r.firstStep ? 'first:' + r.firstStep : r.id)),
+      ['first:published', 'failed'],
+    );
+    assert.equal(s.requests[0].releaseVersion, '2.1');
+    assert.deepEqual(
+      [s.requests[0].releaseDescription, s.requests[0].presentationChanged],
+      ['Updated detail', true],
     );
     assert.equal(s.releases.at(-1).number, 2);
     assert.equal(s.contentChanged, false);

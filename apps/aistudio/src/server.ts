@@ -6,7 +6,7 @@ import { finishConfirmedPublication } from './publication-finish.ts';
 import { prepareWorkspacePublication } from './workspace-history.ts';
 import { snapshotAccessSecret, issueSnapshotAccess, validSnapshotAccess } from './snapshot-access.ts';
 import { savedDrafts, savedDraft, saveNamedDraft, removeNamedDraft, namedDraftPreview } from './saved-drafts.ts';
-import { presentationState, loadedStepChanges } from './step-changes.ts';
+import { presentationState, loadedStepChanges, startingVersion } from './step-changes.ts';
 import {
   publicationEvidence,
   confirmedPublicationEvidence,
@@ -71,6 +71,8 @@ import { Project } from './project.ts';
 import { workflow } from './workflow.ts';
 import { closeStepsBefore, publicationClosing, unpublishedRequests } from './publication-history.ts';
 import { runWithStop, StoppedError } from './run-control.ts';
+import { browserChecks } from './checks.ts';
+import { websiteGit, websiteState, websiteForeign } from './static-website.ts';
 import {
   initialTeam,
   initialImages,
@@ -168,6 +170,9 @@ let job: any = await load('last-job.json', null),
   busy = false;
 // Stops the running edit request (POST /api/run/stop).
 let runningStop: AbortController | null = null;
+// Stops a running comparison or load of the live website (POST /api/reality/cancel).
+let realityStop: AbortController | null = null;
+const REALITY_CHECK_BUDGET = 60000;
 // Mutating requests claim the studio synchronously, so of two concurrent requests the second gets 409.
 function claim() {
   if (busy) throw new Problem(409, 'Počkej na dokončení úlohy.');
@@ -325,6 +330,8 @@ async function outsideLinks() {
   return {
     liveSiteUrl: process.env.SITETILLER_SITE_URL || null,
     publicPreviewUrl: publicPreview && origin ? new URL(origin).origin + '/' : null,
+    // External presentation: the outcome of the last write to the website Git (someone else's change, a failure).
+    website: websiteGit() ? await websiteState() : null,
   };
 }
 const realitySnapshots = new Map<string, any>();
@@ -853,8 +860,9 @@ const server = http.createServer(async (req, res) => {
               changeKind: result.changeKind,
               changedPaths: result.changedPaths,
             });
+            startingVersion(config);
             if (!result.conversationOnly) {
-              if (result.presentationChanged) {
+              if (request.presentationChanged) {
                 config.presentationHead = result.commit;
                 config.presentationStepId = request.id;
               } else if (!config.presentationHead) {
@@ -925,13 +933,22 @@ const server = http.createServer(async (req, res) => {
             throw new Problem(422, 'Neplatná verze.');
           if (!config.separatedHistories || !config.releases.some((r) => r.commit === input.commit))
             await project.git(['merge-base', '--is-ancestor', input.commit, head]);
-          const snapshot = await realitySnapshot(
-              publicUrl(url).href,
-              process.env.SITETILLER_PUBLISH_URL,
-              process.env.SITETILLER_PUBLISH_TOKEN,
-            ),
-            result = await compareReality(project, config, input.commit, snapshot, productionProject()),
+          const stop = (realityStop = new AbortController()),
+            { snapshot, result } = await runWithStop(stop.signal, async () => {
+              const snapshot = await realitySnapshot(
+                publicUrl(url).href,
+                process.env.SITETILLER_PUBLISH_URL,
+                process.env.SITETILLER_PUBLISH_TOKEN,
+              );
+              if (stop.signal.aborted) throw new StoppedError();
+              return { snapshot, result: await compareReality(project, config, input.commit, snapshot, productionProject()) };
+            }).catch((e) => {
+              console.error('Live website comparison failed: ' + (e.message || e.name));
+              if (stop.signal.aborted) throw new Problem(409, 'Načítání bylo zrušeno.');
+              throw e;
+            }),
             token = randomBytes(24).toString('hex');
+          realityStop = null;
           for (const [key, value] of realitySnapshots)
             if (Date.now() - value.created > 10 * 60 * 1000) realitySnapshots.delete(key);
           while (realitySnapshots.size >= 3) realitySnapshots.delete(realitySnapshots.keys().next().value!);
@@ -948,6 +965,11 @@ const server = http.createServer(async (req, res) => {
         } finally {
           busy = false;
         }
+      }
+      if (path === '/api/reality/cancel' && req.method === 'POST') {
+        if (!realityStop) throw new Problem(409, 'Nic se nenačítá.');
+        realityStop.abort();
+        return response(res, 200, { ok: true });
       }
       if (path === '/api/reality/load' && req.method === 'POST') {
         if (busy) throw new Problem(409, 'Počkej na dokončení úlohy.');
@@ -982,17 +1004,28 @@ const server = http.createServer(async (req, res) => {
               cached.snapshot.evidence.source !== 'hosting-http')
           )
             throw Error('Vyber volné číslo verze skutečného webu připojeného k hostingu.');
-          const beforeLoad = structuredClone(config),
+          // The checks of the loaded website have a time budget; the user can cancel the load until it is written.
+          const stop = (realityStop = new AbortController()),
+            budget = AbortSignal.timeout(REALITY_CHECK_BUDGET),
+            beforeLoad = structuredClone(config),
             result = await loadReality(
               project,
               config,
               cached.snapshot,
               cached.head,
               input.clearPrevious,
-              undefined,
+              (path: string, files: Record<string, string>) =>
+                runWithStop(AbortSignal.any([stop.signal, budget]), () => browserChecks(path, files)),
               config.separatedHistories ? false : input.saveVersion,
               input.versionNumber,
-            );
+            ).catch((e) => {
+              console.error('Live website load failed: ' + (e.message || e.name));
+              if (stop.signal.aborted) throw new Problem(409, 'Načítání bylo zrušeno. Návrh zůstal beze změny.');
+              if (budget.aborted)
+                throw Error('Kontrola načteného webu nedoběhla do 60 s. Návrh zůstal beze změny.');
+              throw e;
+            });
+          realityStop = null;
           if (config.separatedHistories && input.saveVersion) {
             try {
               await save('config.json', config);
@@ -1111,13 +1144,17 @@ const server = http.createServer(async (req, res) => {
               commit: input.commit,
               presentationHead: input.commit || presentationState(config, head).presentationHead,
             });
-          // "Remove previous steps": the saved step becomes the first step of the draft.
+          // "Remove previous steps": the saved step and those before it become a new first step (documentation 4.9).
           const step =
             input.clearPrevious &&
             config.requests.findLast((r: any) => r.commit === record.step && ['ready', 'legacy'].includes(r.status));
           if (step) {
             await eventWrites;
-            const closed = closeStepsBefore(config, events, step);
+            const closed = closeStepsBefore(config, events, step, {
+              id: record.id,
+              name: record.name,
+              commit: record.commit,
+            });
             if (closed.events !== events) {
               events = closed.events;
               await save('config.json', config);
@@ -1338,6 +1375,9 @@ const server = http.createServer(async (req, res) => {
           (input.clearPrevious !== undefined && typeof input.clearPrevious !== 'boolean')
         )
           throw new Problem(422, 'Neplatná volba publikování.');
+        // External presentation: someone else changed the website Git since the last write (documentation 7.7).
+        if (input.overrideWebsite !== true && (await websiteForeign()))
+          throw Object.assign(new Problem(409, 'Web na hostingu mezitím změnil někdo jiný.'), { websiteForeign: true });
         if (
           input.createSubversion &&
           (!config.releases.at(-1) ||
@@ -1471,7 +1511,7 @@ const server = http.createServer(async (req, res) => {
                 'Content-Type': 'application/json',
                 Authorization: 'Bearer ' + process.env.SITETILLER_PUBLISH_TOKEN,
               },
-              body: JSON.stringify({ commit: input.commit }),
+              body: JSON.stringify({ commit: input.commit, overrideWebsite: input.overrideWebsite === true }),
               signal: AbortSignal.timeout(180000),
             });
             if (!result.ok) {
@@ -1719,7 +1759,10 @@ const server = http.createServer(async (req, res) => {
         ),
     );
   } catch (e: any) {
-    response(res, e instanceof Problem ? e.status : 400, { error: e.message || 'Požadavek nelze dokončit.' });
+    response(res, e instanceof Problem ? e.status : 400, {
+      error: e.message || 'Požadavek nelze dokončit.',
+      ...(e?.websiteForeign ? { websiteForeign: true } : {}),
+    });
   }
 });
 server.listen(PORT, HOST, () => console.log(`SiteTiller listening on ${HOST}:${PORT}`));

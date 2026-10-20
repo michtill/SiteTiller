@@ -17,7 +17,7 @@ try {
   await page
     .locator('input[name=password]')
     .fill((await readFile(root + '/settings/playground-password.txt', 'utf8')).trim());
-  await page.locator('button').click();
+  await page.locator('button:not(.show-password)').click();
   await page.waitForURL('**/content/');
   await page.goto(origin + '/site/');
   await page.locator('#workspace').waitFor({ state: 'visible' });

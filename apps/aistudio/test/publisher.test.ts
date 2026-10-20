@@ -143,3 +143,55 @@ test('PU-11: with a remote production Git the publisher pushes the publication a
     await rm(root, { recursive: true, force: true });
   }
 });
+test('PU-11: an empty remote production Git (a new hosting repository) gets the publication as its first commit', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'sitetiller-publisher-empty-'));
+  let child: any;
+  try {
+    const data = join(root, 'data');
+    const project = new Project(join(data, 'project'));
+    await project.init(fileURLToPath(new URL('../seed', import.meta.url)));
+    const commit = await project.head();
+    await writeFile(join(data, 'publish-approval.json'), JSON.stringify({ commit, head: commit, intent: null }));
+    const remote = join(root, 'empty.git'),
+      mirror = join(root, 'instance', '.production', 'remote.git');
+    await exec('git', ['init', '--bare', '-b', 'main', remote]);
+    const port = 18220 + Math.floor(Math.random() * 30),
+      url = `http://127.0.0.1:${port}/publish`;
+    child = spawn(process.execPath, [fileURLToPath(new URL('../src/publisher.ts', import.meta.url))], {
+      windowsHide: true,
+      env: {
+        ...process.env,
+        PORT: String(port),
+        SITETILLER_DATA_DIR: data,
+        SITETILLER_PRODUCTION_REMOTE: remote,
+        SITETILLER_PRODUCTION_GIT: mirror,
+        SITETILLER_PUBLISH_TOKEN: 'test-token',
+        SITETILLER_PRODUCTION_URL: '',
+      },
+      stdio: 'ignore',
+    });
+    for (let i = 0; i < 40; i++) {
+      try {
+        if ((await fetch(url)).status === 401) break;
+      } catch {}
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer test-token', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ commit }),
+    });
+    assert.equal(response.status, 200, await response.text());
+    await assert.rejects(exec('git', ['--git-dir=' + remote, 'rev-parse', '--verify', 'main^']));
+    assert.equal(
+      (await exec('git', ['--git-dir=' + remote, 'tag', '--list', 'sitetiller/published/*'])).stdout.trim(),
+      'sitetiller/published/v1',
+    );
+  } finally {
+    if (child) {
+      child.kill();
+      await new Promise((r) => child.once('exit', r));
+    }
+    await rm(root, { recursive: true, force: true });
+  }
+});

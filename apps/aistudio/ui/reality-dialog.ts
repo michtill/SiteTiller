@@ -13,7 +13,7 @@ import {
 import { dialogs } from './dialogs.ts';
 // Loading the live website into the draft: first a comparison, then the user decides whether to keep the
 // existing steps and whether to record the live state as a version.
-const template = `<dialog id="reality-load" ref="dialog" :class="{'is-loading':d.loading}" :aria-busy="String(d.loading)" @cancel="cancel"><div class="eyebrow"><span>{{t('load_live_website')}}</span></div><h2><span>{{t('load_the_live_website_into_the_draft')}}</span></h2><p id="reality-load-address">{{d.url}}</p><p><span>{{t('the_loaded_website_becomes_the_starting_point_for')}}</span></p><label class="restore-options" :hidden="d.liveMatchesPublished||undefined"><input id="reality-save-version" type="checkbox" v-model="d.saveVersion" :disabled="d.loading||d.liveMatchesPublished"><span><span>{{t('save_as_a_version')}}</span></span></label><label id="reality-version-option" :hidden="!d.saveVersion||undefined"><span>{{t('version_number')}}</span><input id="reality-version-number" type="number" min="0" max="999999" step="1" v-model.number="d.versionNumber" :disabled="d.loading"></label><label id="reality-clear-option" class="restore-options" :hidden="!d.canClear||undefined"><input id="reality-clear" type="checkbox" v-model="d.clear" :disabled="d.loading"><span><span>{{t('remove_existing_edits')}}</span></span></label><p id="reality-keep-note">{{keepNote}}</p><p id="reality-load-result" role="status">{{d.result}}</p><div class="confirm-actions"><button id="cancel-reality-load" type="button" :disabled="d.loading" @click="close">{{t('cancel')}}</button><button id="confirm-reality-load" type="button" class="primary" :disabled="d.loading" @click="confirm">{{d.loading?t('loading'):t('load_the_live_website')}}</button></div></dialog>`;
+const template = `<dialog id="reality-load" ref="dialog" :class="{'is-loading':d.loading}" :aria-busy="String(d.loading)" @cancel="cancel"><div class="eyebrow"><span>{{t('load_live_website')}}</span></div><h2><span>{{t('load_the_live_website_into_the_draft')}}</span></h2><p id="reality-load-address">{{d.url}}</p><p><span>{{t('the_loaded_website_becomes_the_starting_point_for')}}</span></p><label class="restore-options" :hidden="d.liveMatchesPublished||undefined"><input id="reality-save-version" type="checkbox" v-model="d.saveVersion" :disabled="d.loading||d.liveMatchesPublished"><span><span>{{t('save_as_a_version')}}</span></span></label><label id="reality-version-option" :hidden="!d.saveVersion||undefined"><span>{{t('version_number')}}</span><input id="reality-version-number" type="number" min="0" max="999999" step="1" v-model.number="d.versionNumber" :disabled="d.loading"></label><label id="reality-clear-option" class="restore-options" :hidden="!d.canClear||undefined"><input id="reality-clear" type="checkbox" v-model="d.clear" :disabled="d.loading"><span><span>{{t('remove_existing_edits')}}</span></span></label><p id="reality-keep-note">{{keepNote}}</p><p id="reality-load-result" role="status">{{d.result}}</p><div class="confirm-actions"><button id="cancel-reality-load" type="button" :disabled="d.cancelling" @click="close">{{t('cancel')}}</button><button id="confirm-reality-load" type="button" class="primary" :disabled="d.loading" @click="confirm">{{d.loading?t('loading'):t('load_the_live_website')}}</button></div></dialog>`;
 export default {
   template,
   setup() {
@@ -29,6 +29,7 @@ export default {
       clear: false,
       result: '',
       loading: false,
+      cancelling: false,
     });
     const keepNote = computed(() =>
       d.clear
@@ -71,11 +72,18 @@ export default {
     onMounted(() => {
       dialogs.reality = () => void prepare();
     });
-    function close() {
-      if (!d.loading) dialog.value!.close();
+    // During loading, Cancel stops the load on the server; the draft stays unchanged.
+    async function close() {
+      if (!d.loading) return dialog.value!.close();
+      d.cancelling = true;
+      d.result = t('cancelling_the_load');
+      await api('reality/cancel', {}).catch(() => {});
     }
     function cancel(event: Event) {
-      if (d.loading) event.preventDefault();
+      if (d.loading) {
+        event.preventDefault();
+        void close();
+      }
     }
     async function confirm() {
       if (!comparison || d.loading) return;
@@ -102,6 +110,7 @@ export default {
         d.result = e.message;
       } finally {
         d.loading = false;
+        d.cancelling = false;
       }
     }
     return { t, dialog, d, keepNote, close, cancel, confirm };

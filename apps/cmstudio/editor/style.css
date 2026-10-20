@@ -2798,3 +2798,13 @@ select {
 .markdown-content .ProseMirror td p {
   margin: 0;
 }
+
+/* External presentation: someone else changed the website Git, or the last write failed. */
+.website-notice {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 8px;
+  border: 1px solid #d9a400;
+  border-radius: 6px;
+}

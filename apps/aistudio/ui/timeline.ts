@@ -145,6 +145,7 @@ function view(group: any) {
     kind: group.kind,
     commit: group.commit,
     prompt: group.prompt,
+    title: group.title,
     images,
     isPublication,
     isEdit,
@@ -189,6 +190,8 @@ export default {
       if (
         !current ||
         current.hasLoadedReality ||
+        // The website at the address was published by SiteTiller itself: nothing to load back.
+        current.releases.some((r: any) => !r.imported) ||
         (current.releases.length && (current.hasDraftSteps || current.events.length))
       )
         return '';

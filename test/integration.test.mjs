@@ -234,7 +234,7 @@ test(
         page.on('pageerror', (e) => errors.push(e.message));
         await page.goto(origin + '/login');
         await page.locator('input[name=password]').fill('fixture-password-new');
-        await page.locator('button[type=submit],button').first().click();
+        await page.locator('button:not(.show-password)').first().click();
         await page.waitForURL('**/content/');
         studio = await studioFrame(page, 'content');
         await page.goto(origin + '/site/');

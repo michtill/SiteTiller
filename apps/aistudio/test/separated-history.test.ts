@@ -50,7 +50,8 @@ test('PU-08: production owns numbered versions while workspace is pruned to base
     await work.commit('Discarded creative attempt');
     const obsolete = await work.git(['rev-parse', 'HEAD:site/assets/discarded.png']);
     await rm(join(work.root, 'site/assets/discarded.png'));
-    await work.write({ 'site/index.html': html('One') });
+    // The AI's internal description of the website is part of the version but never served (documentation 7.7).
+    await work.write({ 'site/index.html': html('One'), 'site/architecture.txt': 'Architektura webu' });
     const first = await work.commit('Work one');
     await work.write({ 'site/index.html': html('Two') });
     const second = await work.commit('Work two');
@@ -58,6 +59,10 @@ test('PU-08: production owns numbered versions while workspace is pruned to base
     await writeFile(join(data, 'uploads/original.png'), Buffer.from('original upload'));
     live = createServer(async (req: any, res: any) => {
       res.setHeader('Content-Security-Policy', websitePolicy);
+      if (req.url.startsWith('/architecture.txt')) {
+        res.writeHead(404);
+        return res.end();
+      }
       res.end(
         (await production.committedFiles(await production.head()))['site/index.html'].replace(
           /(<h1>)(.*?)(<\/h1>)/,
@@ -167,11 +172,12 @@ test('PU-08: production owns numbered versions while workspace is pruned to base
     let s = await state();
     assert.equal(s.publishedCommit, one);
     assert.notEqual(one, first);
-    // The published step stays as the first step, now on the release commit; the newer one follows.
+    // A new first step "Published version 1" on the release commit replaces the published step (documentation 4.9);
+    // the newer one follows.
     assert.deepEqual(
-      s.requests.map((r: any) => [r.id, r.commit === one]),
+      s.requests.map((r: any) => [(r.firstStep ? 'first:' + r.firstStep : r.id), r.commit === one]),
       [
-        ['one', true],
+        ['first:published', true],
         ['two', false],
       ],
     );
@@ -188,10 +194,10 @@ test('PU-08: production owns numbered versions while workspace is pruned to base
       two = release2.release.commit;
     s = await state();
     assert.equal(s.head, two);
-    // The published step stays as the first step of the draft.
+    // The newly published step is replaced by a new first step too.
     assert.deepEqual(
-      s.requests.map((r: any) => r.id),
-      ['two'],
+      s.requests.map((r: any) => (r.firstStep ? 'first:' + r.firstStep : r.id)),
+      ['first:published'],
     );
     assert.equal(await work.git(['rev-list', '--count', 'HEAD']), '1');
     assert.equal(await production.git(['rev-list', '--count', 'main']), '3');

@@ -7,7 +7,7 @@ import { readFile, realpath } from 'node:fs/promises';
 import { resolve, sep, extname } from 'node:path';
 import { serveForm, formDefinitions } from './contact-forms.ts';
 import { liveCms } from './cms-live.ts';
-import { productionPolicy } from './site-policy.ts';
+import { productionPolicy, privateSiteFiles } from './site-policy.ts';
 function safeTemplate(path: string) {
   if (!/^site\/templates\/[\w/-]+\.txt$/.test(path) || path.split('/').includes('..'))
     throw Error('Invalid template path');
@@ -42,7 +42,10 @@ export function websiteServer(directory: string, origin: string) {
       res.setHeader('Content-Security-Policy', productionPolicy);
       const url = new URL(req.url || '/', origin),
         relative = decodeURIComponent(url.pathname).slice(1);
-      if (relative.split('/').some((p) => p.startsWith('.') || p.includes('\\') || p.includes(':'))) {
+      if (
+        privateSiteFiles.has(relative) ||
+        relative.split('/').some((p) => p.startsWith('.') || p.includes('\\') || p.includes(':'))
+      ) {
         res.writeHead(404);
         return res.end();
       }

@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { sessionCookie } from '../apps/shell/session-cookie.mjs';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -135,7 +136,7 @@ test(
       assert.equal(await readFile(legacyPath, 'utf8'), legacyBefore);
       browser = await launchBrowser();
       const page = await browser.newPage();
-      await page.context().addCookies([{ name: 'sitetiller_edit', value: cookie.split('=')[1], url: stack.origin }]);
+      await page.context().addCookies([{ name: sessionCookie(stack.origin), value: cookie.split('=')[1], url: stack.origin }]);
       await page.goto(stack.origin + '/settings?returnTo=%2Fsite%2F');
       await page.getByRole('textbox', { name: 'Adresa skutečného webu', exact: true }).fill('https://source.example/');
       await page.getByRole('button', { name: 'Uložit', exact: true }).click();

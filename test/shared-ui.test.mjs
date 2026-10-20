@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { sessionCookie } from '../apps/shell/session-cookie.mjs';
 import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -84,7 +85,7 @@ test('SH-03: real shared settings use CM authority/CAS, return destination, shar
     assert.equal(r.status, 303);
     browser = await launchBrowser();
     const page = await browser.newPage();
-    await page.context().addCookies([{ name: 'sitetiller_edit', value: cookie.split('=')[1], url: stack.origin }]);
+    await page.context().addCookies([{ name: sessionCookie(stack.origin), value: cookie.split('=')[1], url: stack.origin }]);
     await page.route('**/site/api/models', (route) =>
       route.fulfill({ json: { models: [], issues: [], optionalIssues: [] } }),
     );

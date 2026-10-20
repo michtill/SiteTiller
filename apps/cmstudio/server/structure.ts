@@ -69,15 +69,17 @@ export function validateStructure(input: unknown): Schema {
     throw new Problem(422, 'Nastavení editoru obsahu patří do cms/settings.json, nikoli do struktury.');
   if (Object.keys(input.lists).length > fieldLimits.collections) throw new Problem(422, 'Nejvýše 100 kolekcí.');
   for (const [name, d] of Object.entries(input.lists)) {
-    if (
-      !identifier(name) ||
-      !object(d) ||
-      typeof d.label !== 'string' ||
-      !d.label.trim() ||
-      !object(d.columns) ||
-      !Object.hasOwn(d.columns, d.key)
-    )
-      throw new Problem(422, `${name}: kolekce potřebuje platný kód, název, pole a klíč.`);
+    // Each problem named exactly, so whoever proposed the structure (a person or the AI) can correct it.
+    if (!identifier(name)) throw new Problem(422, `${name}: neplatný kód kolekce.`);
+    if (!object(d)) throw new Problem(422, `${name}: kolekce musí být objekt {label, key, columns}.`);
+    if (typeof d.label !== 'string' || !d.label.trim()) throw new Problem(422, `${name}: kolekce nemá název (label).`);
+    if (!object(d.columns))
+      throw new Problem(
+        422,
+        `${name}: pole kolekce patří do objektu "columns"` + (Object.hasOwn(d, 'fields') ? ' (ne "fields").' : '.'),
+      );
+    if (typeof d.key !== 'string' || !Object.hasOwn(d.columns, d.key))
+      throw new Problem(422, `${name}: klíč (key) musí být název existujícího pole v "columns".`);
     for (const [key, f] of Object.entries(d.columns)) {
       if (
         !identifier(key) ||

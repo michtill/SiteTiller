@@ -18,7 +18,7 @@ try {
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(origin + '/login');
   await page.locator('input[name=password]').fill(password);
-  await page.locator('button').click();
+  await page.locator('button:not(.show-password)').click();
   await page.waitForURL('**/content/');
   await page.getByRole('textbox', { name: 'Nadpis', exact: true }).waitFor();
   if ((await page.getByRole('textbox', { name: 'Nadpis', exact: true }).inputValue()) !== 'SiteTiller playground')

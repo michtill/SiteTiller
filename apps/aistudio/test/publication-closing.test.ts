@@ -20,29 +20,29 @@ const events = [
   { jobId: 'b', stage: 'ready', commit: B },
   { jobId: 'c', stage: 'ready', commit: C },
 ];
+const shown = (config: any) => config.requests.map((r: any) => (r.firstStep ? 'first:' + r.firstStep : r.id));
 const publish = (config: any, clearPrevious: boolean) => {
   publicationClosing(config, B, 2, clearPrevious);
   config.publishedThrough = 2;
   return closePublishedHistory(config, events).events;
 };
-test('PU-08: publishing with "remove previous steps" keeps the published step first and later steps', () => {
+test('PU-08: publishing with "remove previous steps" replaces the steps through the published one by a new first step', () => {
   const config: any = draft(),
     kept = publish(config, true);
+  // A new first step "Published version 1" with the published state and its own preview; later steps stay.
+  assert.deepEqual(shown(config), ['first:published', 'c']);
+  const first = config.requests[0];
   assert.deepEqual(
-    config.requests.map((r: any) => [r.id, r.prompt]),
-    [
-      ['b', 'B'],
-      ['c', 'C'],
-    ],
+    [first.commit, first.releaseId, first.releaseVersion, first.presentationChanged, first.prompt, first.finalAnswer],
+    [B, 'release-1', '1', true, '', undefined],
   );
+  assert.notEqual(first.id, 'b');
   assert.deepEqual(
     kept.map((e: any) => e.jobId),
-    ['b', 'c'],
+    ['c'],
   );
-  assert.deepEqual(
-    config.conversationMemory.map((r: any) => r.id),
-    ['a'],
-  );
+  // The removed steps are discarded: the AI does not remember them.
+  assert.deepEqual(config.conversationMemory, []);
   // Only the steps after the publication are unpublished work.
   assert.deepEqual(
     unpublishedRequests(config).map((r: any) => r.id),
@@ -50,10 +50,8 @@ test('PU-08: publishing with "remove previous steps" keeps the published step fi
   );
   // A restart closes nothing more.
   closePublishedHistory(config, kept);
-  assert.deepEqual(
-    config.requests.map((r: any) => r.id),
-    ['b', 'c'],
-  );
+  assert.deepEqual(shown(config), ['first:published', 'c']);
+  assert.deepEqual(config.conversationMemory, []);
 });
 test('PU-08: publishing without "remove previous steps" leaves the draft steps unchanged, also after a restart', () => {
   const config: any = draft(),
@@ -77,16 +75,14 @@ test('PU-08: publishing without "remove previous steps" leaves the draft steps u
   publicationClosing(config, C, 3, true);
   config.publishedThrough = 3;
   closePublishedHistory(config, kept);
-  assert.deepEqual(
-    config.requests.map((r: any) => r.id),
-    ['c', 'd'],
-  );
+  assert.deepEqual(shown(config), ['first:published', 'd']);
 });
 test('PU-08: the published step that opens the draft cannot be deleted; a later step can', () => {
   const config: any = draft();
   config.requests = config.requests.slice(0, 2);
   publish(config, true);
-  assert.throws(() => deleteStepTarget(config, 'b', B), /Publikovaný krok nelze odstranit/);
+  const first = config.requests[0].id;
+  assert.throws(() => deleteStepTarget(config, first, B), /Publikovaný krok nelze odstranit/);
   config.requests.push({ id: 'c', sequence: 3, status: 'ready', commit: C, baseCommit: B });
-  assert.deepEqual(deleteStepTarget(config, 'c', C), { commit: B, id: 'b', sequence: 2, deleteStepId: 'c' });
+  assert.deepEqual(deleteStepTarget(config, 'c', C), { commit: B, id: first, sequence: 2, deleteStepId: 'c' });
 });

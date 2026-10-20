@@ -29,7 +29,8 @@ test('HI-09: a version loaded into a draft without steps is its starting version
       before,
       after,
     );
-    assert.equal(later.presentationChanged, false);
+    // A content-only step has its own preview too (documentation 4.2).
+    assert.equal(later.presentationChanged, true);
     assert.equal(later.changeKind, 'content');
   } finally {
     await rm(root, { recursive: true, force: true });

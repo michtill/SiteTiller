@@ -50,7 +50,7 @@ const template = `
 <Architect :name="settings.name" v-if="architectMode&&schema" :schema="schema" :schema-revision="schemaRevision" :token="token" :readonly="viewPublished" ref="architectureEditor" @saved="structureSaved" @dirty="architectDirty=$event" @back="returnToContent"  @navigate="studioNavigate"/><div v-else class="shell">
  <aside class="sidebar" :inert="actionDialog?true:undefined"><div class="studio-brand-row"><StudioSwitcher active="content" :label="t('content_editor')" :name="settings.name" :content-href="appPath('/')" :settings-href="commonSettingsPath('','')" @navigate="studioNavigate"/></div><div class="sidebar-scroll">
  <div class="nav-label">{{t('your_collections')}}</div><nav><button v-for="(def,key) in schema?.lists" :class="{active:collection===key&&!mediaView}" @click="switchCollection(String(key))"><svg class="collection-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h13M8 12h13M8 19h13"/><path d="M3 5h1M3 12h1M3 19h1"/></svg>{{def.label}}<small>{{lists[key]?.rows.length}}</small></button></nav><div class="nav-label files-label" v-if="Object.keys(schema?.folders||{}).length">{{t('your_files')}}</div><nav v-if="Object.keys(schema?.folders||{}).length"><button v-for="(folder,key) in schema?.folders" class="media-folder" :class="{active:mediaView&&mediaFolder===key}" @click="showMedia(String(key))"><span>{{folder.type==='img'?'▧':'▤'}}</span>{{folder.label}}<small>{{folderFiles(String(key)).length}}</small></button></nav>
- <div class="cms-publication"><details class="publication-view-menu" v-if="publication.published&&(publication.unpublished||viewPublished)"><summary><span class="publication-view-label">{{viewPublished?publishedDate:t('unpublished_changes')}}<strong v-if="viewPublished" class="publication-readonly">{{t('read_only')}}</strong></span><svg class="publication-view-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary><div class="publication-view-options"><button @click="chooseContentView(false,$event)" :aria-current="!viewPublished?'true':undefined">{{t('unpublished_changes')}}</button><button @click="chooseContentView(true,$event)" :aria-current="viewPublished?'true':undefined">{{publishedDate}}</button></div></details><template v-if="publication.unpublished&&!viewPublished"><small v-if="!publication.published" class="publication-status">{{t('unpublished_changes')}}</small><button class="publication-pending" @click="publishCms" :disabled="publishing||busy">{{t('publish_changes')}}</button><button class="discard-changes-entry" @click="discardAllChanges" :disabled="!publication.published||publishing||busy">{{t('discard_changes')}}</button></template><template v-else><small v-if="!viewPublished" class="publication-status">{{publishedDate}}</small><label v-if="!viewPublished"><input type="checkbox" :checked="liveEditing" @change="toggleLive($event)"> {{t('live_editing')}}</label></template></div><div class="sidebar-spacer" aria-hidden="true"></div><button class="structure-entry" @click="openStructure"><svg class="sidebar-action-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2" width="6" height="5" rx="1"/><rect x="2" y="17" width="6" height="5" rx="1"/><rect x="16" y="17" width="6" height="5" rx="1"/><path d="M12 7v5M5 17v-5h14v5"/></svg><span>{{t('structure_editor')}}</span></button></div></aside>
+ <div class="cms-publication"><details class="publication-view-menu" v-if="publication.published&&(publication.unpublished||viewPublished)"><summary><span class="publication-view-label">{{viewPublished?publishedDate:t('unpublished_changes')}}<strong v-if="viewPublished" class="publication-readonly">{{t('read_only')}}</strong></span><svg class="publication-view-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary><div class="publication-view-options"><button @click="chooseContentView(false,$event)" :aria-current="!viewPublished?'true':undefined">{{t('unpublished_changes')}}</button><button @click="chooseContentView(true,$event)" :aria-current="viewPublished?'true':undefined">{{publishedDate}}</button></div></details><small v-if="publication.website?.foreign||publication.website?.error" class="website-notice" role="status">{{publication.website.foreign?t('someone_else_changed_the_website_on_the_hosting'):t('hosted_website_not_updated_next_publication_retries')}}</small><template v-if="publication.unpublished&&!viewPublished"><small v-if="!publication.published" class="publication-status">{{t('unpublished_changes')}}</small><button class="publication-pending" @click="publishCms" :disabled="publishing||busy">{{t('publish_changes')}}</button><button class="discard-changes-entry" @click="discardAllChanges" :disabled="!publication.published||publishing||busy">{{t('discard_changes')}}</button></template><template v-else><small v-if="!viewPublished" class="publication-status">{{publishedDate}}</small><label v-if="!viewPublished"><input type="checkbox" :checked="liveEditing" @change="toggleLive($event)"> {{t('live_editing')}}</label></template></div><div class="sidebar-spacer" aria-hidden="true"></div><button class="structure-entry" @click="openStructure"><svg class="sidebar-action-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2" width="6" height="5" rx="1"/><rect x="2" y="17" width="6" height="5" rx="1"/><rect x="16" y="17" width="6" height="5" rx="1"/><path d="M12 7v5M5 17v-5h14v5"/></svg><span>{{t('structure_editor')}}</span></button></div></aside>
  <main :inert="actionDialog?true:undefined" :class="{'files-main':mediaView}"><header v-if="mediaView" class="files-header"><h1>{{schema?.folders?.[mediaFolder]?.label||t('files')}}</h1><label v-if="!viewPublished" class="primary upload">{{t('upload_file')}}<input type="file" :accept="uploadAccept" @change="upload"></label></header>
  <p v-if="externalPending">{{t('content_was_changed_elsewhere_your_unsaved_edits')}} <button @click="reload">{{t('load_current_content')}}</button></p><div role="status" aria-live="polite" class="toast" :class="noticeKind" v-if="notice"><span>{{notice}}</span><button type="button" :aria-label="t('dismiss_message')" @click="notice=''">×</button></div><div class="loading" v-if="!schema&&!notice">{{t('loading_working_content')}}</div>
  <template v-if="schema&&!mediaView&&definition">
@@ -69,7 +69,7 @@ const template = `
  <div class="overlay" v-if="picker" @click.self="picker=''"><section class="picker" role="dialog" aria-modal="true" :aria-label="t('select_file')"><div class="picker-head"><h2>{{pickerFolder?.label||t('select_file')}}</h2><button @click="picker=''">{{t('close')}}</button></div><div v-if="pickerFolder?.type==='img'" class="media-grid"><button v-for="path in pickerFiles" @click="pick(path)"><img :src="mediaUrl(path)" :alt="path" loading="lazy"><small>{{path.split('/').at(-1)}}</small></button></div><div v-else class="file-picker-list"><button v-for="path in pickerFiles" @click="pick(path)"><span aria-hidden="true">▤</span><strong>{{path.split('/').at(-1)}}</strong><small>{{path}}</small></button></div><p v-if="!pickerFiles.length" class="empty">{{t('there_are_no_files_in_this_folder')}}</p></section></div>
  <div class="overlay" v-if="linkDialog" @click.self="cancelLink"><section class="confirm-card" role="dialog" aria-modal="true" :aria-label="t('edit_link')" @keydown.esc.prevent="cancelLink"><h2>{{linkDialog.editing?t('edit_link'):t('insert_link')}}</h2><form @submit.prevent="saveLink"><div class="link-fields"><label for="link-url">{{t('link_url')}}</label><input id="link-url" v-model="linkDialog.url" required placeholder="https://…"><label for="link-text">{{t('link_text')}}</label><input id="link-text" v-model="linkDialog.text" required><p class="link-error" v-if="linkError" role="alert">{{linkError}}</p></div><div class="form-footer"><button type="button" @click="cancelLink">{{t('cancel')}}</button><button type="submit" class="primary">{{t('apply_link')}}</button></div></form></section></div>
  <div class="overlay" v-if="leaveOpen"><section class="confirm-card" role="dialog" aria-modal="true" :aria-label="t('unsaved_changes')"><h2>{{t('save_changes_2')}}</h2><p>{{t('this_record_has_unsaved_changes_save_them')}}</p><div class="form-footer"><button @click="chooseLeave('cancel')">{{t('cancel_2')}}</button><button @click="chooseLeave('discard')">{{t('discard_edits')}}</button><button class="primary" @click="chooseLeave('save')">{{t('save_step')}}</button></div></section></div><div class="overlay" v-if="confirmation"><section class="confirm-card" role="dialog" aria-modal="true" :aria-label="t('confirm_action')"><h2>{{t('confirm_action_2')}}</h2><p>{{confirmation}}</p><div class="form-footer"><button @click="confirmChoose(false)">{{t('cancel')}}</button><button class="primary" @click="confirmChoose(true)">{{t('confirm')}}</button></div></section></div>
- </main></div><div class="overlay" v-if="actionDialog"><section class="confirm-card" role="dialog" aria-modal="true" :aria-label="actionDialog.kind==='publish'?t('publish_changes'):t('discard_changes')"><h2>{{actionDialog.kind==='publish'?t('publish_changes'):t('discard_changes')}}</h2><p v-if="actionDialog.kind==='publish'">{{t('publish_all_saved_content_structure_and_file')}}</p><p v-else>{{t('discard_all_unpublished_changes_working_content_structure')}}</p><p v-if="actionDialog.kind==='discard'&&dirty">{{t('unsaved_edits_in_the_open_form_will')}}</p><p v-if="actionDialog.loading" role="status">{{t('loading_current_state')}}</p><p v-if="actionDialog.error" role="alert">{{actionDialog.error}}</p><div class="form-footer"><button @click="actionDialog=null" :disabled="actionDialog.working">{{t('cancel')}}</button><button class="primary" @click="confirmPublicationAction" :disabled="actionDialog.loading||actionDialog.working||!!actionDialog.error||!actionDialog.expectedRevision">{{actionDialog.working?t('working_2'):actionDialog.kind==='publish'?t('publish_changes'):t('discard_changes')}}</button></div></section></div>`;
+ </main></div><div class="overlay" v-if="actionDialog"><section class="confirm-card" role="dialog" aria-modal="true" :aria-label="actionDialog.kind==='publish'?t('publish_changes'):t('discard_changes')"><h2>{{actionDialog.kind==='publish'?t('publish_changes'):t('discard_changes')}}</h2><p v-if="actionDialog.kind==='publish'">{{t('publish_all_saved_content_structure_and_file')}}</p><p v-else>{{t('discard_all_unpublished_changes_working_content_structure')}}</p><p v-if="actionDialog.kind==='discard'&&dirty">{{t('unsaved_edits_in_the_open_form_will')}}</p><p v-if="actionDialog.loading" role="status">{{t('loading_current_state')}}</p><p v-if="actionDialog.error" role="alert">{{actionDialog.error}}</p><p v-if="actionDialog.websiteForeign">{{t('publish_anyway_removes_their_changes_from_the_website')}}</p><div class="form-footer"><button @click="actionDialog=null" :disabled="actionDialog.working">{{t('cancel')}}</button><button v-if="actionDialog.websiteForeign" class="primary" @click="confirmPublicationAction(true)" :disabled="actionDialog.working">{{t('publish_anyway')}}</button><button v-else class="primary" @click="confirmPublicationAction()" :disabled="actionDialog.loading||actionDialog.working||!!actionDialog.error||!actionDialog.expectedRevision">{{actionDialog.working?t('working_2'):actionDialog.kind==='publish'?t('publish_changes'):t('discard_changes')}}</button></div></section></div>`;
 createApp({
   template,
   setup() {
@@ -85,6 +85,7 @@ createApp({
         working: boolean;
         expectedRevision: string;
         error: string;
+        websiteForeign?: boolean;
       },
       liveEditing: false,
       publication: { unpublished: false, published: null as any },
@@ -342,7 +343,10 @@ createApp({
         headers: { 'Content-Type': 'application/json', 'X-CMS-Token': state.token, ...options.headers },
       });
       const result = await res.json();
-      if (!res.ok) throw Error(localize(result.error || t('the_operation_failed')));
+      if (!res.ok)
+        throw Object.assign(Error(localize(result.error || t('the_operation_failed'))), {
+          websiteForeign: result.websiteForeign === true,
+        });
       return result;
     }
     watch(
@@ -466,13 +470,14 @@ createApp({
     function discardAllChanges() {
       return openPublicationAction('discard');
     }
-    async function confirmPublicationAction() {
+    // overrideWebsite: "Publish anyway" over someone else's change in the website Git (documentation 7.7).
+    async function confirmPublicationAction(overrideWebsite = false) {
       const dialog = state.actionDialog;
       if (
         !dialog ||
         dialog.loading ||
         dialog.working ||
-        dialog.error ||
+        (dialog.error && !(overrideWebsite && dialog.websiteForeign)) ||
         !dialog.expectedRevision ||
         (dialog.kind === 'publish' && dirty.value)
       )
@@ -482,7 +487,11 @@ createApp({
       try {
         const result = await api(dialog.kind === 'publish' ? '/api/publication' : '/api/discard-changes', {
           method: 'POST',
-          body: JSON.stringify({ confirm: true, expectedRevision: dialog.expectedRevision }),
+          body: JSON.stringify({
+            confirm: true,
+            expectedRevision: dialog.expectedRevision,
+            ...(overrideWebsite ? { overrideWebsite: true } : {}),
+          }),
         });
         if (dialog.kind === 'discard') {
           await load();
@@ -491,13 +500,16 @@ createApp({
           await selectRow(0, true);
         } else state.publication = result;
         state.actionDialog = null;
-        notice(
-          dialog.kind === 'publish'
-            ? t('content_changes_have_been_published')
-            : t('unpublished_changes_were_discarded_the_published_version'),
-        );
+        if (dialog.kind === 'publish' && result.warning) notice(result.warning, 'error');
+        else
+          notice(
+            dialog.kind === 'publish'
+              ? t('content_changes_have_been_published')
+              : t('unpublished_changes_were_discarded_the_published_version'),
+          );
       } catch (e: any) {
         dialog.error = e.message;
+        dialog.websiteForeign = e.websiteForeign === true;
       } finally {
         dialog.working = false;
         state.publishing = false;
@@ -641,7 +653,7 @@ createApp({
         }
       }
     }
-    async function persist(rows: Row[], message = t('changes_were_saved_a_backup_of_the')) {
+    async function persist(rows: Row[], message = t('changes_were_saved')) {
       if (state.viewPublished) return false;
       state.busy = true;
       try {

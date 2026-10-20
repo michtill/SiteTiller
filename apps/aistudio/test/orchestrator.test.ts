@@ -1,3 +1,4 @@
+import { leadInstruction } from '../src/orchestrator.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm, readFile, writeFile, mkdir } from 'node:fs/promises';
@@ -392,14 +393,17 @@ test('AI-19: agent cannot skip browser checks, change an unread file or choose a
     await writeFile(join(p.root, 'site/extra.txt'), 'Original');
     await p.commit('Extra content');
     const head = await p.head();
-    const model: any = async () => ({
-      value: { action: 'implement', files: [{ path: 'site/extra.txt', content: 'Unwanted' }] },
-    });
-    await assert.rejects(
-      workflow(p, slots, 'Edit', join(root, 'drafts'), () => {}, model, undefined, [], { check: checked }),
-      /nenačetl/,
-    );
-    assert.equal(await p.head(), head);
+    // The rule is in the instructions from the start, for every role.
+    assert.match(leadInstruction, /Read before you change/);
+    // An unread file is not changed: the agent gets its content and must redo the change from it.
+    const seen: any[] = [];
+    const model: any = async (_c: any, _i: any, input: any) => {
+      seen.push(input.files?.['site/extra.txt']);
+      return { value: { action: 'implement', files: [{ path: 'site/extra.txt', content: 'Unwanted' }] } };
+    };
+    await workflow(p, slots, 'Edit', join(root, 'drafts'), () => {}, model, undefined, [], { check: checked });
+    assert.deepEqual(seen.slice(0, 2), [undefined, 'Original']);
+    assert.notEqual(await p.head(), head);
   }));
 
 test('AI-19: exceptionally hard task uses configured escalation with a concrete reason and independent verification', async () =>

@@ -6,3 +6,6 @@ work
 *.log
 .env
 .env.*
+# Data of an instance next to the repository (a hosting panel keeps its volumes there): never in the image.
+.volumes
+.claude

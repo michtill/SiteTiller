@@ -12,10 +12,11 @@ import SaveDraftDialog from './save-draft-dialog.ts';
 import RestoreDialog from './restore-dialog.ts';
 import PublishDialog from './publish-dialog.ts';
 import RealityDialog from './reality-dialog.ts';
+import WebsiteNotice from './website-notice.ts';
 import { dialogs } from './dialogs.ts';
 // AI Studio: the conversation with its tabs on the left, the preview on the right, the width between them adjustable.
 const template = `<main id="workspace" ref="workspace" :hidden="!s.session?.authenticated||undefined" :aria-busy="s.ready?undefined:'true'" :class="{resizing:dragging}" :style="{'--chat-width':width+'%'}"><aside><header class="studio-header"><StudioSwitcher menu-id="studio-switcher" active="site" :label="t('ai_studio')" :name="s.editorName" :settings-href="settingsHref" local-ai-settings :ai-settings-disabled="!s.ready" @navigate="navigate" @ai-settings="openSettings"/><div class="workspace-tabs" role="tablist" :aria-label="t('website_workspace')"><button v-for="tab in tabs" :key="tab.name" :id="tab.id" type="button" role="tab" :aria-selected="String(s.workspaceTab===tab.name)" :aria-controls="tab.panel" :tabindex="s.workspaceTab===tab.name?0:-1" :disabled="!s.ready" @click="select(tab.name)" @keydown="tabKey($event,tab.name)"><span>{{t(tab.label)}}</span></button></div></header>
-<section id="edits-panel" role="tabpanel" aria-labelledby="edits-tab" :hidden="s.workspaceTab!=='edits'||undefined"><p v-if="!s.ready&&s.loadingText" class="timeline-loading">{{s.loadingText}}</p><Timeline v-if="s.current" @reality="dialogs.reality()"/><div v-else id="timeline" class="timeline" aria-live="polite"></div><PromptForm/></section>
+<section id="edits-panel" role="tabpanel" aria-labelledby="edits-tab" :hidden="s.workspaceTab!=='edits'||undefined"><p v-if="!s.ready&&s.loadingText" class="timeline-loading">{{s.loadingText}}</p><WebsiteNotice/><Timeline v-if="s.current" @reality="dialogs.reality()"/><div v-else id="timeline" class="timeline" aria-live="polite"></div><PromptForm/></section>
 <SavedDrafts :hidden="s.workspaceTab!=='drafts'||undefined"/><HistoryPanel :hidden="s.workspaceTab!=='history'||undefined"/></aside>
 <div id="splitter" role="separator" :aria-label="t('chat_width')" aria-orientation="vertical" :aria-valuenow="String(Math.round(width))" tabindex="0" @pointerdown="dragStart" @pointermove="dragMove" @pointerup="dragEnd" @lostpointercapture="dragEnd" @keydown="splitterKey"></div><PreviewPanel/></main>
 <SettingsDialog/><SaveDraftDialog/><RestoreDialog/><PublishDialog/><RealityDialog/>
@@ -39,6 +40,7 @@ export default {
     RestoreDialog,
     PublishDialog,
     RealityDialog,
+    WebsiteNotice,
   },
   setup() {
     const workspace = ref<HTMLElement | null>(null);

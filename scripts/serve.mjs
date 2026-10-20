@@ -1,7 +1,7 @@
 // Runs all six services of one instance in the foreground (the server container). Logs go to standard output with
 // the service name; when any service stops, the others stop too and the container restarts them together.
 import { spawn } from 'node:child_process';
-import { runAsInstanceOwner, withPasswdEntry } from './instance-user.mjs';
+import { runAsInstanceOwner, withSshPasswdEntry } from './instance-user.mjs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readJson } from '../packages/settings/index.mjs';
@@ -13,7 +13,7 @@ if (instance.kind !== 'sitetiller-next-instance' || resolve(instance.root) !== r
   throw Error('Not a SiteTiller instance: ' + root);
 // The services run as the owner of the instance (see instance-user.mjs).
 await runAsInstanceOwner(root);
-const env = await withPasswdEntry(await instanceEnvironment(repo, root, instance)),
+const env = await withSshPasswdEntry(await instanceEnvironment(repo, root, instance)),
   children = new Map();
 let stopping = false,
   exitCode = 1;

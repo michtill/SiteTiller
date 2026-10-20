@@ -46,8 +46,10 @@ export async function stepChanges(project: Project, before: string, after: strin
       content.push(path);
     } else presentation.push(path);
   }
+  // Every step that changes something has its own preview: a content change too shows the page with the new content
+  // (documentation 4.2). presentationChanged therefore means "the step has a preview".
   return {
-    presentationChanged: !!presentation.length,
+    presentationChanged: !!(presentation.length || content.length),
     contentChanged: !!content.length,
     changeKind: presentation.length
       ? content.length
@@ -64,6 +66,17 @@ export async function stepChanges(project: Project, before: string, after: strin
 export async function loadedStepChanges(config: any, project: Project, before: string, after: string) {
   const first = !(config.requests || []).some((r: any) => ['ready', 'legacy'].includes(r.status) && r.commit);
   return first ? { presentationChanged: true, changeKind: 'version' } : stepChanges(project, before, after);
+}
+// The first step of a draft is always a version with its own preview, however it came about (a load, an AI step,
+// a step that stays first after a publication or a save): there is no previous step to compare it with.
+export function startingVersion(config: any) {
+  const first = (config.requests || []).find((r: any) => ['ready', 'legacy'].includes(r.status) && r.commit);
+  if (!first || first.presentationChanged !== false) return;
+  Object.assign(first, { presentationChanged: true, changeKind: 'version' });
+  // With no later presentation step, the preview shows this step.
+  const shown = presentationState(config, first.commit);
+  if (shown.presentationStepId === first.id)
+    Object.assign(config, { presentationHead: first.commit, presentationStepId: first.id });
 }
 export function presentationState(config: any, head: string) {
   const step = (config.requests || []).findLast(

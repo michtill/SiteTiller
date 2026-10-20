@@ -119,7 +119,7 @@ test('AI-33: UI loads models then submits and retains encrypted keys after reloa
     page.setDefaultTimeout(30000);
     await page.goto(stack.origin + '/login');
     await page.locator('input[name=password]').fill(stack.password);
-    await page.locator('button').click();
+    await page.locator('button:not(.show-password)').click();
     await page.waitForURL('**/content/');
     studio = await studioFrame(page, 'content');
     await page.goto(stack.origin + '/site/');
@@ -185,7 +185,7 @@ test('AI-33: delayed startup/open catalog preserves typed keys and role edits be
     });
     await page.goto(stack.origin + '/login');
     await page.locator('input[name=password]').fill(stack.password);
-    await page.locator('button').click();
+    await page.locator('button:not(.show-password)').click();
     await page.waitForURL('**/content/');
     studio = await studioFrame(page, 'content');
     await page.goto(stack.origin + '/site/');

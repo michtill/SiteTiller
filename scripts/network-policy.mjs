@@ -8,6 +8,8 @@ export function allowedNetworkURL(mode, input) {
   const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
   if (['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) && ['http:', 'https:'].includes(url.protocol))
     return true;
+  // The Publisher verifies the hosted website at its own public address (SITETILLER_WWW_URL), nothing else.
+  if (process.env.SITETILLER_WWW_URL && url.origin === new URL(process.env.SITETILLER_WWW_URL).origin) return true;
   return (
     mode === 'providers' &&
     url.protocol === 'https:' &&

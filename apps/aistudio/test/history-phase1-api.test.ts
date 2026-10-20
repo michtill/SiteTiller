@@ -41,7 +41,7 @@ async function setup(root: string) {
   await captureCmsPublication(project, cms);
   return { cms, project, initial: await project.head() };
 }
-test('AI-03: real content-only workflow produces a durable content step, then combined changes get a presentation step', async () => {
+test('AI-03: real content-only workflow produces a durable content step with its own preview, then combined changes', async () => {
   const root = await mkdtemp(join(tmpdir(), 'next-history-workflow-')),
     previous = { root: process.env.SITETILLER_CMS_ROOT, url: process.env.SITETILLER_CMS_URL };
   let owner: any;
@@ -75,9 +75,10 @@ test('AI-03: real content-only workflow produces a durable content step, then co
       { cmsSource: 'unpublished', requestChecks: { technical: false, verification: false } },
     );
     assert.ok(content.commit !== initial);
-    assert.equal(content.presentationChanged, false);
+    // A content-only step has its own preview too (documentation 4.2).
+    assert.equal(content.presentationChanged, true);
     assert.equal(content.changeKind, 'content');
-    assert.equal(events.findLast((e) => e.stage === 'ready').presentationChanged, false);
+    assert.equal(events.findLast((e) => e.stage === 'ready').presentationChanged, true);
     assert.equal(JSON.parse(await readFile(join(cms, 'data/items.json'), 'utf8'))[0].title, 'Content only');
     const combined = await workflow(
       project,
@@ -115,7 +116,7 @@ test('AI-03: real content-only workflow produces a durable content step, then co
     await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 });
-test('HI-10: named save/list/frozen preview/continue UI keeps last presentation selected after restart and restores only unpublished content with CAS', async () => {
+test('HI-10: named save/list/frozen preview/continue UI keeps the last step selected after restart and restores only unpublished content with CAS', async () => {
   const root = await mkdtemp(join(tmpdir(), 'next-history-ui-'));
   let child: any, owner: any, browser: any;
   try {
@@ -209,7 +210,7 @@ test('HI-10: named save/list/frozen preview/continue UI keeps last presentation 
     const cookie = gateway,
       state = async () =>
         await (await fetch(origin + '/api/state', { headers: { 'x-sitetiller-gateway': cookie } })).json();
-    assert.equal((await state()).presentationHead, initial);
+    assert.equal((await state()).presentationHead, head);
     browser = await chromium.launch({
       ...(process.env.SITETILLER_BROWSER_EXECUTABLE
         ? { executablePath: process.env.SITETILLER_BROWSER_EXECUTABLE }
@@ -235,12 +236,15 @@ test('HI-10: named save/list/frozen preview/continue UI keeps last presentation 
     await page.locator('[data-content-source="unpublished"]').click();
     await page.waitForFunction(
       () =>
-        document.querySelector('[data-group-id="presentation"] .show-version')?.getAttribute('aria-pressed') === 'true',
+        document.querySelector('[data-group-id="content"] .show-version')?.getAttribute('aria-pressed') === 'true',
     );
-    assert.equal(await page.locator('[data-group-id="content"] .show-version').count(), 0);
-    assert.match(await page.locator('[data-group-id="content"] .content-step-note').textContent(), /Změna obsahu/);
-    // The status names the current draft commit; the preview keeps the last presentation selected.
-    assert.match(await page.locator('#publish-status').textContent(), new RegExp(head.slice(0, 8)));
+    // The content step has its own preview (documentation 4.2) and no note about a missing one.
+    assert.equal(await page.locator('[data-group-id="content"] .content-step-note').count(), 0);
+    // The status names the current draft commit; the preview shows the last step.
+    await page.waitForFunction(
+      (commit) => document.querySelector('#publish-status').textContent.includes(commit),
+      head.slice(0, 8),
+    );
     await page.waitForFunction(() =>
       document.querySelector('#preview').getAttribute('src').includes('sources/unpublished'),
     );
@@ -329,12 +333,12 @@ test('HI-10: named save/list/frozen preview/continue UI keeps last presentation 
     assert.equal(await page.locator('#settings[open]').count(), 0);
     await page.waitForFunction(
       () =>
-        document.querySelector('[data-group-id="presentation"] .show-version')?.getAttribute('aria-pressed') === 'true',
+        document.querySelector('[data-group-id="content"] .show-version')?.getAttribute('aria-pressed') === 'true',
     );
     assert.equal(
       (await (await fetch(origin + '/api/state', { headers: { 'x-sitetiller-gateway': cookieAgain } })).json())
         .presentationHead,
-      initial,
+      head,
     );
     const prepared = await (
       await post('restore/prepare', { draftId: snapshot.id, commit: snapshot.commit, expectedHead: head }, cookieAgain)

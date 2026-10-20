@@ -39,7 +39,7 @@ test(
       assert.match(await page.locator('h1').textContent(), /SiteTiller playground/);
       assert.doesNotMatch(await page.locator('body').textContent(), /LEGACY MUST NOT WIN/);
       await page.locator('input[name=password]').fill(stack.password);
-      await page.locator('button').click();
+      await page.locator('button:not(.show-password)').click();
       await page.waitForURL('**/content/');
       studio = await studioFrame(page, 'content');
       await studio.getByRole('textbox', { name: 'Nadpis', exact: true }).waitFor();

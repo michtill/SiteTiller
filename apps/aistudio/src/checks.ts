@@ -1,4 +1,5 @@
 import { renderingPages, renderingData, renderWithData, renderCmsPage } from './cms-render.ts';
+import { currentStopSignal, StoppedError } from './run-control.ts';
 import { cmsSnapshotAsset } from './cms-snapshot-asset.ts';
 import { serveForm, formDefinitions } from './contact-forms.ts';
 import { websitePolicy } from './site-policy.ts';
@@ -147,6 +148,10 @@ export async function browserChecks(
   let browser: any;
   try {
     browser = await launchBrowser(chromium);
+    // A stopped request or a spent time budget (run-control.ts) closes the browser; pending page steps then fail.
+    const stop = currentStopSignal();
+    if (stop?.aborted) throw new StoppedError();
+    stop?.addEventListener('abort', () => browser.close().catch(() => {}), { once: true });
     const origin = 'http://127.0.0.1:' + (server.address() as any).port;
     const pages = Object.keys(files).filter((p) => p.endsWith('.html'));
     if (pages.length > 20) throw Error('Browser check supports at most 20 pages per request.');

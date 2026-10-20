@@ -60,6 +60,8 @@ test('AI-21: complete explicit primary final reuses zero calls; specialist final
     assert.equal(slot.provider, 'openai');
     assert.ok(!input.files && !input.originalRequest && !input.tools && !input.roleState);
     assert.match(instruction, /Czech/);
+    // Shown only after the host saved the change: written as done, never as waiting for confirmation.
+    assert.match(instruction, /never as proposed or waiting for confirmation/);
     assert.deepEqual(input.outcome.facts, [{ warnings: ['Unverified keyboard interaction'] }]);
     return { value: { finalAnswer: 'Úprava je připravená. Ovládání klávesnicí nebylo ověřené.' } };
   };
@@ -142,6 +144,8 @@ test('AI-21: real provider final envelope has bounded output/no tools/no retries
     }
   assert.doesNotMatch(withRules('ui', 'Internal'), /MUST match the original/);
   assert.match(primaryFinalContract, /finalResponseLanguage/);
+  // The answer is shown after the save, so it never says the save is still pending.
+  assert.match(primaryFinalContract, /never as waiting for confirmation/);
 });
 test('AI-01: workflow fixed language despite arbitrary request, content bytes unchanged, live/archive final verbatim', async () => {
   for (const [responseLanguage, prompt, finalAnswer] of [

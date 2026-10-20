@@ -19,7 +19,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Project } from './project.ts';
 import { productionTarget, syncProductionMirror, pushProductionRefs, productionRemote } from './production-remote.ts';
+import { publishStaticWebsite, websiteForeign } from './static-website.ts';
 import { raster, binaryAsset } from './images.ts';
+import { privateSiteFiles } from './site-policy.ts';
 const exec = promisify(execFile),
   dataDirectory = process.env.SITETILLER_DATA_DIR || '/data',
   project = new Project(dataDirectory + '/project');
@@ -78,7 +80,10 @@ async function finishRecord(record: any) {
     while (Date.now() < deadline) {
       try {
         const checks = await Promise.all(
-          Object.entries(expectedFiles).map(async ([name, content]) => {
+          // Private files are not served, so they are not expected on the website.
+          Object.entries(expectedFiles)
+            .filter(([name]) => !privateSiteFiles.has(name.slice(5)))
+            .map(async ([name, content]) => {
             const url = new URL(
               name === 'site/index.html' ? './' : name.slice(5),
               process.env.SITETILLER_PRODUCTION_URL,
@@ -122,6 +127,11 @@ async function finishRecord(record: any) {
     commit,
   );
   await pushProductionRefs(['refs/tags/' + release.tag]);
+  // The hosted website follows every publication; a failure leaves the release valid and is retried next time.
+  if (process.env.SITETILLER_PRODUCTION_DIRECTORY)
+    await publishStaticWebsite({ force: record.overrideWebsite === true }).catch((e) =>
+      console.error('Static website not written: ' + (e.code || e.name)),
+    );
   return release;
 }
 const recordOps = {
@@ -220,6 +230,30 @@ http
           busy = false;
         }
       }
+      // External presentation: the current release to the website Git (after a content publication, or when the owner
+      // confirms "Publish anyway" over someone else's change).
+      if (req.method === 'GET' && req.url === '/www/status') {
+        try {
+          return json(200, { foreign: await websiteForeign() });
+        } catch {
+          return json(502, { error: 'Git webu není dostupný.' });
+        }
+      }
+      if (req.method === 'POST' && req.url === '/www') {
+        if (!process.env.SITETILLER_PRODUCTION_DIRECTORY) return json(501, { error: 'Not configured' });
+        let text = '';
+        for await (const chunk of req) {
+          text += chunk;
+          if (text.length > 1000) return json(413, { error: 'Too large' });
+        }
+        const force = text ? JSON.parse(text).force === true : false;
+        try {
+          return json(200, await publishStaticWebsite({ force }));
+        } catch (e: any) {
+          console.error('Static website not written: ' + (e.code || e.name));
+          return json(502, { error: 'Web se nepodařilo zapsat do Gitu.' });
+        }
+      }
       if (req.method === 'POST' && req.url === '/archive') {
         if (busy) return json(409, { error: 'Počkej na dokončení publikování.' });
         let text = '';
@@ -287,7 +321,7 @@ http
         text += chunk;
         if (text.length > 1000) return json(413, { error: 'Too large' });
       }
-      const { commit } = JSON.parse(text);
+      const { commit, overrideWebsite } = JSON.parse(text);
       if (typeof commit !== 'string' || !/^[a-f0-9]{40}$/.test(commit)) return json(409, { error: 'Invalid snapshot' });
       const head = await project.head();
       // Approval is written by the controller, never by model tools; Publisher reads nothing else from AI Studio data.
@@ -334,12 +368,15 @@ http
           });
 
         stage = 'git';
-        const before = (await run(['ls-remote', remote, 'refs/heads/main'])).stdout.split(/\s/)[0];
-        await run(['fetch', remote, 'main']);
-        if ((await run(['rev-parse', 'FETCH_HEAD'])).stdout.trim() !== before)
-          throw Error('Production Git changed during preparation');
+        // An empty production Git (a new hosting repository) has no main yet: the publication becomes its first commit.
+        const before = (await run(['ls-remote', remote, 'refs/heads/main'])).stdout.split(/\s/)[0] || null;
+        if (before) {
+          await run(['fetch', remote, 'main']);
+          if ((await run(['rev-parse', 'FETCH_HEAD'])).stdout.trim() !== before)
+            throw Error('Production Git changed during preparation');
+        }
         const deployedCommit = await productionSnapshot(new Project(temp), commit, before, project);
-        await run(['merge-base', '--is-ancestor', 'FETCH_HEAD', deployedCommit]);
+        if (before) await run(['merge-base', '--is-ancestor', 'FETCH_HEAD', deployedCommit]);
         // No force push. Freeze explicit SHA so later draft changes cannot be released.
         if (process.env.SITETILLER_PRODUCTION_DIRECTORY)
           await prepareSite(project, commit, process.env.SITETILLER_PRODUCTION_DIRECTORY);
@@ -349,6 +386,7 @@ http
           deployedCommit,
           before,
           intent: approval.intent,
+          overrideWebsite: overrideWebsite === true,
           committed: false,
           completed: false,
         });
@@ -363,6 +401,7 @@ http
           deployedCommit,
           before,
           intent: approval.intent,
+          overrideWebsite: overrideWebsite === true,
           committed: true,
           completed: false,
         };

@@ -168,7 +168,15 @@ export function compactProgress(
     }
     return {
       ...group,
-      prompt: request?.prompt || group.events.find((e: any) => e.stage === 'request')?.message || '',
+      prompt: request?.firstStep ? '' : request?.prompt || group.events.find((e: any) => e.stage === 'request')?.message || '',
+      // The first step that stands for a published version or saved draft (documentation 4.9).
+      title:
+        request?.firstStep === 'published'
+          ? t('published_version_step', { version: request.releaseVersion || '' }).trim() +
+            (request.releaseDescription ? ' – ' + request.releaseDescription : '')
+          : request?.firstStep === 'saved'
+            ? t('saved_draft_step', { name: request.savedDraftName || '' })
+            : '',
       baseCommit: request?.baseCommit || group.events.find((e: any) => e.baseCommit)?.baseCommit,
       commit: request?.commit || group.events.findLast((e: any) => e.commit)?.commit,
       done: done && !failed,

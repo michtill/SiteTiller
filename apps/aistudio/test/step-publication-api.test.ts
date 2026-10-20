@@ -213,11 +213,11 @@ for (const withCleanup of [false, true])
         }
         assert.equal(s.head, head);
         assert.equal(s.publishedCommit, first);
-        // The published step stays as the first step of the draft, now on the release commit.
+        // A new first step "Published version 2" on the release commit replaces the published step (documentation 4.9).
         assert.deepEqual(
-          s.requests.map((r: any) => [r.id, r.prompt]),
+          s.requests.map((r: any) => [(r.firstStep ? 'first:' + r.firstStep : r.id), r.prompt]),
           [
-            ['first', 'Ready step'],
+            ['first:published', ''],
             ['later', 'Later draft'],
             ['failed', 'Later failed attempt'],
           ],
@@ -245,8 +245,8 @@ for (const withCleanup of [false, true])
         assert.equal(s.head, head);
         assert.equal(s.publishedCommit, head);
         assert.deepEqual(
-          s.requests.map((r: any) => r.id),
-          ['later', 'failed'],
+          s.requests.map((r: any) => (r.firstStep ? 'first:' + r.firstStep : r.id)),
+          ['first:published', 'failed'],
         );
         assert.equal(s.releases.at(-1).number, 3);
         assert.equal(s.contentChanged, false);

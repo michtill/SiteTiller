@@ -217,6 +217,8 @@ export const fieldCatalog = {
     },
   },
   collectionRules: {
+    shape:
+      'structure.json = {version, lists:{<collection id>:{label, key, columns:{<field id>:{type, label, ...}}, display?, group?}}, folders:{}}; the fields of a collection go in "columns" (not "fields")',
     version: { kind: 'integer', minimum: 1 },
     identifiers: { pattern: '^[a-zA-Z][\\w-]{0,63}$', forbidden: ['constructor', 'prototype', '__proto__'] },
     key: 'must name existing field; nonempty unique string per collection; explicit duplicates fail422 with label/value; referenced keys cannot be removed/renamed',

@@ -14,6 +14,7 @@ import {
 } from '../../packages/settings/index.mjs';
 import { settingsReturnTo } from './settings-return.mjs';
 import { servePublicPreview } from './public-preview.ts';
+import { sessionCookie } from './session-cookie.mjs';
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -63,8 +64,9 @@ function persistSessions() {
   sessionWrites = sessionWrites.then(() => atomicJson(sessionsFile, snapshot)).catch(() => {});
   return sessionWrites;
 }
+const cookieName = sessionCookie(origin);
 const valid = (req: http.IncomingMessage) => {
-  const token = req.headers.cookie?.match(/(?:^|; *)sitetiller_edit=([a-f0-9]{64})/)?.[1];
+  const token = req.headers.cookie?.match(new RegExp('(?:^|; *)' + cookieName + '=([a-f0-9]{64})'))?.[1];
   return token && (sessions.get(hashed(token)) || 0) > Date.now() ? token : null;
 };
 // The website name, theme and interface language of the Shell pages come from the common settings.
@@ -172,7 +174,8 @@ http
         await persistSessions();
         res.setHeader(
           'Set-Cookie',
-          'sitetiller_edit=' +
+          cookieName +
+            '=' +
             session +
             '; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800' +
             (origin.startsWith('https:') ? '; Secure' : ''),
@@ -236,7 +239,7 @@ http
             await persistSessions();
             res.setHeader(
               'Set-Cookie',
-              'sitetiller_edit=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0' +
+              cookieName + '=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0' +
                 (origin.startsWith('https:') ? '; Secure' : ''),
             );
             return page(200, 'passwordChanged');
@@ -251,7 +254,7 @@ http
           issuedPreviewKeys.delete(hashed(token));
           await persistSessions();
         }
-        res.setHeader('Set-Cookie', 'sitetiller_edit=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');
+        res.setHeader('Set-Cookie', cookieName + '=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');
         return redirect('/login');
       }
       if (!token && !previewForm && !hasPreviewAccess) {

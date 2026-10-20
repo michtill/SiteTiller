@@ -14,7 +14,7 @@ import {
 import { dialogs } from './dialogs.ts';
 // Publishing the shown version: what it includes, an optional description and, if wanted, a subversion
 // of the current version. While it runs, the dialog shows the progress the server reports.
-const template = `<dialog id="publish-confirm" ref="dialog" :class="{'is-publishing':d.publishing}" :aria-busy="d.publishing?'true':undefined" :data-cms-source="d.cmsSource" :data-commit="d.commit" :data-head="d.head" :data-release-id="d.releaseId" :data-published-commit="d.publishedCommit" :data-step-id="d.stepId" @cancel="cancel"><div class="eyebrow"><span>{{t('publishing')}}</span></div><h2><span>{{t('publish_this_version')}}</span></h2><p id="confirm-description">{{d.description}}</p><div id="publish-cms-warning" class="publish-cms-warning" role="alert" :hidden="!d.warning||undefined"><strong>{{d.snapshot?t('publish_includes_step_content'):t('publish_includes_unpublished_content')}}</strong><p>{{d.snapshot?t('publish_includes_step_content_help'):t('publish_includes_unpublished_content_help')}}</p></div><label for="release-description"><span>{{t('version_description_optional')}}</span></label><textarea id="release-description" v-model="d.releaseDescription" maxlength="2000" rows="3" :placeholder="t('what_does_this_version_change')"></textarea><label class="restore-options" id="replace-release-option" :hidden="!d.subversionPossible||undefined"><input id="replace-current-release" type="checkbox" v-model="d.subversion"><span><span>{{t('create_a_subversion_of_the_current_version')}}</span></span></label><p id="replace-release-note" class="hint" :hidden="!d.subversion||undefined"><span>{{t('a_new_subversion_of_the_current_version_will')}}</span></p><label class="restore-options"><input id="publish-clear-previous" type="checkbox" v-model="d.clear" :disabled="d.publishing"><span>{{t('remove_previous_steps')}}</span></label><p id="publish-result" role="status">{{d.result}}</p><div class="confirm-actions"><button id="cancel-publish" type="button" :disabled="d.publishing" @click="dialog.close()">{{t('back')}}</button><button id="confirm-publish" type="button" class="primary" :disabled="d.publishing" @click="confirm">{{d.publishing?t('publishing_in_progress'):t('publish_website')}}</button></div></dialog>`;
+const template = `<dialog id="publish-confirm" ref="dialog" :class="{'is-publishing':d.publishing}" :aria-busy="d.publishing?'true':undefined" :data-cms-source="d.cmsSource" :data-commit="d.commit" :data-head="d.head" :data-release-id="d.releaseId" :data-published-commit="d.publishedCommit" :data-step-id="d.stepId" @cancel="cancel"><div class="eyebrow"><span>{{t('publishing')}}</span></div><h2><span>{{t('publish_this_version')}}</span></h2><p id="confirm-description">{{d.description}}</p><div id="publish-cms-warning" class="publish-cms-warning" role="alert" :hidden="!d.warning||undefined"><strong>{{d.snapshot?t('publish_includes_step_content'):t('publish_includes_unpublished_content')}}</strong><p>{{d.snapshot?t('publish_includes_step_content_help'):t('publish_includes_unpublished_content_help')}}</p></div><label for="release-description"><span>{{t('version_description_optional')}}</span></label><textarea id="release-description" v-model="d.releaseDescription" maxlength="2000" rows="3" :placeholder="t('what_does_this_version_change')"></textarea><label class="restore-options" id="replace-release-option" :hidden="!d.subversionPossible||undefined"><input id="replace-current-release" type="checkbox" v-model="d.subversion"><span><span>{{t('create_a_subversion_of_the_current_version')}}</span></span></label><p id="replace-release-note" class="hint" :hidden="!d.subversion||undefined"><span>{{t('a_new_subversion_of_the_current_version_will')}}</span></p><label class="restore-options"><input id="publish-clear-previous" type="checkbox" v-model="d.clear" :disabled="d.publishing"><span>{{t('remove_previous_steps')}}</span></label><p id="publish-result" role="status">{{d.result}}</p><p id="publish-website-foreign" :hidden="!d.websiteForeign||undefined">{{t('publish_anyway_removes_their_changes_from_the_website')}}</p><div class="confirm-actions"><button id="cancel-publish" type="button" :disabled="d.publishing" @click="dialog.close()">{{t('back')}}</button><button id="confirm-publish" type="button" class="primary" :disabled="d.publishing" @click="confirm">{{d.publishing?t('publishing_in_progress'):d.websiteForeign?t('publish_anyway'):t('publish_website')}}</button></div></dialog>`;
 export default {
   template,
   setup() {
@@ -28,6 +28,7 @@ export default {
       subversionPossible: false,
       result: '',
       publishing: false,
+      websiteForeign: false,
       cmsSource: '',
       commit: '',
       head: '',
@@ -54,6 +55,7 @@ export default {
         clear: true,
         subversionPossible: !!current.releases?.at(-1) && !current.releases.at(-1).legacy,
         result: '',
+        websiteForeign: false,
         commit,
         head: current.head,
         releaseId: current.releases?.at(-1)?.id || '',
@@ -90,6 +92,7 @@ export default {
           expectedHead: d.head,
           stepId: d.stepId || undefined,
           clearPrevious: d.clear,
+          ...(d.websiteForeign ? { overrideWebsite: true } : {}),
         });
         if (result.publishing) {
           dialog.value!.close();
@@ -116,6 +119,8 @@ export default {
       } catch (e: any) {
         await refresh();
         d.result = e.message;
+        // Someone else changed the website: the next click publishes anyway; Back cancels.
+        d.websiteForeign = e.websiteForeign === true;
       } finally {
         d.publishing = false;
       }

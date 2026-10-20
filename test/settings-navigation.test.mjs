@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { sessionCookie } from '../apps/shell/session-cookie.mjs';
 import assert from 'node:assert/strict';
 import { launchBrowser, studioFrame } from './support/browser.mjs';
 import { isolatedStack } from './support/stack.mjs';
@@ -56,7 +57,7 @@ test(
       const page = await browser.newPage();
       const errors = [];
       page.on('pageerror', (e) => errors.push(e.message));
-      await page.context().addCookies([{ name: 'sitetiller_edit', value: cookie.split('=')[1], url: stack.origin }]);
+      await page.context().addCookies([{ name: sessionCookie(stack.origin), value: cookie.split('=')[1], url: stack.origin }]);
       let release;
       const held = new Promise((r) => (release = r));
       await page.route('**/site/api/state', async (route) => {

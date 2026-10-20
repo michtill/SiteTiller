@@ -64,13 +64,62 @@ async function disableDesignLive() {
   editMode = false;
   return { autoPublish: false };
 }
+// After a content publication the Publisher writes the hosted static website (documentation 7.7); its failure leaves
+// the publication valid and is repeated by the next one.
+async function updateWebsite(force = false) {
+  const url = process.env.SITETILLER_PUBLISH_URL,
+    token = process.env.SITETILLER_PUBLISH_TOKEN;
+  if (!url || !token) return null;
+  try {
+    const response = await fetch(new URL('/www', url), {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force }),
+      signal: AbortSignal.timeout(150000),
+    });
+    if (!response.ok) throw Error('Website not written');
+    return (await response.json()).warning || null;
+  } catch {
+    return 'Obsah je publikovaný, ale web na hostingu se nepodařilo aktualizovat. Další publikace to zopakuje.';
+  }
+}
+// External presentation: the outcome of the last write to the website Git (documentation 7.7).
+async function withWebsite(status: any) {
+  if (!process.env.SITETILLER_WEBSITE_GIT || !process.env.SITETILLER_PRODUCTION_DIRECTORY) return status;
+  try {
+    const website = JSON.parse(
+      await readFile(join(process.env.SITETILLER_PRODUCTION_DIRECTORY, 'website.json'), 'utf8'),
+    );
+    return { ...status, website: { foreign: !!website.foreign, error: !!website.error } };
+  } catch {
+    return status;
+  }
+}
+// Someone else changed the website Git since SiteTiller's last write (documentation 7.7): ask before publishing.
+async function websiteForeign() {
+  if (!process.env.SITETILLER_WEBSITE_GIT || !process.env.SITETILLER_PUBLISH_URL) return false;
+  const response = await fetch(new URL('/www/status', process.env.SITETILLER_PUBLISH_URL), {
+    headers: { Authorization: 'Bearer ' + process.env.SITETILLER_PUBLISH_TOKEN },
+    signal: AbortSignal.timeout(60000),
+  }).catch(() => null);
+  if (!response?.ok) throw new Problem(502, 'Git webu není dostupný.');
+  return !!(await response.json()).foreign;
+}
+const foreignProblem = () =>
+  Object.assign(new Problem(409, 'Web na hostingu mezitím změnil někdo jiný.'), { websiteForeign: true });
 async function afterSave() {
   if (await currentEditMode()) {
+    // Live editing never overrides someone else's change: it stops, the saved data stay unpublished.
+    if (await websiteForeign().catch(() => false)) {
+      editMode = false;
+      return 'Živá editace se vypnula: web na hostingu mezitím změnil někdo jiný. Úpravy zůstaly nepublikované.';
+    }
     try {
       await publication.publish(currentEditMode);
     } catch {
       return 'Data jsou uložena, ale publikování selhalo. Zkuste Publikovat úpravy.';
     }
+    return (await updateWebsite()) || undefined;
   }
 }
 const mime: Record<string, string> = {
@@ -200,13 +249,14 @@ http
         editMode = body.autoPublish;
         return json(200, { autoPublish: editMode });
       }
-      if (req.method === 'GET' && url.pathname === '/api/publication') return json(200, await publication.status());
+      if (req.method === 'GET' && url.pathname === '/api/publication')
+        return json(200, await withWebsite(await publication.status()));
       // Cheap periodic check: the client loads the full bootstrap only when the revision changes.
       if (req.method === 'GET' && url.pathname === '/api/revision') {
         const status = await publication.status();
         return json(200, {
           contentRevision: await store.exclusive(() => restoreRevision(root)),
-          publication: status,
+          publication: await withWebsite(status),
           autoPublish: await currentEditMode(),
         });
       }
@@ -227,13 +277,19 @@ http
           body.confirm !== true ||
           typeof body.expectedRevision !== 'string' ||
           !/^[a-f0-9]{64}$/.test(body.expectedRevision) ||
-          Object.keys(body).some((k) => !['confirm', 'expectedRevision'].includes(k))
+          (body.overrideWebsite !== undefined && typeof body.overrideWebsite !== 'boolean') ||
+          Object.keys(body).some((k) => !['confirm', 'expectedRevision', 'overrideWebsite'].includes(k))
         )
           throw new Problem(422, 'Potvrďte akci a znovu načtěte aktuální stav.');
         return json(
           200,
           url.pathname === '/api/publication'
-            ? await publication.publish(undefined, body.expectedRevision)
+            ? await (async () => {
+                if (!body.overrideWebsite && (await websiteForeign())) throw foreignProblem();
+                const result = await publication.publish(undefined, body.expectedRevision),
+                  warning = await updateWebsite(body.overrideWebsite === true);
+                return withWebsite(warning ? { ...result, warning } : result);
+              })()
             : await discardChanges(store, publication, body, disableDesignLive),
         );
       }
@@ -426,6 +482,7 @@ http
       res.end(await readFile(file));
     } catch (error: any) {
       json(error instanceof Problem ? error.status : error.code === 'ENOENT' ? 404 : 500, {
+        ...(error?.websiteForeign ? { websiteForeign: true } : {}),
         error:
           error instanceof Problem
             ? error.message

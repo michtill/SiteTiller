@@ -1,6 +1,8 @@
 // Website capabilities are shared by production, dedicated preview and isolated checks.
 export const websitePolicy =
   "default-src 'self'; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' https: wss:; frame-src 'self' https:; media-src 'self' blob: https:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self' https:";
+// Files of the website that are never public: the AI's internal description of the website (documentation 7.7).
+export const privateSiteFiles = new Set(['architecture.txt']);
 export const productionPolicy = websitePolicy + "; frame-ancestors 'self'";
 export const studioPreviewPolicy =
   'sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads; ' + websitePolicy;

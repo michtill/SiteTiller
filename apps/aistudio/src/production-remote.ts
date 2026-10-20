@@ -23,13 +23,16 @@ export async function syncProductionMirror() {
     await mkdir(dirname(mirror), { recursive: true });
     await git(['init', '--bare', '-b', 'main', mirror]);
   }
+  // A new hosting Git may be empty: main appears with Version 0, www with the first static website (7.7).
+  const heads = (await git(['ls-remote', '--heads', remote])).stdout;
   await git([
     '-C',
     mirror,
     'fetch',
     '--no-tags',
     remote,
-    '+refs/heads/main:refs/heads/main',
+    ...(/\trefs\/heads\/main$/m.test(heads) ? ['+refs/heads/main:refs/heads/main'] : []),
+    ...(/\trefs\/heads\/www$/m.test(heads) ? ['+refs/heads/www:refs/heads/www'] : []),
     'refs/tags/sitetiller/published/*:refs/tags/sitetiller/published/*',
   ]);
 }

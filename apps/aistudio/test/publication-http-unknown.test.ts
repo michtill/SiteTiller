@@ -194,10 +194,10 @@ test('PU-03: lost publisher reply and unavailable status stay pending; HTTP/rest
       await new Promise((r) => setTimeout(r, 250));
     }
     assert.equal(state.busy, false);
-    // The published step stays as the first step of the draft.
+    // A new first step "Published version" replaces the published step (documentation 4.9).
     assert.deepEqual(
-      state.requests.map((r: any) => r.id),
-      ['one', 'two'],
+      state.requests.map((r: any) => (r.firstStep ? 'first:' + r.firstStep : r.id)),
+      ['first:published', 'two'],
     );
     assert.equal((await work.files())['site/index.html'], html('Two'));
     assert.equal((await productionReleases(production)).length, 2);

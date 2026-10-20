@@ -163,10 +163,10 @@ test('PU-03: real publisher202/controller HTTP/restart finishes once internally,
       await new Promise((r) => setTimeout(r, 250));
     }
     assert.equal(state.busy, false);
-    // The published step stays as the first step; the newer one follows.
+    // A new first step "Published version" replaces the published step (documentation 4.9); the newer one follows.
     assert.deepEqual(
-      state.requests.map((r: any) => r.id),
-      ['one', 'two'],
+      state.requests.map((r: any) => (r.firstStep ? 'first:' + r.firstStep : r.id)),
+      ['first:published', 'two'],
     );
     assert.equal((await work.files())['site/index.html'], html('Two'));
     assert.equal((await productionReleases(production)).length, 2);

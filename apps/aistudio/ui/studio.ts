@@ -113,7 +113,10 @@ export async function api(path: string, data?: unknown, signal?: AbortSignal) {
     throw new Error(t('sign_in'));
   }
   const value = await response.json();
-  if (!response.ok) throw new Error(tm(value.error) || t('the_request_failed'));
+  if (!response.ok)
+    throw Object.assign(new Error(tm(value.error) || t('the_request_failed')), {
+      websiteForeign: value.websiteForeign === true,
+    });
   return value;
 }
 let noticeTimer: any = null;
@@ -285,10 +288,23 @@ export function selectorState(kind: string, id: string | null, commit?: string) 
   const pending = s.pendingSelection,
     visual = pending || s.displayedSelection;
   const busy = !!pending && pending.kind === kind && pending.id === id;
+  // The first step "Published version N" / "Saved draft X" stands for that version or draft: while one of the two
+  // is shown, both are highlighted (documentation 4.9).
+  const first = (stepId: string | null) => (s.current?.requests || []).find((r: any) => r.id === stepId),
+    origin = (step: any, other: string, otherId: string | null) =>
+      !!step?.firstStep &&
+      (other === 'release'
+        ? step.firstStep === 'published' && step.releaseId === otherId
+        : other === 'saved' && step.firstStep === 'saved' && step.savedDraftId === otherId);
+  const standsFor =
+    !!visual &&
+    ((kind === 'step' && origin(first(id), visual.kind, visual.id)) ||
+      (visual.kind === 'step' && origin(first(visual.id), kind, id)));
   const active =
     !!visual &&
-    visual.kind === kind &&
-    (visual.id === id || (!pending && kind === 'step' && commit === displayedPresentationCommit()));
+    ((visual.kind === kind &&
+      (visual.id === id || (!pending && kind === 'step' && commit === displayedPresentationCommit()))) ||
+      (!pending && standsFor));
   return { busy, active };
 }
 

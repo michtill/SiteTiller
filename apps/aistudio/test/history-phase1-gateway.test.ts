@@ -158,7 +158,7 @@ test('HI-11: actual Shell routes signed frozen modules/JSON to dedicated preview
     page.setDefaultTimeout(180000);
     await page.goto(origin + '/login?next=%2Fsite%2F');
     await page.locator('input[name="password"]').fill(password);
-    await page.locator('button').click();
+    await page.locator('button:not(.show-password)').click();
     // The Shell keeps studios alive in iframes of its frame page; the AI Studio is the frame under /site/.
     await page.waitForFunction(() => !!document.querySelector('iframe'));
     let studio: any;

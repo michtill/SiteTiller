@@ -35,6 +35,9 @@ export async function instanceEnvironment(repo, root, instance) {
     productionGit = remote
       ? join(paths.production, 'remote.git')
       : external.productionGit || join(paths.production, 'repository.git'),
+    // External presentation (documentation 7.7): only the static website goes to the website's own Git.
+    websiteGit = external.presentation === 'external' ? external.websiteGit || '' : '',
+    sshGit = remote || (remoteGit(websiteGit) ? websiteGit : ''),
     // The public draft preview needs its own host name: locally localhost, on a server its own address.
     previewOrigin = instance.public ? external.previewOrigin || '' : 'http://localhost:' + p.shell;
   return {
@@ -77,9 +80,12 @@ export async function instanceEnvironment(repo, root, instance) {
     SITETILLER_FORMS_RUNTIME: '1',
     SITETILLER_UI_LANGUAGE: 'cs',
     EDIT_HOST: '127.0.0.1',
-    ...(remote
+    ...(websiteGit
+      ? { SITETILLER_WEBSITE_GIT: websiteGit, SITETILLER_WEBSITE_BRANCH: external.websiteBranch || 'main' }
+      : {}),
+    ...(remote ? { SITETILLER_PRODUCTION_REMOTE: remote } : {}),
+    ...(sshGit
       ? {
-          SITETILLER_PRODUCTION_REMOTE: remote,
           GIT_SSH_COMMAND: [
             'ssh',
             '-i',
@@ -108,6 +114,10 @@ export function serviceEnvironment(env, instance, name) {
         }
       : {}),
     ...(name === 'website' ? { HOST: listen } : {}),
+    // A website hosted outside the instance (documentation 7.7): the Publisher checks it at its public address.
+    ...(name === 'publisher' && instance.public?.presentation === 'external' && instance.public.siteUrl
+      ? { SITETILLER_WWW_URL: instance.public.siteUrl }
+      : {}),
     PORT: String(instance.ports[name]),
   };
 }

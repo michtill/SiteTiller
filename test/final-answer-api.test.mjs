@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { sessionCookie } from '../apps/shell/session-cookie.mjs';
 import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -85,7 +86,7 @@ test('AI-01: actual disposable API ignores client language, freezes shared setti
     );
     browser = await launchBrowser();
     const page = await browser.newPage();
-    await page.context().addCookies([{ name: 'sitetiller_edit', value: cookie.split('=')[1], url: stack.origin }]);
+    await page.context().addCookies([{ name: sessionCookie(stack.origin), value: cookie.split('=')[1], url: stack.origin }]);
     await page.goto(stack.origin + '/site/');
     studio = await studioFrame(page, 'site');
     await studio.locator('.response-text').first().waitFor();

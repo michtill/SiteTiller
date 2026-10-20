@@ -124,3 +124,15 @@ test('ST-06: catalog row shape/default/key/relation rules match actual stored va
     await rm(root, { recursive: true, force: true });
   }
 });
+test('ST-06: a malformed collection is rejected with the exact problem and the catalog states the collection shape', () => {
+  const reject = (definition, message) =>
+    assert.throws(
+      () => validateStructure({ version: 1, lists: { profile: definition }, folders: {} }),
+      (e) => e.status === 422 && e.message.includes(message),
+    );
+  const fields = { code: { type: 'text', label: 'Kód' } };
+  reject({ label: 'Profil', key: 'code', fields }, '"columns" (ne "fields")');
+  reject({ label: ' ', key: 'code', columns: fields }, 'nemá název');
+  reject({ label: 'Profil', key: 'id', columns: fields }, 'klíč (key)');
+  assert.match(fieldCatalog.collectionRules.shape, /columns/);
+});

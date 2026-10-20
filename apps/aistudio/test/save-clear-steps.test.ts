@@ -121,20 +121,22 @@ test('HI-10: saving a draft can make the saved step the first step; unchecked, t
       (await post('drafts/save', { name: 'Bad', expectedHead: head, commit: two, clearPrevious: 'yes' })).status,
       422,
     );
-    // Checked: the steps before the saved one leave; the saved step is first, unchanged; later steps stay.
+    // Checked: the saved step and those before it are replaced by a new first step "Saved draft Second" with the
+    // same state (documentation 4.9); later steps stay.
     const saved = await post('drafts/save', { name: 'Second', expectedHead: head, commit: two, clearPrevious: true });
     assert.equal(saved.status, 200);
     assert.equal((await saved.json()).draft.step, two);
     const after = await state();
     assert.deepEqual(
-      after.requests.map((r: any) => [r.id, r.prompt, r.commit]),
+      after.requests.map((r: any) => [r.firstStep || r.id, r.savedDraftName || r.prompt, r.commit]),
       [
-        ['two', 'Second edit', two],
+        ['saved', 'Second', two],
         ['three', 'Third edit', head],
       ],
     );
     assert.equal(after.head, head);
-    assert.deepEqual([...new Set(after.events.map((e: any) => e.jobId))], ['two', 'three']);
+    assert.deepEqual([...new Set(after.events.map((e: any) => e.jobId))], ['three']);
+    assert.equal(after.requests[0].presentationChanged, true);
     assert.deepEqual(
       after.savedDrafts.map((d: any) => [d.name, d.step]),
       [
@@ -142,12 +144,12 @@ test('HI-10: saving a draft can make the saved step the first step; unchecked, t
         ['Second', two],
       ],
     );
-    // The previous steps stay available to the agents as conversation memory.
+    // The removed steps are discarded: the agents do not remember them.
     const config = JSON.parse(await readFile(join(data, 'config.json'), 'utf8'));
     assert.equal(config.draftBaseCommit, one);
     assert.deepEqual(
-      config.conversationMemory.map((r: any) => r.id),
-      ['one'],
+      config.conversationMemory,
+      [],
     );
   } finally {
     if (child) {

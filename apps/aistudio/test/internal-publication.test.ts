@@ -83,10 +83,10 @@ test('PU-08: pre-public preparation is readonly, ignores host cache but rejects 
     await f.work.write({ 'site/index.html': html('Newer') });
     const result = await finishConfirmedPublication(f.work, f.data, f.config, [], {});
     assert.equal(result.completed, true);
-    // The published step stays as the first step of the draft.
+    // The published step is replaced by a new first step "Published version" (documentation 4.9).
     assert.deepEqual(
-      result.config.requests.map((r: any) => r.id),
-      ['one', 'newer'],
+      result.config.requests.map((r: any) => (r.firstStep ? 'first:' + r.firstStep : r.id)),
+      ['first:published', 'newer'],
     );
     for (const name of ['new.pdf', 'new.docx'])
       assert.deepEqual(await f.work.binary(await f.work.head(), 'site/assets/' + name), f.bytes);
@@ -115,10 +115,10 @@ test('PU-03: crash after workspace HEAD update before pending metadata reuses du
     assert.notEqual(head, f.newer);
     const result = await finishConfirmedPublication(f.work, f.data, f.config, [], {});
     assert.equal(await f.work.head(), head);
-    // The published step stays as the first step of the draft.
+    // The published step is replaced by a new first step "Published version" (documentation 4.9).
     assert.deepEqual(
-      result.config.requests.map((r: any) => r.id),
-      ['one', 'newer'],
+      result.config.requests.map((r: any) => (r.firstStep ? 'first:' + r.firstStep : r.id)),
+      ['first:published', 'newer'],
     );
     assert.equal(await f.production.head(), f.release.commit);
   }));
@@ -155,8 +155,8 @@ test('PU-03: events/config/job crash boundaries restart internally even when pen
     const final = await finishConfirmedPublication(f.work, f.data, first.config, [], {});
     assert.equal(await f.work.head(), later);
     assert.deepEqual(
-      final.config.requests.map((r) => r.id),
-      ['one', 'newer', 'later'],
+      final.config.requests.map((r) => (r.firstStep ? 'first:' + r.firstStep : r.id)),
+      ['first:published', 'newer', 'later'],
     );
     assert.equal(await f.production.head(), f.release.commit);
   }));
@@ -191,8 +191,8 @@ for (const boundary of ['events.json', 'last-job.json'])
       assert.equal(result.completed, true);
       assert.equal(await f.work.head(), head);
       assert.deepEqual(
-        result.config.requests.map((r) => r.id),
-        ['one', 'newer'],
+        result.config.requests.map((r) => (r.firstStep ? 'first:' + r.firstStep : r.id)),
+        ['first:published', 'newer'],
       );
       assert.equal(await f.production.head(), f.release.commit);
       assert.equal(await readFile(join(f.work.root, 'project-manifest.json'), 'utf8'), 'HOST CACHE');

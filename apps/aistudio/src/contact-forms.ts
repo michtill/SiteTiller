@@ -76,23 +76,24 @@ export function formDefinitions(files: Record<string, string>): Record<string, F
   return value.forms;
 }
 export const formCapability = {
-  endpoint: '/__sitetiller/forms/{id}',
+  endpoint: '/__sitetiller/forms/{id}.php',
   definition: 'site/forms.json',
   version: 1,
   preview: 'validation-only; no email delivery',
-  production: 'SiteTiller website runtime with SMTP configured by owner',
+  production:
+    'static website: generated PHP script sending mail through the hosting; SiteTiller website runtime: SMTP configured by owner',
   contract:
-    'Create site/forms.json as {version:1,forms:{contact:{label:"Contact",replyTo:"email",fields:[{name:"name",label:"Name",type:"text",required:true,maxLength:200},{name:"email",label:"Email",type:"email",required:true},{name:"message",label:"Message",type:"textarea",required:true,maxLength:5000}]}}}. Supported types: text,email,textarea,checkbox. Render accessible HTML form action="/__sitetiller/forms/contact" method="post". Use JS to POST JSON to form.action and inspect response.ok plus JSON {ok,preview,message,errors}; never claim an email was sent when preview=true. Include hidden honeypot input name="_website", keep it empty. Checkbox values must be boolean or strings true/false. Only declared fields are accepted. No file attachments. Browser checks use the same validation in preview mode. Use this built-in capability when asked for a contact form; do not require an external endpoint or credentials. Use recipientFromCms:{collection:"content",record:"email",field:"content"} inside the form definition when the recipient is stored in CMS; inspect actual schema/data to choose the correct collection, record key and field, never assume those names. The server reads the current CMS recipient at submission time; the visitor cannot override it. Without recipientFromCms, host MAIL_TO is the fallback. SMTP from/credentials belong to host environment, never generated files or model context. If production delivery is unconfigured, create and test the form and disclose the one-time mail setup requirement.',
+    'Create site/forms.json as {version:1,forms:{contact:{label:"Contact",replyTo:"email",fields:[{name:"name",label:"Name",type:"text",required:true,maxLength:200},{name:"email",label:"Email",type:"email",required:true},{name:"message",label:"Message",type:"textarea",required:true,maxLength:5000}]}}}. Supported types: text,email,textarea,checkbox. Render accessible HTML form action="/__sitetiller/forms/contact.php" method="post". Use JS to POST JSON to form.action and inspect response.ok plus JSON {ok,preview,message,errors}; never claim an email was sent when preview=true. Include hidden honeypot input name="_website", keep it empty. Checkbox values must be boolean or strings true/false. Only declared fields are accepted. No file attachments. Browser checks use the same validation in preview mode. Use this built-in capability when asked for a contact form; do not require an external endpoint or credentials. Use recipientFromCms:{collection:"content",record:"email",field:"content"} inside the form definition when the recipient is stored in CMS; inspect actual schema/data to choose the correct collection, record key and field, never assume those names. The server reads the current CMS recipient at submission time; the visitor cannot override it. Without recipientFromCms, host MAIL_TO is the fallback. SMTP from/credentials belong to host environment, never generated files or model context. If production delivery is unconfigured, create and test the form and disclose the one-time mail setup requirement.',
 };
 type Mail = { subject: string; text: string; replyTo?: string; to?: string };
-export async function recipientFromCms(form: FormDefinition, files: Record<string, string>) {
+export async function recipientFromCms(form: FormDefinition, files: Record<string, string>, live = true) {
   const ref = form.recipientFromCms;
   if (!ref) return undefined;
   const load = async (path: string) => {
-    const live = await liveCms(path);
-    if (live) {
-      if (live.status !== 200) throw Error('Missing CMS');
-      return JSON.parse(live.body.toString('utf8'));
+    const current = live ? await liveCms(path) : null;
+    if (current) {
+      if (current.status !== 200) throw Error('Missing CMS');
+      return JSON.parse(current.body.toString('utf8'));
     }
     return JSON.parse(files['site/' + path] || 'null');
   };
@@ -117,7 +118,8 @@ export async function serveForm(
   files: Record<string, string>,
   options: Options,
 ) {
-  const match = relative.match(/^__sitetiller\/forms\/([a-zA-Z][\w-]{0,63})$/);
+  // <id>.php is the address on a static website (a generated PHP script); <id> is its older form.
+  const match = relative.match(/^__sitetiller\/forms\/([a-zA-Z][\w-]{0,63})(?:\.php)?$/);
   if (!match) return false;
   const json = (status: number, value: any) => {
     res.writeHead(status, {

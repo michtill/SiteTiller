@@ -856,6 +856,28 @@ export async function workflow(
       !value.contentFiles?.length
     )
       throw Error('Agent neprovedl žádnou změnu.');
+    // A change to a file the agent has not read is rejected, but the request goes on: the file is loaded and the agent
+    // redoes the change from its current content (at most twice, like other path repairs).
+    const unread = value.files
+      .map((item: any) => item?.path)
+      .filter((path: any) => typeof path === 'string' && original[path] && scope !== 'create' && !observed.has(path));
+    if (unread.length) {
+      if (++pathRepairs > 2) throw Error('Agent nesmí měnit soubor, který nenačetl: ' + unread[0]);
+      const loaded = selectContext(files, unread),
+        merged = { ...context, ...loaded };
+      if (Object.values(merged).reduce((bytes, text) => bytes + Buffer.byteLength(text), 0) > 500000)
+        throw Error('Agent nesmí měnit soubor, který nenačetl: ' + unread[0]);
+      context = merged;
+      for (const path of Object.keys(loaded)) observed.add(path);
+      feedback = {
+        ...feedback,
+        requiredFixes: [...(feedback?.requiredFixes || []), 'Changed without reading: ' + unread.join(', ')],
+        instruction:
+          'The change was rejected and the candidate is unchanged: a file must be read before it is changed. Its current content is now in the context; redo the whole change from it.',
+      };
+      if (role === 'escalation') escalationCalls--;
+      continue;
+    }
     for (const path of deletes) {
       safeSitePath(project.root, path);
       if (
@@ -1394,7 +1416,10 @@ export async function workflow(
       emit({
         stage: 'test',
         status: 'rejected',
-        message: 'Technická kontrola našla nutné opravy.',
+        // Invalid content (structure, rows) can never be saved, so it is checked even with the technical check off.
+        message: enabledChecks.technical
+          ? 'Technická kontrola našla nutné opravy.'
+          : 'Obsah nejde uložit, je potřeba ho opravit.',
         errors: [...tests.errors, ...browser.errors],
       });
     failures++;

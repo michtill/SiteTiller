@@ -293,3 +293,151 @@ test('OP-08: services and adoption run as the owner of the instance; a user with
     await rm(root, { recursive: true, force: true });
   }
 });
+test('OP-08: the services get the nss_wrapper passwd entry only for ssh, never for the browser checks', async () => {
+  const { withSshPasswdEntry } = await import('../scripts/instance-user.mjs'),
+    wrapped = { LD_PRELOAD: '/usr/lib/x/libnss_wrapper.so', NSS_WRAPPER_PASSWD: '/tmp/p', NSS_WRAPPER_GROUP: '/etc/group' },
+    env = await withSshPasswdEntry({ GIT_SSH_COMMAND: 'ssh -i key', KEEP: '1' }, wrapped);
+  assert.equal(env.LD_PRELOAD, undefined);
+  assert.equal(
+    env.GIT_SSH_COMMAND,
+    "LD_PRELOAD='/usr/lib/x/libnss_wrapper.so' NSS_WRAPPER_PASSWD='/tmp/p' NSS_WRAPPER_GROUP='/etc/group' ssh -i key",
+  );
+  assert.deepEqual(await withSshPasswdEntry({ KEEP: '1' }, wrapped), { KEEP: '1' });
+  assert.deepEqual(await withSshPasswdEntry({ GIT_SSH_COMMAND: 'ssh' }, {}), { GIT_SSH_COMMAND: 'ssh' });
+});
+test('OP-08: after the switch from root the services get their own writable home, not root\'s', async () => {
+  const base = await mkdtemp(join(tmpdir(), 'sitetiller-owner-home-'));
+  try {
+    const { ownerHome } = await import('../scripts/instance-user.mjs'),
+      env = await ownerHome({ HOME: '/root', XDG_CONFIG_HOME: '/root/.config', KEEP: '1' }, 1234, base);
+    assert.equal(env.HOME, join(base, 'sitetiller-home-1234'));
+    assert.equal(env.XDG_CONFIG_HOME, undefined);
+    assert.equal(env.KEEP, '1');
+    await writeFile(join(env.HOME, 'probe'), 'ok');
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+test('OP-07: an empty production Git (a new hosting repository) gets the draft as Version 0, its first commit', async () => {
+  const base = await mkdtemp(join(tmpdir(), 'sitetiller-instance-adopt-empty-')),
+    root = join(base, 'instance'),
+    git = join(base, 'empty.git');
+  try {
+    const { Project } = await import('../apps/aistudio/src/project.ts');
+    await exec('git', ['init', '--bare', '-b', 'main', git]);
+    await settings(root);
+    await writeFile(
+      join(root, 'instance.json'),
+      JSON.stringify({ kind: 'sitetiller-next-playground', root: 'C:\old', ports, networkMode: 'providers' }),
+    );
+    const draft = new Project(join(root, '.sitetiller', 'project'));
+    await draft.init(null);
+    const step = await draft.head();
+    await writeFile(join(root, '.sitetiller/config.json'), JSON.stringify({ requests: [], siteUrl: '' }));
+    const deployment = join(base, 'deployment.json');
+    await writeFile(
+      deployment,
+      JSON.stringify({
+        sourceRoot: 'C:\Dev\play',
+        editOrigin: 'https://edit.example.cz',
+        siteUrl: 'https://example.cz/',
+        productionGit: git,
+        createVersion0FromDraft: true,
+      }),
+    );
+    await exec(process.execPath, [join(repo, 'scripts/instance-adopt.mjs'), deployment], {
+      env: { ...process.env, SITETILLER_INSTANCE: root },
+    });
+    const config = JSON.parse(await readFile(join(root, '.sitetiller/config.json'), 'utf8')),
+      main = (await exec('git', ['--git-dir=' + git, 'rev-parse', 'main'])).stdout.trim();
+    assert.deepEqual(
+      config.releases.map((r) => [r.number, r.commit, r.sourceCommit, r.previousCommit]),
+      [[0, main, step, null]],
+    );
+    await assert.rejects(exec('git', ['--git-dir=' + git, 'rev-parse', '--verify', 'main^']));
+  } finally {
+    await rm(base, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  }
+});
+test('OP-09: a new server instance is empty, reaches the providers, shows its password once, keeps its history and is connected in one step', async () => {
+  const base = await mkdtemp(join(tmpdir(), 'sitetiller-instance-create-')),
+    root = join(base, 'instance'),
+    git = join(base, 'website.git');
+  try {
+    await mkdir(root);
+    await exec('git', ['init', '--bare', '-b', 'main', git]);
+    const deployment = join(base, 'deployment.json');
+    await writeFile(
+      deployment,
+      JSON.stringify({
+        editOrigin: 'https://edit.example.cz',
+        siteUrl: 'https://example.cz/',
+        presentation: 'external',
+        websiteGit: git,
+      }),
+    );
+    const create = () =>
+      exec(process.execPath, [join(repo, 'scripts/instance-create.mjs'), deployment], {
+        env: { ...process.env, SITETILLER_INSTANCE: root },
+      });
+    const { stdout } = await create(),
+      password = stdout.match(/Password \(shown only now\): (\S+)/)[1];
+    const instance = JSON.parse(await readFile(join(root, 'instance.json'), 'utf8')),
+      shared = JSON.parse(await readFile(join(root, 'settings/shared.json'), 'utf8')),
+      schema = JSON.parse(await readFile(join(root, 'schema/structure.json'), 'utf8')),
+      config = JSON.parse(await readFile(join(root, '.sitetiller/config.json'), 'utf8'));
+    assert.equal(instance.kind, 'sitetiller-next-instance');
+    assert.equal(instance.networkMode, 'providers');
+    assert.equal(instance.public.presentation, 'external');
+    assert.equal(instance.public.websiteGit, git);
+    assert.equal(instance.public.productionGit, undefined);
+    // The version history is the instance's own Git; the website Git gets nothing until a publication.
+    assert.match(
+      (await exec('git', ['--git-dir=' + join(root, '.production/repository.git'), 'tag', '--list'])).stdout,
+      /sitetiller\/published\/v0/,
+    );
+    assert.equal((await exec('git', ['--git-dir=' + git, 'for-each-ref'])).stdout.trim(), '');
+    assert.equal(shared.name, 'example.cz');
+    assert.deepEqual([Object.keys(schema.lists), Object.keys(schema.folders)], [[], []]);
+    assert.deepEqual(
+      config.releases.map((r) => r.number),
+      [0],
+    );
+    // The password is only a hash in the instance and it signs in.
+    assert.deepEqual(await readdir(join(root, 'settings')).then((n) => n.filter((x) => /password/.test(x))), []);
+    const { passwordMatches } = await import('../packages/settings/index.mjs');
+    assert.equal(passwordMatches(password, JSON.parse(await readFile(join(root, 'settings/auth.json'), 'utf8')).password), true);
+    // Never over an existing instance.
+    await assert.rejects(create(), /not empty/);
+  } finally {
+    await rm(base, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  }
+});
+test('PU-13: an external presentation sends the website to its own Git and keeps the history in the instance', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'sitetiller-instance-external-'));
+  try {
+    await settings(root);
+    const instance = {
+      ports,
+      networkMode: 'providers',
+      public: {
+        editOrigin: 'https://edit.example.cz',
+        siteUrl: 'https://example.cz/',
+        presentation: 'external',
+        websiteGit: 'ssh://site@host.example.cz/git/site/www.git',
+      },
+    };
+    const env = await instanceEnvironment(repo, root, instance);
+    assert.equal(env.SITETILLER_WEBSITE_GIT, 'ssh://site@host.example.cz/git/site/www.git');
+    assert.equal(env.SITETILLER_WEBSITE_BRANCH, 'main');
+    assert.equal(env.SITETILLER_PRODUCTION_GIT, join(root, '.production', 'repository.git'));
+    assert.equal(env.SITETILLER_PRODUCTION_REMOTE, undefined);
+    assert.match(env.GIT_SSH_COMMAND, /StrictHostKeyChecking=yes/);
+    assert.equal(serviceEnvironment(env, instance, 'publisher').SITETILLER_WWW_URL, 'https://example.cz/');
+    // Internal presentation (the default): nothing leaves the instance.
+    const internal = await instanceEnvironment(repo, root, { ports, networkMode: 'offline' });
+    assert.equal(internal.SITETILLER_WEBSITE_GIT, undefined);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

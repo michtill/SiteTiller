@@ -278,3 +278,44 @@ a.card:hover {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+/* A password field with its eye button inside the right edge. */
+.password-field {
+  position: relative;
+  display: block;
+}
+.password-field input {
+  padding-right: 44px;
+}
+button.show-password {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  width: auto;
+  margin: 0;
+  padding: 6px;
+  display: grid;
+  place-items: center;
+  transform: translateY(-50%);
+  background: transparent;
+  color: inherit;
+  border: 0;
+  opacity: 0.7;
+}
+button.show-password:hover,
+button.show-password:focus-visible {
+  opacity: 1;
+}
+button.show-password svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+button.show-password[hidden],
+button.show-password[aria-pressed='true'] .eye-open,
+button.show-password:not([aria-pressed='true']) .eye-closed {
+  display: none;
+}

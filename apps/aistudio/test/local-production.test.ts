@@ -51,6 +51,9 @@ test('PU-09: local production freezes CMS and PDF in Git and deployed website in
     assert.equal(upper.headers.get('content-type'), 'image/png');
     assert.equal((await (await fetch(origin + '/cms/data/items.json')).json())[0].title, 'Published');
     assert.deepEqual(Buffer.from(await (await fetch(origin + '/cms/files/files/test.pdf')).arrayBuffer()), pdf);
+    // The AI's internal description of the website is never public.
+    await writeFile(join(dir, 'architecture.txt'), 'Architektura webu (nezveřejněný návrh)');
+    assert.equal((await fetch(origin + '/architecture.txt')).status, 404);
   } finally {
     if (server) await new Promise<void>((r) => server.close(() => r()));
     if (oldCms === undefined) delete process.env.SITETILLER_CMS_ROOT;

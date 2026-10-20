@@ -326,22 +326,32 @@ test('AI-16: automatically supplied architecture is observed for full-file and e
       assert.equal((await project.files())['site/architecture.txt'], after);
     }
     const head = await project.head();
-    await assert.rejects(
-      workflow(
-        project,
-        slots,
-        'Unread edit',
-        join(root, 'drafts'),
-        () => {},
-        async () => ({ value: { action: 'implement', files: [{ path: 'site/unread.txt', content: 'Forbidden' }] } }),
-        undefined,
-        [],
-        { requestChecks: { technical: false, verification: false } },
-      ),
-      /nenačetl: site\/unread.txt/,
+    // A change to an unread file is rejected unchanged; the agent gets the file and redoes the change from it.
+    const inputs: any[] = [];
+    await workflow(
+      project,
+      slots,
+      'Unread edit',
+      join(root, 'drafts'),
+      () => {},
+      async (_c: any, _i: any, input: any) => {
+        inputs.push(input);
+        return inputs.length === 1
+          ? { value: { action: 'implement', files: [{ path: 'site/unread.txt', content: 'Blind' }] } }
+          : {
+              value: {
+                action: 'implement',
+                files: [{ path: 'site/unread.txt', content: input.files['site/unread.txt'] + ' edited' }],
+              },
+            };
+      },
+      undefined,
+      [],
+      { requestChecks: { technical: false, verification: false } },
     );
-    assert.equal(await project.head(), head);
-    assert.equal((await project.files())['site/unread.txt'], 'Protected');
+    assert.match(inputs[1].feedback.instruction, /must be read before it is changed/);
+    assert.notEqual(await project.head(), head);
+    assert.equal((await project.files())['site/unread.txt'], 'Protected edited');
   }));
 test('AI-16: empty existing architecture is supplied and observed before replacement', () =>
   fixture(async (project, root) => {

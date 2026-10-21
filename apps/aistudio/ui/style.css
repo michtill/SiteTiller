@@ -5,6 +5,19 @@
   --muted: #9298a9;
   --line: #2c303c;
   --accent: #d6fa72;
+  /* The confirm dialog of the interface library in the AI Studio colours (its other dialogs). */
+  --ui-dialog-bg: #181a22;
+  --ui-dialog-border: #3b4050;
+  --ui-dialog-text: #e9ecf2;
+  --ui-dialog-backdrop: #0009;
+  --ui-dialog-line: var(--line);
+  --ui-dialog-button-text: #e9ecf2;
+  --ui-dialog-button-bg: #20232d;
+  --ui-dialog-button-border: var(--line);
+  --ui-dialog-button-hover: #303542;
+  --ui-dialog-primary: var(--accent);
+  --ui-dialog-primary-hover: #c5ea5f;
+  --ui-dialog-primary-text: #1a2011;
 }
 * {
   box-sizing: border-box;

@@ -221,10 +221,16 @@ test('HI-01: real Studio UI menu, language priority, responsive tabs, version ac
     const workBefore = JSON.stringify([state.head, state.requests, state.releases]);
     // The app's confirm dialog (packages/ui), not the browser's.
     await page.locator('#delete-preview').click();
-    // The same look as in the Content editor and Settings: the library's styles load (no inline styles here).
-    assert.equal(
-      await page.locator('dialog.ui-confirm').evaluate((d) => getComputedStyle(d).backgroundColor),
-      'rgb(255, 255, 255)',
+    // The library's layout in the AI Studio colours (its styles load as a file: no inline styles here).
+    assert.deepEqual(
+      await page
+        .locator('dialog.ui-confirm')
+        .evaluate((d) => [
+          getComputedStyle(d).backgroundColor,
+          getComputedStyle(d.querySelector('footer')).justifyContent,
+          getComputedStyle(d.querySelector('.ui-confirm-ok')).backgroundColor,
+        ]),
+      ['rgb(24, 26, 34)', 'flex-end', 'rgb(214, 250, 114)'],
     );
     await page.locator('dialog.ui-confirm .ui-confirm-ok').click();
     await page.waitForFunction(() => !document.querySelector('.saved-draft-card'));

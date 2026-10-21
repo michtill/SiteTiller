@@ -454,7 +454,20 @@ http
         );
         return redirect('/content/');
       }
-      if (!token && !previewForm && !hasPreviewAccess) {
+      // A saved draft's preview is sandboxed, so the browser sends no sign-in cookie with the files the page loads
+      // (styles, scripts, images). Those files come with the draft's own short-lived key, which the preview checks;
+      // the page itself still needs the sign-in (documentation 2.8).
+      const draftAccess = url.pathname.match(
+          /^\/preview\/drafts\/draft-[a-f0-9]{32}\/access\/([0-9]{13})-[a-f0-9]{64}\/./,
+        ),
+        draftAsset =
+          !!draftAccess &&
+          ['GET', 'HEAD'].includes(req.method || '') &&
+          Number(draftAccess[1]) > Date.now() &&
+          ['style', 'script', 'image', 'font', 'audio', 'video', 'track', 'manifest'].includes(
+            String(req.headers['sec-fetch-dest'] || ''),
+          );
+      if (!token && !previewForm && !hasPreviewAccess && !draftAsset) {
         if (url.pathname !== '/login') return redirect('/login?next=' + encodeURIComponent(url.pathname + url.search));
         return page(200, 'login', {
           action: '/login?next=' + encodeURIComponent(destination),
@@ -782,6 +795,8 @@ http
       // AI models (documentation 2.10): the AI Studio's keys, team models and image tools, edited here.
       if (url.pathname === '/settings/aiapi' || url.pathname === '/settings/aiapi/catalog') {
         let error = '',
+          rejectedKeys: Record<string, string> = {},
+          confirmKey = '',
           notice = '',
           back = url.searchParams.get('returnTo');
         const ai = async (path: string, value?: unknown) => {
@@ -850,6 +865,12 @@ http
             roles,
             images,
             alerts: catalog ? [...(catalog.issues || []), ...(catalog.optionalIssues || [])] : [],
+            // A saved key that does not work, even when no team model uses it.
+            keyErrors: Object.fromEntries(
+              (catalog?.providers || [])
+                .filter((p: any) => p.error && p.errorKind !== 'missing_key')
+                .map((p: any) => [p.provider, p.detail]),
+            ),
           };
         };
         if (url.pathname === '/settings/aiapi/catalog') {
@@ -866,38 +887,54 @@ http
         if (req.method === 'POST') {
           const input = await readForm(req);
           back = input.get('returnTo');
-          const roles = Object.fromEntries(
-            ['primary', 'ui', 'verify', 'escalation'].map((role) => {
-              const value = input.get('role_' + role) || '',
-                separator = value.indexOf('|');
-              return [
-                role,
-                {
-                  provider: value.slice(0, separator),
-                  model: value.slice(separator + 1),
-                  reasoningEffort: input.get('effort_' + role) || 'auto',
-                },
-              ];
-            }),
-          );
-          entered = {
-            roles,
-            imageModels: { precise: input.get('image_precise') || 'none', fast: input.get('image_fast') || 'none' },
-          };
-          try {
-            // Save and load models: the keys with the saved team, then the fresh model lists; the choices on the
-            // page stay as entered so they can be picked from the new lists.
-            const keysOnly = input.get('action') === 'keys',
-              saved = keysOnly ? await ai('state') : null;
-            await ai('settings', {
-              keys: { openai: input.get('key_openai') || '', anthropic: input.get('key_anthropic') || '' },
-              ...(keysOnly ? { roles: saved.roles, imageModels: saved.imageModels } : entered),
-            });
-            if (!keysOnly) entered = null;
-            notice = keysOnly ? t('keys_saved_models_loaded') : t('saved');
-          } catch (e: any) {
-            error = e.message;
-            res.statusCode = 422;
+          // Remove a key: the first press asks, the second removes (documentation 2.4).
+          const removal = (input.get('action') || '').match(/^remove_(openai|anthropic)(_yes)?$/);
+          if (removal && !removal[2] && input.get('confirm') !== 'yes') confirmKey = removal[1];
+          else if (removal)
+            try {
+              await ai('keys/remove', { provider: removal[1] });
+              notice = t('key_removed');
+            } catch (e: any) {
+              error = e.message;
+              res.statusCode = 422;
+            }
+          else {
+            const roles = Object.fromEntries(
+              ['primary', 'ui', 'verify', 'escalation'].map((role) => {
+                const value = input.get('role_' + role) || '',
+                  separator = value.indexOf('|');
+                return [
+                  role,
+                  {
+                    provider: value.slice(0, separator),
+                    model: value.slice(separator + 1),
+                    reasoningEffort: input.get('effort_' + role) || 'auto',
+                  },
+                ];
+              }),
+            );
+            entered = {
+              roles,
+              imageModels: { precise: input.get('image_precise') || 'none', fast: input.get('image_fast') || 'none' },
+            };
+            try {
+              // Save and load models: the keys with the saved team, then the fresh model lists; the choices on the
+              // page stay as entered so they can be picked from the new lists.
+              const keysOnly = input.get('action') === 'keys',
+                saved = keysOnly ? await ai('state') : null;
+              const result = await ai('settings', {
+                keys: { openai: input.get('key_openai') || '', anthropic: input.get('key_anthropic') || '' },
+                ...(keysOnly ? { roles: saved.roles, imageModels: saved.imageModels } : entered),
+              });
+              if (!keysOnly) entered = null;
+              // A key the provider refused is not saved; its reason is under its field (documentation 2.4).
+              rejectedKeys = result.rejectedKeys || {};
+              if (Object.keys(rejectedKeys).length) res.statusCode = 422;
+              else notice = keysOnly ? t('keys_saved_models_loaded') : t('saved');
+            } catch (e: any) {
+              error = e.message;
+              res.statusCode = 422;
+            }
           }
         }
         let state: any = {};
@@ -912,9 +949,10 @@ http
           error,
           notice,
           alerts: [],
-          catalogLoading: true,
           networkMode: state.networkMode,
           keys,
+          rejectedKeys,
+          confirmKey,
           roles,
           images,
           returnTo: settingsReturnTo(back),
@@ -934,6 +972,11 @@ http
             language +
             '"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SiteTiller</title><style>html,body{margin:0;height:100%;overflow:hidden}iframe{position:fixed;inset:0;width:100%;height:100%;border:0;display:block}iframe[hidden]{display:none}</style></head><body><script src="/__shell/frame.js"></script></body></html>',
         );
+      }
+      // The interface library's confirm dialog for the settings pages (documentation 0.5).
+      if (req.method === 'GET' && url.pathname === '/__shell/ui/confirm-dialog.js') {
+        res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
+        return res.end(await readFile(new URL('../../packages/ui/confirm-dialog.js', import.meta.url), 'utf8'));
       }
       if (req.method === 'GET' && url.pathname === '/__shell/frame.js') {
         res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });

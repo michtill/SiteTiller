@@ -1,3 +1,4 @@
+import { confirmDialog } from '../../../packages/ui/confirm-dialog.js';
 import { computed, ref, onMounted, onUnmounted } from 'vue';
 import { t } from './i18n.ts';
 import { releaseNumber } from './presentation.ts';
@@ -141,7 +142,15 @@ export default {
     async function remove() {
       const selection = { ...s.displayedSelection! };
       if (selection.kind === 'saved') {
-        if (!confirm(t('delete_saved_draft_question'))) return;
+        if (
+          !(await confirmDialog({
+            title: t('confirm_action_2'),
+            message: t('delete_saved_draft_question'),
+            confirm: t('confirm'),
+            cancel: t('cancel'),
+          }))
+        )
+          return;
         try {
           await api('drafts/remove', { id: selection.id, commit: selection.commit, expectedHead: s.current.head });
           resetPreviewSelection();

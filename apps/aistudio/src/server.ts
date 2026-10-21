@@ -666,6 +666,16 @@ const server = http.createServer(async (req, res) => {
           ],
         });
       }
+      // Remove a key (Settings → AI Studio models, documentation 2.4): it is deleted even when the team then has no
+      // usable model; the page says so.
+      if (path === '/api/keys/remove' && req.method === 'POST') {
+        if (busy) throw new Problem(409, 'Počkej na dokončení úlohy.');
+        const input = await body(req);
+        if (!['openai', 'anthropic'].includes(input.provider)) throw new Problem(422, 'Neznámý poskytovatel.');
+        config.providers = { ...config.providers, [input.provider]: { key: '' } };
+        await save('config.json', config);
+        return response(res, 200, { ok: true });
+      }
       if (path === '/api/settings' && req.method === 'POST') {
         if (busy) throw new Problem(409, 'Počkej na dokončení úlohy.');
         const input = await body(req);
@@ -674,8 +684,10 @@ const server = http.createServer(async (req, res) => {
           input.imageModels = { precise: input.imageModels.precise, fast: input.imageModels.fast };
         if (!validTeam(input.roles) || !validImages(input.imageModels))
           throw new Problem(422, 'Vyber model pro každou capability.');
-        const keys = providerKeys(),
-          providers = structuredClone(config.providers);
+        const saved = providerKeys(),
+          keys = { ...saved },
+          providers = structuredClone(config.providers),
+          entered: string[] = [];
         for (const provider of ['openai', 'anthropic'] as const) {
           const value = input.keys?.[provider];
           if (value !== undefined) {
@@ -683,14 +695,23 @@ const server = http.createServer(async (req, res) => {
             if (value.trim()) {
               keys[provider] = value.trim();
               providers[provider] = { key: seal(value.trim(), key) };
+              entered.push(provider);
             }
           }
         }
         if (busy) throw new Problem(409, 'Počkej na dokončení úlohy.');
         claim();
         try {
-          const list = await catalog(keys),
-            resolved = resolvePrimary(input.roles, list.models),
+          let list = await catalog(keys);
+          const rejectedKeys: Record<string, string> = {};
+          for (const p of list.providers)
+            if (entered.includes(p.provider) && ['authentication', 'access'].includes(p.errorKind || '')) {
+              rejectedKeys[p.provider] = (p as any).detail;
+              keys[p.provider] = saved[p.provider];
+              providers[p.provider] = config.providers[p.provider];
+            }
+          if (Object.keys(rejectedKeys).length) list = await catalog(keys);
+          const resolved = resolvePrimary(input.roles, list.models),
             issues = unavailable(resolved, list, ['primary']);
           if (issues.length) return response(res, 400, { error: issues.join('\n') });
           config.providers = providers;
@@ -699,6 +720,7 @@ const server = http.createServer(async (req, res) => {
           await save('config.json', config);
           return response(res, 200, {
             ok: true,
+            rejectedKeys,
             catalog: list,
             optionalIssues: [
               ...unavailable(resolved, list, ['ui', 'verify', 'escalation']),

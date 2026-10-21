@@ -219,8 +219,14 @@ test('HI-01: real Studio UI menu, language priority, responsive tabs, version ac
         !document.querySelector('.release-actions')!.hasAttribute('hidden'),
     );
     const workBefore = JSON.stringify([state.head, state.requests, state.releases]);
-    page.once('dialog', (dialog) => dialog.accept());
+    // The app's confirm dialog (packages/ui), not the browser's.
     await page.locator('#delete-preview').click();
+    // The same look as in the Content editor and Settings: the library's styles load (no inline styles here).
+    assert.equal(
+      await page.locator('dialog.ui-confirm').evaluate((d) => getComputedStyle(d).backgroundColor),
+      'rgb(255, 255, 255)',
+    );
+    await page.locator('dialog.ui-confirm .ui-confirm-ok').click();
     await page.waitForFunction(() => !document.querySelector('.saved-draft-card'));
     assert.equal(JSON.stringify([state.head, state.requests, state.releases]), workBefore);
     assert.equal(calls.findLast((c) => c.path === 'drafts/remove').body.commit, saved);

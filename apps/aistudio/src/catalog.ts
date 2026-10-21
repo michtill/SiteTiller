@@ -100,6 +100,7 @@ export async function catalog(keys: Record<Provider, string>, fetcher = fetch) {
             '. Nelze ověřit dostupnost modelů.',
           errorKind,
           httpStatus,
+          detail,
         };
       }
     }),
@@ -108,12 +109,13 @@ export async function catalog(keys: Record<Provider, string>, fetcher = fetch) {
     models: results
       .flatMap((r) => r.models)
       .sort((a, b) => a.provider.localeCompare(b.provider) || a.id.localeCompare(b.id)),
-    providers: results.map(({ provider, error, models, errorKind, httpStatus }) => ({
+    providers: results.map(({ provider, error, models, errorKind, httpStatus, detail }: any) => ({
       provider,
       error,
       count: models.length,
       errorKind,
       httpStatus,
+      detail: detail || null,
     })),
     checkedAt: new Date().toISOString(),
   };

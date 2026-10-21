@@ -1,4 +1,5 @@
 import { t, localize, uiLocale } from './i18n.ts';
+import { confirmDialog } from '../../../packages/ui/confirm-dialog.js';
 // Field types with a default value (as the server keeps them).
 const defaultValueTypes = [
   'checkbox',
@@ -35,7 +36,7 @@ const template = `
  <section class="structure-editor" v-if="folderDefinition"><div class="structure-title"><h2>{{folderDefinition.label}}</h2></div><p class="structure-description">{{t('every_folder_appears_under_your_files_manage')}}</p><fieldset class="readonly-group" :disabled="readonly"><div class="fields"><label class="field half"><span>{{t('name')}}</span><input v-model="folderDefinition.label"></label><label class="field half"><span>{{t('folder_code')}}</span><input :value="selectedFolder" readonly></label><label class="field half"><span>{{t('file_type')}}</span><select v-model="folderDefinition.type"><option value="img">{{t('images')}}</option><option value="other">{{t('documents_and_other_files')}}</option></select></label><label class="field half"><span>{{t('max_file_size_mb')}}</span><input type="number" min="1" max="100" step="1" inputmode="numeric" :value="folderDefinition.maxSizeMb??''" placeholder="20" @input="setFolderLimit(folderDefinition,$event.target.value)"><small>{{t('max_file_size_help')}}</small></label></div></fieldset>
  <div class="structure-footer"><button class="danger" :disabled="readonly" @click="removeFolder(selectedFolder)">{{t('delete_folder')}}</button></div></section><section class="structure-editor empty" v-else>{{t('add_the_first_folder')}}</section></div>
  <div class="overlay" v-if="addKind" @click.self="addKind=''"><section class="confirm-card" role="dialog" aria-modal="true" :aria-label="t('add_to_structure')"><h2>{{addKind==='collection'?t('new_collection'):addKind==='field'?t('new_field'):t('new_folder')}}</h2><form @submit.prevent="add"><div class="link-fields"><label for="structure-name">{{t('name')}}</label><input id="structure-name" v-model="newName" required><label for="structure-code">{{t('code')}}</label><input id="structure-code" v-model="newCode" pattern="[a-zA-Z][a-zA-Z0-9_-]{0,63}" required><small>{{t('without_spaces_or_accented_characters_for_example')}}</small><template v-if="addKind==='field'"><label for="structure-type">{{t('field_type')}}</label><select id="structure-type" v-model="newType"><option v-for="(title,type) in offeredTypes('')" :value="type">{{title}}</option></select></template><template v-if="addKind==='folder'"><label for="folder-type">{{t('file_type')}}</label><select id="folder-type" v-model="newFolderType"><option value="img">{{t('images')}}</option><option value="other">{{t('documents_and_other_files')}}</option></select></template><p v-if="addError" class="link-error" role="alert">{{addError}}</p></div><div class="form-footer"><button type="button" @click="addKind=''">{{t('cancel')}}</button><button class="primary" type="submit">{{t('add')}}</button></div></form></section></div>
- <div class="overlay" v-if="leaveOpen"><section class="confirm-card" role="dialog" aria-modal="true" :aria-label="t('unsaved_changes')"><h2>{{t('save_changes_2')}}</h2><p>{{t('the_structure_has_unsaved_changes_save_them')}}</p><div class="form-footer"><button @click="chooseLeave('cancel')">{{t('cancel_2')}}</button><button @click="chooseLeave('discard')">{{t('discard_edits')}}</button><button class="primary" @click="chooseLeave('save')">{{t('save_step')}}</button></div></section></div><div class="overlay" v-if="confirmation"><section class="confirm-card" role="dialog" aria-modal="true" :aria-label="t('confirm_structure_change')"><h2>{{t('confirm_action_2')}}</h2><p>{{confirmation}}</p><div class="form-footer"><button @click="confirmChoose(false)">{{t('cancel')}}</button><button class="primary" @click="confirmChoose(true)">{{t('confirm')}}</button></div></section></div>
+ <div class="overlay" v-if="leaveOpen"><section class="confirm-card" role="dialog" aria-modal="true" :aria-label="t('unsaved_changes')"><h2>{{t('save_changes_2')}}</h2><p>{{t('the_structure_has_unsaved_changes_save_them')}}</p><div class="form-footer"><button @click="chooseLeave('cancel')">{{t('cancel_2')}}</button><button @click="chooseLeave('discard')">{{t('discard_edits')}}</button><button class="primary" @click="chooseLeave('save')">{{t('save_step')}}</button></div></section></div>
 </div>`;
 export default {
   template,
@@ -101,16 +102,21 @@ export default {
           state.selectedFolder = Object.keys(state.draft.folders || {})[0] || '';
       },
     );
-    let resolver: ((v: boolean) => void) | null = null,
-      timer: ReturnType<typeof setTimeout> | undefined;
-    function ask(text: string) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // The app's one confirm dialog (packages/ui); state.confirmation says a question is open.
+    async function ask(text: string) {
       state.confirmation = localize(text);
-      return new Promise<boolean>((resolve) => (resolver = resolve));
-    }
-    function confirmChoose(value: boolean) {
-      state.confirmation = '';
-      resolver?.(value);
-      resolver = null;
+      try {
+        return await confirmDialog({
+          title: t('confirm_action_2'),
+          message: state.confirmation,
+          confirm: t('confirm'),
+          cancel: t('cancel'),
+          label: t('confirm_structure_change'),
+        });
+      } finally {
+        state.confirmation = '';
+      }
     }
     function notify(text: string, kind = 'success') {
       clearTimeout(timer);
@@ -463,7 +469,6 @@ export default {
       save,
       reset,
       back,
-      confirmChoose,
     };
   },
 };

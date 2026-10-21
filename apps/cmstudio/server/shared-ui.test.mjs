@@ -128,7 +128,7 @@ for (const language of ['cs', 'en'])
       const text =
         language === 'en'
           ? {
-              menu: ['Content editor', 'AI Studio', 'Common settings', 'AI models', 'Log out'],
+              menu: ['Content editor', 'AI Studio', 'Settings', 'Log out'],
               dialog: 'Unsaved changes',
               save: 'Save',
               discard: 'Discard edits',
@@ -140,10 +140,9 @@ for (const language of ['cs', 'en'])
               collection: 'Collection name',
               pattern: 'Pattern (regular expression)',
               error: 'already exists',
-              target: '/site/?settings=ai',
             }
           : {
-              menu: ['Editor obsahu', 'AI Studio', 'Společné nastavení', 'AI modely', 'Odhlásit'],
+              menu: ['Editor obsahu', 'AI Studio', 'Nastavení', 'Odhlásit'],
               dialog: 'Neuložené úpravy',
               save: 'Uložit',
               discard: 'Zahodit úpravy',
@@ -155,7 +154,6 @@ for (const language of ['cs', 'en'])
               collection: 'Název kolekce',
               pattern: 'Pattern (regulární výraz)',
               error: 'již existuje',
-              target: '/site/?settings=ai',
             };
       const menu = page.locator('.studio-switcher'),
         openMenu = () => menu.locator('summary').click();
@@ -173,7 +171,7 @@ for (const language of ['cs', 'en'])
         dialog = page.getByRole('dialog', { name: text.dialog });
       await title.fill('Rozepsaný obsah');
       await openMenu();
-      await menu.getByRole('link', { name: text.menu[3], exact: true }).click();
+      await menu.getByRole('link', { name: text.menu[2], exact: true }).click();
       await dialog.waitFor();
       assert.equal(await dialog.getByRole('button', { name: text.save, exact: true }).count(), 1);
       await dialog.getByRole('button', { name: text.cancel, exact: true }).click();
@@ -181,7 +179,7 @@ for (const language of ['cs', 'en'])
       assert.equal(new URL(page.url()).pathname, '/content/');
       await id.fill('two');
       await openMenu();
-      await menu.getByRole('link', { name: text.menu[3], exact: true }).click();
+      await menu.getByRole('link', { name: text.menu[2], exact: true }).click();
       await dialog.getByRole('button', { name: text.save, exact: true }).click();
       const error = page.getByRole('status').filter({ hasText: text.error });
       await error.waitFor();
@@ -190,18 +188,19 @@ for (const language of ['cs', 'en'])
       assert.equal(new URL(page.url()).pathname, '/content/');
       await id.fill('one');
       await openMenu();
-      await menu.getByRole('link', { name: text.menu[3], exact: true }).click();
+      await menu.getByRole('link', { name: text.menu[2], exact: true }).click();
       await dialog.getByRole('button', { name: text.save, exact: true }).click();
-      await page.waitForURL(origin + text.target);
+      // Settings are a Shell screen: leaving the Editor for them asks about unsaved edits first.
+      await page.waitForURL((url) => url.pathname === '/settings');
       assert.equal(JSON.parse(await readFile(join(root, 'data/items.json'), 'utf8'))[0].title, 'Rozepsaný obsah');
       await page.goto(origin + '/content/');
       await title.fill('Neuložené odhlášení');
       await openMenu();
-      await menu.getByRole('button', { name: text.menu[4], exact: true }).click();
+      await menu.getByRole('button', { name: text.menu[3], exact: true }).click();
       await dialog.getByRole('button', { name: text.cancel, exact: true }).click();
       assert.equal(await title.inputValue(), 'Neuložené odhlášení');
       await openMenu();
-      await menu.getByRole('button', { name: text.menu[4], exact: true }).click();
+      await menu.getByRole('button', { name: text.menu[3], exact: true }).click();
       await dialog.getByRole('button', { name: text.discard, exact: true }).click();
       await page.waitForURL(origin + '/logout');
       assert.equal(JSON.parse(await readFile(join(root, 'data/items.json'), 'utf8'))[0].title, 'Rozepsaný obsah');

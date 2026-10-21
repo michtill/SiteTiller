@@ -3429,3 +3429,39 @@ aside .studio-header::after {
 #settings .settings-group .model-choice {
   margin-top: 16px;
 }
+/* Share dialog: the links to the shown state (copy, revoke, days left) above a new link. */
+#share-validity {
+  width: 100%;
+  box-sizing: border-box;
+}
+.share-links {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 12px;
+  font-size: 13px;
+}
+.share-links th {
+  text-align: left;
+  font-weight: 600;
+  padding: 4px 6px;
+}
+.share-links td {
+  padding: 4px 6px;
+  border-top: 1px solid rgba(127, 127, 127, 0.25);
+  vertical-align: middle;
+}
+.share-links .share-url {
+  width: 100%;
+  min-width: 220px;
+  box-sizing: border-box;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+.share-days {
+  white-space: nowrap;
+}
+.share-row-actions {
+  display: flex;
+  gap: 6px;
+  white-space: nowrap;
+}

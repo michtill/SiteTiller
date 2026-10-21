@@ -406,3 +406,89 @@ legend {
   font-size: 12px;
   font-weight: 700;
 }
+/* MCP settings: connected assistants, the one-time token and the action log. */
+.connection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 10px;
+}
+.connection button {
+  margin: 0;
+}
+label.token input {
+  font-family: ui-monospace, monospace;
+}
+.mcp-log table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.mcp-log td {
+  padding: 4px 6px;
+  border-top: 1px solid rgba(127, 127, 127, 0.25);
+  vertical-align: top;
+}
+.mcp-log tr.failed td:last-child {
+  color: #b42318;
+}
+/* Shared previews: every link in one table, its address selectable, Copy and Revoke beside it. */
+.shares-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0 0;
+  font-size: 13px;
+}
+.shares-table th {
+  text-align: left;
+  font-weight: 600;
+  padding: 6px;
+}
+.shares-table td {
+  padding: 6px;
+  border-top: 1px solid rgba(127, 127, 127, 0.25);
+  vertical-align: middle;
+}
+.shares-table .share-url {
+  width: 100%;
+  min-width: 200px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+.share-actions {
+  display: flex;
+  gap: 6px;
+  white-space: nowrap;
+}
+.share-actions form {
+  margin: 0;
+}
+.share-actions button {
+  margin: 0;
+}
+/* Revoke all asks first. */
+.confirm-all {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.confirm-all p {
+  flex-basis: 100%;
+  margin: 0;
+}
+/* MCP has a short purpose at the top. */
+p.intro {
+  margin-top: 0;
+}
+/* AI Studio models: the catalog status keeps one reserved line, so nothing moves when the lists arrive (0.5). */
+.model-status {
+  min-height: 1.5em;
+  line-height: 1.5em;
+  margin: 0 0 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted, inherit);
+}

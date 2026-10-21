@@ -10,6 +10,29 @@ import { readFile } from 'node:fs/promises';
 import { join, extname } from 'node:path';
 import { validateFiles, safeSitePath, resolveSiteFile } from './core.ts';
 import { raster, imageMime, binaryAsset } from './images.ts';
+// The checks without which a published website does not work: the content templates render and the forms have a
+// valid definition. "Key checks and warnings" (MCP, documentation 2.8) stops only on these.
+export function keyChecks(files: Record<string, string>) {
+  const errors: string[] = [];
+  try {
+    const pages = renderingPages(files);
+    const schema = JSON.parse(files['site/cms/structure.json'] || 'null'),
+      collections = Object.fromEntries(
+        Object.keys(schema?.lists || {}).map((n) => [n, JSON.parse(files['site/cms/data/' + n + '.json'] || '[]')]),
+      );
+    for (const page of Object.keys(pages)) renderWithData(page, files, { schema, collections });
+  } catch (e: any) {
+    errors.push(e.message);
+  }
+  try {
+    formDefinitions(files);
+  } catch (e: any) {
+    errors.push(e.message);
+  }
+  return { passed: !errors.length, errors, checks: ['CMS templates', 'forms'] };
+}
+export type CheckLevel = 'strict' | 'key' | 'none';
+export const checkLevel = (value: unknown): CheckLevel => (value === 'key' || value === 'none' ? value : 'strict');
 export function staticChecks(files: Record<string, string>) {
   let checked = files;
   try {

@@ -159,8 +159,14 @@ export async function loadReality(
   await cp(project.root, path, { recursive: true });
   try {
     const draft = new Project(path);
-    await draft.writeSnapshot(snapshot.files);
-    for (const [name, bytes] of Object.entries(snapshot.binary)) {
+    // The live website replaces the website files only. The content saved in the draft (site/cms/) stays, so the
+    // loaded step can be returned to with its content (documentation 4.5); loading never changes the content.
+    const content = (files: Record<string, any>) =>
+      Object.fromEntries(Object.entries(files).filter(([name]) => name.startsWith('site/cms/')));
+    const website = (files: Record<string, any>) =>
+      Object.fromEntries(Object.entries(files).filter(([name]) => !name.startsWith('site/cms/')));
+    await draft.writeSnapshot({ ...website(snapshot.files), ...content(await draft.files()) });
+    for (const [name, bytes] of Object.entries(website(snapshot.binary))) {
       const target = safeSitePath(path, name);
       await mkdir(join(target, '..'), { recursive: true });
       await writeFile(target, bytes as Buffer);

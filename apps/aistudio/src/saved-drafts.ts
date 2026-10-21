@@ -52,18 +52,12 @@ async function exportedRevision(root: string) {
     ]),
   );
 }
-export async function saveNamedDraft(
+// Freezes a step with its content into a commit of the project (not yet pinned by any ref): the latest step with
+// the chosen content source, an older step with the content saved in it. Used by saved drafts and shared previews.
+export async function freezeStep(
   project: Project,
-  input: { name: string; expectedHead: string; cmsSource?: string; presentationHead?: string; commit?: string },
+  input: { expectedHead: string; cmsSource?: string; commit?: string },
 ) {
-  if (
-    typeof input.name !== 'string' ||
-    !input.name.trim() ||
-    input.name.trim().length > 120 ||
-    /[\x00-\x1f]/.test(input.name)
-  )
-    throw Error('Zadejte název návrhu (nejvýše 120 znaků).');
-  if (!['published', 'unpublished', undefined].includes(input.cmsSource)) throw Error('Neplatný zdroj obsahu.');
   if ((await project.head()) !== input.expectedHead || (await project.git(['status', '--porcelain', '--', 'site'])))
     throw Error('Návrh se mezitím změnil.');
   if (input.cmsSource && !process.env.SITETILLER_CMS_ROOT) throw Error('Vybraný obsah není připojen.');
@@ -73,8 +67,6 @@ export async function saveNamedDraft(
     await project.git(['merge-base', '--is-ancestor', input.commit, input.expectedHead]);
   }
   if (frozen && input.cmsSource) throw Error('Historický krok používá uložený obsah.');
-  const list = await savedDrafts(project);
-  if (list.length >= 100) throw Error('Lze uložit nejvýše 100 návrhů.');
   let source: any = null;
   if (!frozen && process.env.SITETILLER_CMS_ROOT) {
     source =
@@ -105,36 +97,53 @@ export async function saveNamedDraft(
     }
     if ((await project.head()) !== input.expectedHead || (await project.git(['status', '--porcelain', '--', 'site'])))
       throw Error('Návrh se mezitím změnil.');
-    const id = randomBytes(16).toString('hex'),
-      record = {
-        id: 'draft-' + id,
-        ref: 'refs/sitetiller/saved-drafts/' + id,
-        name: input.name.trim(),
-        createdAt: new Date().toISOString(),
-        commit: snapshot,
-        baseCommit: input.expectedHead,
-        presentationHead: input.presentationHead || input.expectedHead,
-        step: input.commit || input.expectedHead,
-        cmsSource: source ? input.cmsSource || 'unpublished' : 'none',
-        contentRevision: revision,
-        schemaRevision,
-        hasContent,
-      };
     await project.git(['fetch', '--no-tags', temporary, snapshot]);
-    await project.git(['update-ref', record.ref, snapshot]);
-    const path = catalogPath(project),
-      temp = path + '.tmp';
-    try {
-      await writeFile(temp, JSON.stringify([...list, record], null, 2), { mode: 0o600 });
-      await rename(temp, path);
-    } catch (e) {
-      await project.git(['update-ref', '-d', record.ref]);
-      throw e;
-    }
-    return record;
+    return { snapshot, source, revision, schemaRevision, hasContent, frozen };
   } finally {
     await rm(temporary, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   }
+}
+export async function saveNamedDraft(
+  project: Project,
+  input: { name: string; expectedHead: string; cmsSource?: string; presentationHead?: string; commit?: string },
+) {
+  if (
+    typeof input.name !== 'string' ||
+    !input.name.trim() ||
+    input.name.trim().length > 120 ||
+    /[\x00-\x1f]/.test(input.name)
+  )
+    throw Error('Zadejte název návrhu (nejvýše 120 znaků).');
+  if (!['published', 'unpublished', undefined].includes(input.cmsSource)) throw Error('Neplatný zdroj obsahu.');
+  const list = await savedDrafts(project);
+  if (list.length >= 100) throw Error('Lze uložit nejvýše 100 návrhů.');
+  const { snapshot, source, revision, schemaRevision, hasContent } = await freezeStep(project, input);
+  const id = randomBytes(16).toString('hex'),
+    record = {
+      id: 'draft-' + id,
+      ref: 'refs/sitetiller/saved-drafts/' + id,
+      name: input.name.trim(),
+      createdAt: new Date().toISOString(),
+      commit: snapshot,
+      baseCommit: input.expectedHead,
+      presentationHead: input.presentationHead || input.expectedHead,
+      step: input.commit || input.expectedHead,
+      cmsSource: source ? input.cmsSource || 'unpublished' : 'none',
+      contentRevision: revision,
+      schemaRevision,
+      hasContent,
+    };
+  await project.git(['update-ref', record.ref, snapshot]);
+  const path = catalogPath(project),
+    temp = path + '.tmp';
+  try {
+    await writeFile(temp, JSON.stringify([...list, record], null, 2), { mode: 0o600 });
+    await rename(temp, path);
+  } catch (e) {
+    await project.git(['update-ref', '-d', record.ref]);
+    throw e;
+  }
+  return record;
 }
 // The step a saved draft came from (its badge in the timeline). When the draft history is rebuilt, the step
 // follows its new commit; a step that no longer exists keeps the old commit and so shows no badge.

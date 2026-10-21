@@ -14,8 +14,8 @@ export function previewDocument(html: string, commit: string, embedded = false) 
   }
   return html.replace(
     /<body([^>]*)>/i,
-    '<body$1><div data-sitetiller-preview-banner style="position:fixed;top:0;left:0;right:0;z-index:999999;box-sizing:border-box;margin:0;pointer-events:none;background:rgba(255,216,77,.75);color:#161616;padding:12px 48px;text-align:center;font:600 14px sans-serif">SiteTiller · TESTOVACÍ VERZE · ' +
-      commit.slice(0, 8) +
+    '<body$1><div data-sitetiller-preview-banner style="position:fixed;top:0;left:0;right:0;z-index:999999;box-sizing:border-box;margin:0;pointer-events:none;background:rgba(255,216,77,.75);color:#161616;padding:12px 48px;text-align:center;font:600 14px sans-serif">SiteTiller · TESTOVACÍ VERZE' +
+      (commit ? ' · ' + commit.slice(0, 8) : '') +
       '<button type="button" aria-label="Skrýt upozornění na testovací verzi" title="Skrýt upozornění na testovací verzi" style="pointer-events:auto;position:absolute;right:8px;top:50%;transform:translateY(-50%);width:32px;height:32px;margin:0;padding:0;border:0;border-radius:4px;background:transparent;color:#161616;font:24px sans-serif;cursor:pointer">×</button></div><script>(()=>{const banner=document.currentScript.previousElementSibling;let hidden=window.self!==window.top;try{hidden=hidden||sessionStorage.getItem("sitetiller-preview-banner-hidden")==="1";}catch{}if(hidden)banner.remove();else banner.querySelector("button").addEventListener("click",()=>{banner.remove();try{sessionStorage.setItem("sitetiller-preview-banner-hidden","1");}catch{}});document.currentScript.remove();})();</script>',
   );
 }

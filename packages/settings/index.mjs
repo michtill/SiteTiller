@@ -40,7 +40,7 @@ export async function updateSettings(path, value, expectedRevision) {
     unlock();
   }
 }
-export function validateShared(value, { current = {}, validateSiteUrl } = {}) {
+export function validateShared(value, { current = {} } = {}) {
   if (
     !value ||
     typeof value.name !== 'string' ||
@@ -67,18 +67,6 @@ export function validateShared(value, { current = {}, validateSiteUrl } = {}) {
       throw Object.assign(Error('Neplatná volba veřejného náhledu.'), { status: 422 });
     result.publicPreview = value.publicPreview;
   }
-  if (Object.hasOwn(value, 'siteUrl')) {
-    if (typeof value.siteUrl !== 'string' || value.siteUrl.length > 2000 || typeof validateSiteUrl !== 'function')
-      throw Object.assign(Error('Neplatná adresa webu.'), { status: 422 });
-    try {
-      result.siteUrl = validateSiteUrl(value.siteUrl);
-    } catch {
-      throw Object.assign(
-        Error('Zadejte veřejnou HTTP/HTTPS adresu bez přihlašovacích údajů, nebo adresu této lokální instance.'),
-        { status: 422 },
-      );
-    }
-  }
   // The administrator's e-mail (documentation 2.8): required on the Sending e-mail screen, which saves it here.
   if (Object.hasOwn(value, 'adminEmail')) {
     result.adminEmail = String(value.adminEmail ?? '').trim();
@@ -89,33 +77,3 @@ export function validateShared(value, { current = {}, validateSiteUrl } = {}) {
 // A plain e-mail address (the same rule for the administrator, the sender and form recipients).
 export const validEmail = (value) =>
   typeof value === 'string' && value.length <= 254 && /^[^\s@<>"',;]+@[^\s@<>"',;]+\.[^\s@<>"',;]+$/.test(value);
-export async function migrateSharedSiteUrl(path, legacyPath, validateSiteUrl, fallback = '') {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const current = await readJson(path);
-    if (Object.hasOwn(current, 'siteUrl')) return current;
-    let legacy = {};
-    try {
-      legacy = await readJson(legacyPath);
-    } catch (e) {
-      if (e.code !== 'ENOENT') throw e;
-    }
-    // An address the current rules reject (e.g. a local URL on another port) must not stop the Shell from starting.
-    let siteUrl = '';
-    for (const candidate of [legacy.siteUrl, fallback].filter((v) => v !== undefined))
-      try {
-        siteUrl = validateSiteUrl(candidate);
-        break;
-      } catch {}
-    try {
-      return (await updateSettings(path, { ...current, siteUrl }, revision(current))).settings;
-    } catch (e) {
-      if (e.status !== 409) throw e;
-    }
-  }
-  throw Object.assign(Error('Nastavení se mezitím změnilo.'), { status: 409 });
-}
-export async function readSharedSiteUrl(path, legacyValue, fallback = '') {
-  if (!path) return legacyValue ?? fallback;
-  const current = await readJson(path);
-  return Object.hasOwn(current, 'siteUrl') ? current.siteUrl : (legacyValue ?? fallback);
-}

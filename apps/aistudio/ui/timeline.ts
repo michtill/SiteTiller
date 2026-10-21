@@ -70,7 +70,9 @@ function eyeFor(group: any) {
     group.done &&
     group.request?.presentationChanged !== false &&
     group.commit &&
-    group.commit !== group.baseCommit &&
+    // The first step stands for a published version or saved draft and always has its preview (documentation 4.9),
+    // also when it starts the rebuilt draft and so has no other base.
+    (group.commit !== group.baseCommit || !!group.request?.firstStep) &&
     (group.commit === current.head ||
       group.commit === (current.presentationHead || current.head) ||
       (current.requests || []).some((r: any) => r.commit === group.commit && ['ready', 'legacy'].includes(r.status)) ||
@@ -130,7 +132,17 @@ function view(group: any) {
   const response = !row.running && responseEvent?.message ? displayMessage(responseEvent, tm) : '';
   const summaryText =
     response || group.events.findLast((e: any) => e.message && e.stage !== 'request')?.message || t('show_progress');
-  const mode = !isEdit ? 'details' : row.running ? 'live' : group.done ? 'result' : 'disclosure';
+  // The first step stands for a version or saved draft: it has a title and a preview, no AI work to show.
+  const mode =
+    group.request?.firstStep && group.done
+      ? 'title'
+      : !isEdit
+        ? 'details'
+        : row.running
+          ? 'live'
+          : group.done
+            ? 'result'
+            : 'disclosure';
   const images = (
     group.request?.attachments ||
     group.events.find((e: any) => e.stage === 'request')?.attachments ||

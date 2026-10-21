@@ -139,7 +139,7 @@ http
           content,
           version.share ? '' : commit,
           url.searchParams.get('embedded') === '1',
-          await previewLabel(project, version.share ? '' : commit, !!version.share),
+          await previewLabel(project, commit, !!version.share),
         );
       res.setHeader('Content-Security-Policy', saved && !saved.share ? studioPreviewPolicy : websitePolicy);
       // A frozen version is addressed by its commit, so its responses never change.

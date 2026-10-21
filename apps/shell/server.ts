@@ -1,3 +1,4 @@
+import { providerIds, providerName, detectProvider } from '../../packages/providers/index.mjs';
 import { withSharedSettingsSave, sharedLanguage } from '../../packages/settings/shared-ui.mjs';
 import { renderPage, settingsError } from './pages.ts';
 import { translate } from '../../packages/i18n/index.mjs';
@@ -174,7 +175,7 @@ http
       res.setHeader('X-Content-Type-Options', 'nosniff');
       const look = await shared(),
         language = look.language,
-        t = (key: string) => translate(key, language),
+        t = (key: string, params?: Record<string, unknown>) => translate(key, language, params),
         page = async (
           status: number,
           name: string,
@@ -795,7 +796,7 @@ http
       // AI models (documentation 2.10): the AI Studio's keys, team models and image tools, edited here.
       if (url.pathname === '/settings/aiapi' || url.pathname === '/settings/aiapi/catalog') {
         let error = '',
-          rejectedKeys: Record<string, string> = {},
+          keyError = '',
           confirmKey = '',
           notice = '',
           back = url.searchParams.get('returnTo');
@@ -816,7 +817,7 @@ http
         };
         // The team roles and image tools with their options: from the catalog, or only the saved choice before it.
         const modelView = (state: any, catalog: any, entered: any) => {
-          const provider = (id: string) => (id === 'openai' ? 'OpenAI' : 'Anthropic'),
+          const provider = (id: string) => providerName(id),
             usable = (catalog?.models || []).filter((m: any) => m.usable),
             // Without the catalog yet, the saved choice is the only option and is not marked as unconfirmed.
             withSaved = (options: any[], value: string, label: string) =>
@@ -869,14 +870,16 @@ http
             keyErrors: Object.fromEntries(
               (catalog?.providers || [])
                 .filter((p: any) => p.error && p.errorKind !== 'missing_key')
-                .map((p: any) => [p.provider, p.detail]),
+                .map((p: any) => [p.provider, { name: providerName(p.provider), reason: p.detail }]),
             ),
           };
         };
         if (url.pathname === '/settings/aiapi/catalog') {
           res.setHeader('Content-Type', 'application/json; charset=utf-8');
           try {
-            const view = modelView(await ai('state'), await ai('models', { keys: {} }), null);
+            // The models first: with Team automatically by the recommendation they may change the team.
+            const models = await ai('models', { keys: {} }),
+              view = modelView(await ai('state'), models, null);
             return res.end(JSON.stringify(view));
           } catch (e: any) {
             res.statusCode = 502;
@@ -888,8 +891,32 @@ http
           const input = await readForm(req);
           back = input.get('returnTo');
           // Remove a key: the first press asks, the second removes (documentation 2.4).
-          const removal = (input.get('action') || '').match(/^remove_(openai|anthropic)(_yes)?$/);
-          if (removal && !removal[2] && input.get('confirm') !== 'yes') confirmKey = removal[1];
+          const removal = (input.get('action') || '').match(/^remove_([a-z]+)(_yes)?$/);
+          if (removal && !providerIds.includes(removal[1]))
+            throw Object.assign(Error('Neznámý poskytovatel.'), { status: 422 });
+          // Add a key: one field for every provider, told by the key's shape; the same provider's key is replaced
+          // only after the confirm dialog (documentation 2.4).
+          if (input.get('action') === 'addKey') {
+            const value = (input.get('key') || '').trim(),
+              detected = detectProvider(value),
+              current = await ai('state').catch(() => ({}) as any);
+            if (!value) keyError = t('key_enter');
+            else if (detected.problem === 'admin') keyError = t('key_admin');
+            else if (!detected.provider) keyError = t('key_unknown');
+            else if (
+              (current.providers || []).some((p: any) => p.provider === detected.provider && p.hasKey) &&
+              input.get('confirm') !== 'yes'
+            )
+              keyError = t('key_replace_confirm', { provider: providerName(detected.provider) });
+            else
+              try {
+                await ai('keys/add', { provider: detected.provider, key: value });
+                notice = t('key_added', { provider: providerName(detected.provider) });
+              } catch (e: any) {
+                keyError = e.message;
+              }
+            if (keyError) res.statusCode = 422;
+          } else if (removal && !removal[2] && input.get('confirm') !== 'yes') confirmKey = removal[1];
           else if (removal)
             try {
               await ai('keys/remove', { provider: removal[1] });
@@ -918,19 +945,15 @@ http
               imageModels: { precise: input.get('image_precise') || 'none', fast: input.get('image_fast') || 'none' },
             };
             try {
-              // Save and load models: the keys with the saved team, then the fresh model lists; the choices on the
-              // page stay as entered so they can be picked from the new lists.
-              const keysOnly = input.get('action') === 'keys',
-                saved = keysOnly ? await ai('state') : null;
-              const result = await ai('settings', {
-                keys: { openai: input.get('key_openai') || '', anthropic: input.get('key_anthropic') || '' },
-                ...(keysOnly ? { roles: saved.roles, imageModels: saved.imageModels } : entered),
+              // Team automatically by the recommendation: the team comes from the recommendation (documentation 4.6).
+              const autoTeam = input.has('autoTeam');
+              await ai('settings', {
+                ...entered,
+                autoTeam,
+                ...(autoTeam ? { roles: (await ai('state')).roles } : {}),
               });
-              if (!keysOnly) entered = null;
-              // A key the provider refused is not saved; its reason is under its field (documentation 2.4).
-              rejectedKeys = result.rejectedKeys || {};
-              if (Object.keys(rejectedKeys).length) res.statusCode = 422;
-              else notice = keysOnly ? t('keys_saved_models_loaded') : t('saved');
+              entered = null;
+              notice = t('saved');
             } catch (e: any) {
               error = e.message;
               res.statusCode = 422;
@@ -944,15 +967,19 @@ http
           error = error || e.message;
         }
         const { roles, images } = modelView(state, null, entered);
-        const keys = Object.fromEntries((state.providers || []).map((p: any) => [p.provider, !!p.hasKey]));
+        const keys = (state.providers || [])
+          .filter((p: any) => p.hasKey)
+          .map((p: any) => ({ id: p.provider, name: providerName(p.provider) }));
         return page(res.statusCode || 200, 'aiapi', {
           error,
           notice,
           alerts: [],
           networkMode: state.networkMode,
           keys,
-          rejectedKeys,
+          keyError,
           confirmKey,
+          autoTeam: !!state.autoTeam,
+          recommendation: state.recommendation || { date: '', source: 'bundled' },
           roles,
           images,
           returnTo: settingsReturnTo(back),
@@ -977,6 +1004,11 @@ http
       if (req.method === 'GET' && url.pathname === '/__shell/ui/confirm-dialog.js') {
         res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
         return res.end(await readFile(new URL('../../packages/ui/confirm-dialog.js', import.meta.url), 'utf8'));
+      }
+      // The providers' list and the key shapes, for the Add key confirm on the AI models page.
+      if (req.method === 'GET' && url.pathname === '/__shell/providers.js') {
+        res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
+        return res.end(await readFile(new URL('../../packages/providers/index.mjs', import.meta.url), 'utf8'));
       }
       if (req.method === 'GET' && url.pathname === '/__shell/frame.js') {
         res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });

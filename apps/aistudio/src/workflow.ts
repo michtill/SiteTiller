@@ -1,3 +1,4 @@
+import { providerIds } from '../../../packages/providers/index.mjs';
 import { prepareFinalAnswer, hostAnswer, primaryFinalContract, type ResponseLanguage } from './final-answer.ts';
 import { stepChanges } from './step-changes.ts';
 import { verificationOutcome, outcomeWarnings } from './verification-outcome.ts';
@@ -22,7 +23,7 @@ import { withRules } from './instructions.ts';
 import { routeTask, editContract } from './orchestrator.ts';
 import { cp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { safeSitePath, type Slot } from './core.ts';
+import { safeSitePath, type Slot, type Provider } from './core.ts';
 import { clientFor, initialTeam, initialImages, type Team, type Role, type ImageChoices } from './team.ts';
 import { callModel } from './providers.ts';
 import { Project } from './project.ts';
@@ -137,10 +138,9 @@ export async function workflow(
   const enabledChecks = requestChecks(options.requestChecks);
   const webIntent = webRequestIntent(prompt, options.conversation);
   images = images.map((i) => (i.use === 'auto' ? { ...i, use: 'website', automaticUse: true } : i));
-  const keys = {
-    openai: slots.find((s) => s.provider === 'openai' && s.key)?.key || '',
-    anthropic: slots.find((s) => s.provider === 'anthropic' && s.key)?.key || '',
-  };
+  const keys = Object.fromEntries(
+    providerIds.map((provider) => [provider, slots.find((s) => s.provider === provider && s.key)?.key || '']),
+  ) as Record<Provider, string>;
   const original = await project.files(),
     baseCommit = await project.head(),
     manifest = await projectManifest(project, original);

@@ -75,11 +75,11 @@ export class Store {
     this.queue = task.catch(() => {});
     return task;
   }
-  update(name: string, input: unknown, revision: string, schemaRevision?: string) {
+  update(name: string, input: unknown, revision: string, schemaRevision?: string, rename?: unknown) {
     const task = this.queue.then(async () => {
       if (schemaRevision !== undefined && (await schemaSnapshot(this.root)).revision !== schemaRevision)
         throw new Problem(409, 'Struktura se změnila. Znovu načtěte editor obsahu.');
-      return this.write(name, input, revision);
+      return this.write(name, input, revision, rename);
     });
     this.queue = task.catch(() => {});
     return task;
@@ -167,24 +167,83 @@ export class Store {
             if (row[col] && !keys.has(row[col]))
               throw new Problem(422, `Položku nelze odstranit nebo přejmenovat: používá ji seznam ${otherDef.label}.`);
         }
+    // A link to the own collection (a parent page) never makes a cycle, for every writer (documentation 3.8).
+    const shown = Array.isArray(def.display) ? def.display[0] : def.display,
+      title = (key: string) => {
+        const row = rows.find((r) => r[def.key] === key);
+        return (shown && row?.[shown]) || key;
+      };
+    for (const [col, field] of Object.entries(def.columns))
+      if (field.type === 'list' && field.list === name) {
+        const parents = new Map(rows.map((r) => [r[def.key], r[col]]));
+        for (const row of rows) {
+          const key = row[def.key],
+            parent = row[col];
+          if (!parent) continue;
+          if (parent === key) throw new Problem(422, `${title(key)} nemůže být pod sebou samou (${field.label}).`);
+          const seen = new Set([parent]);
+          for (let next = parents.get(parent); next && !seen.has(next); next = parents.get(next)) {
+            if (next === key)
+              throw new Problem(
+                422,
+                `${title(key)} nemůže být pod ${title(parent)}, protože ${title(parent)} je pod ${title(key)} (${field.label}).`,
+              );
+            seen.add(next);
+          }
+        }
+      }
     return rows;
   }
-  private async write(name: string, input: unknown, revision: string) {
+  private async write(name: string, input: unknown, revision: string, rename?: unknown) {
     const schema = await this.schema(),
       old = await this.snapshot(name),
       def = schema.lists[name];
     if (old.revision !== revision)
       throw new Problem(409, 'Obsah se mezitím změnil. Znovu načtěte seznam a zopakujte úpravu.');
     if (!Array.isArray(input)) throw new Problem(422, 'Neplatný seznam.');
+    // A key renamed in the form (documentation 3.3): every link to it, in any collection, takes the new key in the
+    // same write. Only an explicit rename of an existing key that is gone from the saved rows qualifies.
+    const linked: Record<string, Row[]> = {};
+    let renamed = false;
+    if (rename !== undefined) {
+      const { from, to } = (rename || {}) as { from?: unknown; to?: unknown };
+      if (
+        typeof from !== 'string' ||
+        typeof to !== 'string' ||
+        !from ||
+        !to.trim() ||
+        from === to ||
+        !old.rows.some((row) => row[def.key] === from) ||
+        input.some((row: any) => row?.[def.key] === from) ||
+        !input.some((row: any) => row?.[def.key] === to)
+      )
+        throw new Problem(422, 'Neplatné přejmenování klíče.');
+      for (const [other, otherDef] of Object.entries(schema.lists))
+        for (const [col, field] of Object.entries(otherDef.columns))
+          if (field.type === 'list' && field.list === name) {
+            const rows: any[] = other === name ? input : linked[other] || (await this.snapshot(other)).rows;
+            const next = rows.map((row) => {
+              if (row?.[col] !== from) return row;
+              renamed = true;
+              return { ...row, [col]: to };
+            });
+            if (other === name) input = next;
+            else linked[other] = next;
+          }
+    }
+    const rowsInput = input as unknown[];
     const sequences = await readSequences(this.root),
       generation = planGeneratedRows(
         { ...schema, lists: { [name]: def } },
-        { [name]: input },
+        { [name]: rowsInput },
         schema,
         { [name]: old.rows },
         sequences.state,
       );
-    const rows = await this.validateRows(name, generation.rows[name]);
+    const rows = await this.validateRows(name, generation.rows[name], { ...linked, [name]: generation.rows[name] });
+    const others: Record<string, Row[]> = {};
+    for (const [other, otherRows] of Object.entries(linked))
+      others[other] = await this.validateRows(other, otherRows, { ...linked, [name]: rows });
     await mkdir(join(this.root, 'backups'), { recursive: true });
     await writeFile(
       join(this.root, 'backups', `${Date.now()}-${name}-${randomUUID()}.json`),
@@ -192,6 +251,12 @@ export class Store {
     );
     const writes: Record<string, string> = {
       ['data/' + name + '.json']: JSON.stringify(rows, null, 2) + '\n',
+      ...Object.fromEntries(
+        Object.entries(others).map(([other, otherRows]) => [
+          'data/' + other + '.json',
+          JSON.stringify(otherRows, null, 2) + '\n',
+        ]),
+      ),
       ...sequenceWrite(sequences.state, generation.state),
     };
     await mkdir(join(this.root, 'data'), { recursive: true });
@@ -206,6 +271,6 @@ export class Store {
     }
     await commitWorkingTransaction(this.root, writes, before);
     await pruneBackups(this.root).catch(() => {});
-    return this.snapshot(name);
+    return { ...(await this.snapshot(name)), ...(renamed ? { renamedLinks: true } : {}) };
   }
 }

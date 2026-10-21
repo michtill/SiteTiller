@@ -1,5 +1,5 @@
 import { confirmDialog } from '../../../packages/ui/confirm-dialog.js';
-import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import { t } from './i18n.ts';
 import { releaseNumber } from './presentation.ts';
 import {
@@ -16,25 +16,15 @@ import {
 import { mountPreview } from './preview.ts';
 import { dialogs } from './dialogs.ts';
 // The preview of the selected version with its toolbar, and below it what the version is and what can be done with it.
-const template = `<section class="preview-panel"><div class="preview-toolbar"><div><span class="live-dot"></span><strong id="project-title" :title="s.projectTitleHint||undefined">{{s.projectTitle||t('website')}}</strong></div><div class="preview-actions"><button id="theme-toggle" type="button" class="icon-button quiet" :aria-label="themeLabel" :title="themeLabel" :aria-pressed="String(theme==='light')" @click="toggleTheme"><svg class="theme-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg><svg class="theme-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.7 13A9 9 0 0 1 11 3.3 9 9 0 1 0 20.7 13Z"/></svg></button><button id="refresh-preview" class="icon-button quiet" type="button" :aria-label="t('refresh_preview')" :title="t('refresh_preview_content')" @click="reload"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7v5h-5"/><path d="M20 12a8 8 0 1 0-2.34 5.66M20 12l-3.2-3.2"/></svg></button><button id="mobile" type="button" @click="s.mobile=!s.mobile">{{s.mobile?t('desktop'):t('mobile')}}</button><a id="open-preview" target="_blank" rel="noopener noreferrer" :href="s.openPreviewHref||undefined">{{t('open')}}</a><details v-if="s.current?.liveSiteUrl||s.current?.publicPreviewUrl" id="more-links" ref="moreLinks" class="more-links" @keydown.esc="closeMore"><summary class="icon-button quiet" :aria-label="t('more_options')" :title="t('more_options')"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg></summary><div class="more-links-menu" role="menu"><a v-if="s.current.publicPreviewUrl" id="open-public-preview" role="menuitem" :href="s.current.publicPreviewUrl" target="_blank" rel="noopener noreferrer" @click="closeMore">{{t('public_draft_preview')}} ↗</a><a v-if="s.current.liveSiteUrl" id="open-live-site" role="menuitem" :href="s.current.liveSiteUrl" target="_blank" rel="noopener noreferrer" @click="closeMore">{{t('live_site')}} ↗</a></div></details></div></div>
+const template = `<section class="preview-panel"><div class="preview-toolbar"><div><span class="live-dot"></span><strong id="project-title" :title="s.projectTitleHint||undefined">{{s.projectTitle||t('website')}}</strong></div><div class="preview-actions"><button id="theme-toggle" type="button" class="icon-button quiet" :aria-label="themeLabel" :title="themeLabel" :aria-pressed="String(theme==='light')" @click="toggleTheme"><svg class="theme-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg><svg class="theme-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.7 13A9 9 0 0 1 11 3.3 9 9 0 1 0 20.7 13Z"/></svg></button><button id="refresh-preview" class="icon-button quiet" type="button" :aria-label="t('refresh_preview')" :title="t('refresh_preview_content')" @click="reload"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7v5h-5"/><path d="M20 12a8 8 0 1 0-2.34 5.66M20 12l-3.2-3.2"/></svg></button><button id="mobile" type="button" @click="s.mobile=!s.mobile">{{s.mobile?t('desktop'):t('mobile')}}</button><a id="open-preview" target="_blank" rel="noopener noreferrer" :href="s.openPreviewHref||undefined">{{t('open')}}</a><button v-if="shareAction&&!shareAction.hidden" id="share-preview" type="button" class="text-action" :disabled="shareAction.disabled" @click="run('share-preview')">{{shareAction.label}}</button><a v-if="s.current?.liveSiteUrl" id="open-live-site" class="text-action" :href="s.current.liveSiteUrl" target="_blank" rel="noopener noreferrer">{{t('live_site')}} ↗</a></div></div>
 <div id="preview-frame" ref="frame" class="frame" :class="{mobile:s.mobile,'historical-preview':s.historicalPreview}"></div>
 <div class="publish-bar" :class="{'preview-selection':selection&&historicalContent()}"><div><strong id="publish-status" :class="{'historical-status':selection&&historicalContent()}">{{status.title}}</strong><div v-if="selection" id="preview-content-source" class="preview-content-source" :class="{unpublished:!historicalContent()&&selection.cmsMode==='unpublished'}" :hidden="!historicalContent()&&!s.current?.cmsPreviewSources?.[selection.cmsMode]||undefined">{{historicalContent()?t('saved_draft_content'):selection.cmsMode==='published'?t('published_content'):t('unpublished_content')}}</div><p id="publish-note">{{status.note}}</p></div>
-<div class="release-actions" role="group" :aria-label="t('step_actions')" :hidden="s.previewPending||!selection||undefined" :data-kind="selection?.kind" :data-selection-id="selection?selection.id||'':undefined" :data-commit="selection?.commit"><button v-for="action in actions" :key="action.id" :id="action.id" type="button" :class="{primary:action.id==='publish'}" :hidden="action.hidden||undefined" :disabled="action.disabled" @click="run(action.id)">{{action.label}}</button></div></div></section>`;
+<div class="release-actions" role="group" :aria-label="t('step_actions')" :hidden="s.previewPending||!selection||undefined" :data-kind="selection?.kind" :data-selection-id="selection?selection.id||'':undefined" :data-commit="selection?.commit"><button v-for="action in actions.filter((a)=>a.id!=='share-preview')" :key="action.id" :id="action.id" type="button" :class="{primary:action.id==='publish'}" :hidden="action.hidden||undefined" :disabled="action.disabled" @click="run(action.id)">{{action.label}}</button></div></div></section>`;
 export default {
   template,
   setup() {
-    const frame = ref<HTMLElement | null>(null),
-      moreLinks = ref<HTMLDetailsElement | null>(null);
-    function closeMore() {
-      if (moreLinks.value) moreLinks.value.open = false;
-    }
+    const frame = ref<HTMLElement | null>(null);
     onMounted(() => mountPreview(frame.value!));
-    // The more-options menu closes on a click anywhere else.
-    const outside = (event: PointerEvent) => {
-      if (moreLinks.value?.open && !moreLinks.value.contains(event.target as Node)) closeMore();
-    };
-    onMounted(() => document.addEventListener('pointerdown', outside));
-    onUnmounted(() => document.removeEventListener('pointerdown', outside));
     const selection = computed(() => s.displayedSelection);
     // 'light' = day (environment colours, or the light look), 'dark' = night (black); theme.js applies them.
     const theme = ref(document.documentElement.dataset.dayNight === 'day' ? 'light' : 'dark');
@@ -125,7 +115,7 @@ export default {
           );
         }
       }
-      // Sharing is offered while the public preview is on (documentation 4.10).
+      // Sharing is offered while the public preview is on (documentation 4.10); its button sits next to Open.
       if (selection && current?.publicPreviewUrl) {
         const publish = shown.findIndex((a) => a.id === 'publish');
         shown.splice(publish < 0 ? shown.length : publish, 0, {
@@ -182,8 +172,6 @@ export default {
       t,
       s,
       frame,
-      moreLinks,
-      closeMore,
       selection,
       theme,
       themeLabel,
@@ -191,6 +179,7 @@ export default {
       reload,
       status,
       actions,
+      shareAction: computed(() => actions.value.find((a) => a.id === 'share-preview')),
       run,
       historicalContent,
     };

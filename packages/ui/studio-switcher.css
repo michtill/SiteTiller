@@ -1,0 +1,29 @@
+/* The studio menu's toggle (studio-switcher.ts): a clear menu icon in a frame, so the menu is not overlooked. Its
+   colours follow the part it sits in (currentColor). */
+.studio-switcher summary {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+.studio-menu-toggle {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+.studio-switcher summary:hover .studio-menu-toggle,
+.studio-switcher[open] .studio-menu-toggle {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+.studio-menu-toggle svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}

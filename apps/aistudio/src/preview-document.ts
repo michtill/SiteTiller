@@ -22,8 +22,6 @@ export function previewDocument(html: string, commit: string, embedded = false, 
     /<body([^>]*)>/i,
     '<body$1><div data-sitetiller-preview-banner tabindex="0" role="note" aria-label="' +
       text +
-      '" title="' +
-      text +
       '"><style>[data-sitetiller-preview-banner]{position:fixed;top:0;right:0;z-index:999999;display:flex;align-items:center;gap:6px;box-sizing:border-box;height:24px;min-width:24px;padding:0 7px;border-bottom-left-radius:10px;background:rgba(255,216,77,.85);color:#161616;font:600 13px/24px sans-serif;cursor:default}[data-sitetiller-preview-banner] b{font:italic 700 14px/24px Georgia,serif}[data-sitetiller-preview-banner] span{display:none;white-space:nowrap}[data-sitetiller-preview-banner]:hover span,[data-sitetiller-preview-banner]:focus span{display:inline}</style><b aria-hidden="true">i</b><span>' +
       text +
       '</span></div><script>(()=>{if(window.self!==window.top)document.currentScript.previousElementSibling.remove();document.currentScript.remove();})();</script>',
@@ -43,7 +41,6 @@ export async function previewLabel(project: { root: string }, commit: string, sh
     language = JSON.parse(await readFile(process.env.SITETILLER_SHARED_SETTINGS_FILE || '', 'utf8')).language || 'cs';
   } catch {}
   const t = (key: string, params?: Record<string, unknown>) => translate(key, language, params);
-  if (share) return t('preview_badge', { name: t('preview_badge_shared') });
   try {
     config = JSON.parse(await readFile(join(project.root, '..', 'config.json'), 'utf8'));
   } catch {}
@@ -62,10 +59,12 @@ export async function previewLabel(project: { root: string }, commit: string, sh
     ? t('preview_badge_release', { version: release.number + (release.minor !== undefined ? '.' + release.minor : '') })
     : draft
       ? t('preview_badge_saved', { name: draft.name })
-      : commit === head
+      : commit === head && !share
         ? t('preview_badge_draft')
         : step
           ? t('preview_badge_step', { step: step.sequence })
           : t('preview_badge_version');
-  return t('preview_badge', { name }) + (commit ? ' · ' + commit.slice(0, 8) : '');
+  // A shared link says what it shows like the studio, without the commit (documentation 4.10); being frozen, it is
+  // never the current draft.
+  return t('preview_badge', { name }) + (commit && !share ? ' · ' + commit.slice(0, 8) : '');
 }

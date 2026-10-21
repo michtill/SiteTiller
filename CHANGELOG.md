@@ -2,6 +2,16 @@
 
 Versions follow [semantic versioning](https://semver.org). Each release is tagged `v<version>`.
 
+## 1.0.1
+
+- Google Gemini as a third AI provider for all four text roles of the AI Studio team.
+- One field for API keys: the provider is recognised from the key; table of saved keys, replace with confirmation, remove.
+- Recommended models shipped with each release (`packages/models/recommended.json`); optional automatic team set-up from the current recommendation (off by default).
+- Structure templates in the Content editor (Contacts, Website elements, Images, Pages); parent links never form a cycle; renaming a key updates links; a folder used by a field cannot be removed.
+- One confirmation dialog for the whole application, colours per part.
+- AI Studio: Share next to Open, Live website as a button, permanent live preview link in the share dialog, preview info corner also in opened and shared previews.
+- Settings: buttons to the studios instead of Back; the Content editor keeps its write token across restarts.
+
 ## 1.0.0 – Muse
 
 First stable release of SiteTiller, version 1 named **Muse**: a self-hosted CMS, AI Studio and MCP server for building any website in three layers – Structure → Content → Presentation.

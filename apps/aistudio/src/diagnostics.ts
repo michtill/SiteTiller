@@ -33,7 +33,7 @@ function privateValue(value: any, secrets: string[]): any {
     return Object.fromEntries(
       Object.entries(value).map(([key, item]) => [
         key,
-        /^(authorization|x-api-key|api_?key|access_token|password)$/i.test(key)
+        /^(authorization|x-api-key|x-goog-api-key|api_?key|access_token|password)$/i.test(key)
           ? '[credential redacted]'
           : privateValue(item, secrets),
       ]),

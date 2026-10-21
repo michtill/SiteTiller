@@ -290,6 +290,18 @@ export async function prepareStructure(
   const root = store.root,
     old = await schemaSnapshot(root);
   if (old.revision !== revision) throw new Problem(409, 'Struktura se mezitím změnila. Obnovte ji.');
+  // A folder that a field still uses cannot be removed; the error names the field (documentation 3.6).
+  const proposed = input as any;
+  if (proposed && typeof proposed === 'object')
+    for (const [folder, def] of Object.entries(old.schema.folders || {}))
+      if (!Object.hasOwn(proposed.folders || {}, folder))
+        for (const list of Object.values(proposed.lists || {}) as any[])
+          for (const field of Object.values(list?.columns || {}) as any[])
+            if (['file', 'media'].includes(field?.type) && field.folder === folder)
+              throw new Problem(
+                422,
+                `Složku „${def.label}“ nelze odstranit: používá ji pole ${list.label} / ${field.label}.`,
+              );
   const schema = validateStructure(structuredClone(input));
   for (const folder of Object.keys(old.schema.folders || {}))
     if (!Object.hasOwn(schema.folders || {}, folder)) {

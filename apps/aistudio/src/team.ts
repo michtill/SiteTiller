@@ -1,4 +1,5 @@
 import type { Slot, Provider } from './core.ts';
+import { providerIds } from '../../../packages/providers/index.mjs';
 export const roleNames = {
   primary: 'Web Lead',
   ui: 'UI / Code Specialist',
@@ -44,7 +45,7 @@ export function clientFor(team: Team, keys: Record<Provider, string>, role: Role
 export function validChoice(value: any): value is Choice {
   return (
     !!value &&
-    ['openai', 'anthropic'].includes(value.provider) &&
+    providerIds.includes(value.provider) &&
     typeof value.model === 'string' &&
     /^[a-zA-Z0-9:._-]{1,160}$/.test(value.model) &&
     (!value.reasoningEffort || ['auto', 'low', 'medium', 'high'].includes(value.reasoningEffort))

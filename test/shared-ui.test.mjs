@@ -58,7 +58,7 @@ test('SH-03: real shared settings use CM authority/CAS, return destination, shar
       redirect: 'manual',
     });
     assert.equal(r.status, 200);
-    // Save only saves: the screen stays open and Back still leads where the user came from.
+    // Save only saves: the screen stays open and the studio button still leads where the user came from.
     assert.ok((await r.text()).includes('class="shell-back" href="/site/"'));
     const cmOrigin = 'http://127.0.0.1:' + stack.ports.cmstudio;
     assert.equal((await readJson(join(stack.root, 'settings/shared.json'))).contentDefault, 'live');
@@ -96,7 +96,7 @@ test('SH-03: real shared settings use CM authority/CAS, return destination, shar
     await page.goto(stack.origin + '/settings/aiapi?returnTo=%2Fsite%2F');
     assert.equal(await page.locator('html').getAttribute('lang'), 'en');
     assert.equal(await page.locator('h1').textContent(), 'AI Studio models');
-    await page.getByRole('link', { name: 'Back', exact: true }).click();
+    await page.getByRole('link', { name: 'AI Studio', exact: true }).click();
     const ai = await studioFrame(page, 'site');
     assert.equal(await ai.locator('html').getAttribute('data-shared-language'), 'en');
     await ai.locator('#studio-switcher summary').click();

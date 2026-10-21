@@ -53,7 +53,11 @@ function settle() {
 }
 function show(selection: Selection, url: string, title: string) {
   s.displayedSelection = selection;
-  s.openPreviewHref = url;
+  // Open shows the page on its own, with its corner "i" (documentation 4.3): without the studio's frame parameters.
+  const open = new URL(url, location.href);
+  open.searchParams.delete('embedded');
+  open.searchParams.delete('refresh');
+  s.openPreviewHref = open.href;
   s.projectTitle = title || t('website');
   s.projectTitleHint = title;
   s.historicalPreview = selection.historical;

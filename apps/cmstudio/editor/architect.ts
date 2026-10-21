@@ -24,7 +24,7 @@ const template = `
  <div class="architect-intro"><strong>{{t('structure_mode')}}</strong>{{t('define_collections_fields_relations_and_file_folders')}}</div>
  <div class="toast" :class="noticeKind" v-if="notice" role="status">{{notice}}<button @click="notice=''" :aria-label="t('dismiss_message')">×</button></div>
  <div class="architect-tabs"><button :class="{active:tab==='collections'}" @click="tab='collections'">{{t('collections')}} <small>{{Object.keys(draft.lists).length}}</small></button><button :class="{active:tab==='folders'}" @click="tab='folders'">{{t('file_folders')}} <small>{{Object.keys(draft.folders||{}).length}}</small></button><span class="badge" :class="{dirty}">{{dirty?t('unsaved_changes'):t('saved')}} {{t('version_2')}} {{draft.version}}</span></div>
- <div class="structure-layout" v-if="tab==='collections'"><aside class="structure-list"><button class="primary" :disabled="readonly" @click="openAdd('collection')">{{t('add_collection')}}</button><div v-for="(def,id) in draft.lists" class="collection-order-row" data-order-kind="collections" :data-order-key="id" :class="orderClasses('collections',String(id))"><button type="button" class="drag-handle structure-grip" :aria-label="(t('reorder')+' ')+def.label" :title="t('drag_to_reorder')" :disabled="busy||readonly" @pointerdown="startOrderDrag('collections',String(id),$event)" @pointermove="moveOrderDrag" @pointerup="dropOrderDrag" @pointercancel="endOrderDrag" @lostpointercapture="endOrderDrag" @keydown.up.prevent="keyboardOrder('collections',String(id),-1)" @keydown.down.prevent="keyboardOrder('collections',String(id),1)"><svg viewBox="0 0 12 18" aria-hidden="true"><circle cx="3" cy="3" r="1.6"/><circle cx="9" cy="3" r="1.6"/><circle cx="3" cy="9" r="1.6"/><circle cx="9" cy="9" r="1.6"/><circle cx="3" cy="15" r="1.6"/><circle cx="9" cy="15" r="1.6"/></svg></button><button class="structure-item" :class="{active:selected===id}" @click="selected=String(id)"><strong>{{def.label}}</strong><small>{{id}} · {{Object.keys(def.columns).length}} {{t('fields')}}</small></button></div><p v-if="!Object.keys(draft.lists).length">{{t('no_collections_yet_add_the_first_one')}}</p></aside>
+ <div class="structure-layout" v-if="tab==='collections'"><aside class="structure-list"><button class="primary" :disabled="readonly" @click="openAdd('collection')">{{t('add_collection')}}</button><button type="button" class="from-template" :disabled="readonly||busy||dirty" :title="dirty?t('save_or_discard_changes_first'):undefined" @click="templatesOpen=true">{{t('tpl_from_template')}}</button><div v-for="(def,id) in draft.lists" class="collection-order-row" data-order-kind="collections" :data-order-key="id" :class="orderClasses('collections',String(id))"><button type="button" class="drag-handle structure-grip" :aria-label="(t('reorder')+' ')+def.label" :title="t('drag_to_reorder')" :disabled="busy||readonly" @pointerdown="startOrderDrag('collections',String(id),$event)" @pointermove="moveOrderDrag" @pointerup="dropOrderDrag" @pointercancel="endOrderDrag" @lostpointercapture="endOrderDrag" @keydown.up.prevent="keyboardOrder('collections',String(id),-1)" @keydown.down.prevent="keyboardOrder('collections',String(id),1)"><svg viewBox="0 0 12 18" aria-hidden="true"><circle cx="3" cy="3" r="1.6"/><circle cx="9" cy="3" r="1.6"/><circle cx="3" cy="9" r="1.6"/><circle cx="9" cy="9" r="1.6"/><circle cx="3" cy="15" r="1.6"/><circle cx="9" cy="15" r="1.6"/></svg></button><button class="structure-item" :class="{active:selected===id}" @click="selected=String(id)"><strong>{{def.label}}</strong><small>{{id}} · {{Object.keys(def.columns).length}} {{t('fields')}}</small></button></div><p v-if="!Object.keys(draft.lists).length">{{t('no_collections_yet_add_the_first_one')}}</p></aside>
  <section class="structure-editor" v-if="definition"><div class="structure-title"><h2>{{definition.label}}</h2></div>
  <fieldset class="readonly-group" :disabled="readonly"><div class="fields"><label class="field half"><span>{{t('collection_name')}}</span><input v-model="definition.label"></label><label class="field half"><span>{{t('collection_code')}}</span><input :value="selected" readonly><small>{{t('stable_identifier_for_data_and_relations')}}</small></label></div></fieldset>
 
@@ -36,7 +36,7 @@ const template = `
  <section class="structure-editor" v-if="folderDefinition"><div class="structure-title"><h2>{{folderDefinition.label}}</h2></div><p class="structure-description">{{t('every_folder_appears_under_your_files_manage')}}</p><fieldset class="readonly-group" :disabled="readonly"><div class="fields"><label class="field half"><span>{{t('name')}}</span><input v-model="folderDefinition.label"></label><label class="field half"><span>{{t('folder_code')}}</span><input :value="selectedFolder" readonly></label><label class="field half"><span>{{t('file_type')}}</span><select v-model="folderDefinition.type"><option value="img">{{t('images')}}</option><option value="other">{{t('documents_and_other_files')}}</option></select></label><label class="field half"><span>{{t('max_file_size_mb')}}</span><input type="number" min="1" max="100" step="1" inputmode="numeric" :value="folderDefinition.maxSizeMb??''" placeholder="20" @input="setFolderLimit(folderDefinition,$event.target.value)"><small>{{t('max_file_size_help')}}</small></label></div></fieldset>
  <div class="structure-footer"><button class="danger" :disabled="readonly" @click="removeFolder(selectedFolder)">{{t('delete_folder')}}</button></div></section><section class="structure-editor empty" v-else>{{t('add_the_first_folder')}}</section></div>
  <div class="overlay" v-if="addKind" @click.self="addKind=''"><section class="confirm-card" role="dialog" aria-modal="true" :aria-label="t('add_to_structure')"><h2>{{addKind==='collection'?t('new_collection'):addKind==='field'?t('new_field'):t('new_folder')}}</h2><form @submit.prevent="add"><div class="link-fields"><label for="structure-name">{{t('name')}}</label><input id="structure-name" v-model="newName" required><label for="structure-code">{{t('code')}}</label><input id="structure-code" v-model="newCode" pattern="[a-zA-Z][a-zA-Z0-9_-]{0,63}" required><small>{{t('without_spaces_or_accented_characters_for_example')}}</small><template v-if="addKind==='field'"><label for="structure-type">{{t('field_type')}}</label><select id="structure-type" v-model="newType"><option v-for="(title,type) in offeredTypes('')" :value="type">{{title}}</option></select></template><template v-if="addKind==='folder'"><label for="folder-type">{{t('file_type')}}</label><select id="folder-type" v-model="newFolderType"><option value="img">{{t('images')}}</option><option value="other">{{t('documents_and_other_files')}}</option></select></template><p v-if="addError" class="link-error" role="alert">{{addError}}</p></div><div class="form-footer"><button type="button" @click="addKind=''">{{t('cancel')}}</button><button class="primary" type="submit">{{t('add')}}</button></div></form></section></div>
- <div class="overlay" v-if="leaveOpen"><section class="confirm-card" role="dialog" aria-modal="true" :aria-label="t('unsaved_changes')"><h2>{{t('save_changes_2')}}</h2><p>{{t('the_structure_has_unsaved_changes_save_them')}}</p><div class="form-footer"><button @click="chooseLeave('cancel')">{{t('cancel_2')}}</button><button @click="chooseLeave('discard')">{{t('discard_edits')}}</button><button class="primary" @click="chooseLeave('save')">{{t('save_step')}}</button></div></section></div>
+ <div class="overlay" v-if="templatesOpen" @click.self="templatesOpen=false"><section class="confirm-card template-dialog" role="dialog" aria-modal="true" :aria-label="t('tpl_from_template')" @keydown.esc.prevent="templatesOpen=false"><TemplatePicker dialog :token="token" :schema-revision="schemaRevision" :readonly="readonly" @created="templatesCreated" @cancel="templatesOpen=false"/></section></div><div class="overlay" v-if="leaveOpen"><section class="confirm-card" role="dialog" aria-modal="true" :aria-label="t('unsaved_changes')"><h2>{{t('save_changes_2')}}</h2><p>{{t('the_structure_has_unsaved_changes_save_them')}}</p><div class="form-footer"><button @click="chooseLeave('cancel')">{{t('cancel_2')}}</button><button @click="chooseLeave('discard')">{{t('discard_edits')}}</button><button class="primary" @click="chooseLeave('save')">{{t('save_step')}}</button></div></section></div>
 </div>`;
 export default {
   template,
@@ -73,6 +73,7 @@ export default {
       notice: '',
       noticeKind: 'success',
       addKind: '',
+      templatesOpen: false,
       newName: '',
       newCode: '',
       newType: 'text',
@@ -371,6 +372,14 @@ export default {
       state.selected = Object.keys(state.draft.lists)[0] || '';
     }
     async function removeFolder(key: string) {
+      // A folder that a field uses stays; the same rule the server keeps.
+      for (const list of Object.values(state.draft.lists) as any[])
+        for (const field of Object.values(list.columns) as any[])
+          if (['file', 'media'].includes(field.type) && field.folder === key)
+            return notify(
+              t('folder_in_use', { folder: state.draft.folders![key].label, list: list.label, field: field.label }),
+              'error',
+            );
       if (
         await ask(
           `Odstranit složku „${state.draft.folders![key].label}“ ze struktury? Složku se soubory nelze odstranit.`,
@@ -429,6 +438,12 @@ export default {
       state.leaveOpen = true;
       return new Promise<boolean>((resolve) => (leaveResolve = resolve));
     }
+    // Templates from the Structure editor: written on the server in one step, then the saved structure comes back.
+    function templatesCreated(result: any) {
+      state.templatesOpen = false;
+      emit('saved', result);
+      notify(t('tpl_created'));
+    }
     expose({ save, canLeave });
     return {
       t,
@@ -443,6 +458,7 @@ export default {
       definition,
       folderDefinition,
       dirty,
+      templatesCreated,
       displayFields,
       types,
       fieldTypeChanged,

@@ -9,8 +9,10 @@ const props = {
   notice: '',
   alerts: [],
   networkMode: 'providers',
-  keys: { openai: true, anthropic: false },
-  rejectedKeys: {},
+  keys: [{ id: 'openai', name: 'OpenAI' }],
+  keyError: '',
+  autoTeam: false,
+  recommendation: { date: '2026-10-21', source: 'bundled' },
   confirmKey: '',
   roles: ['primary', 'ui', 'verify', 'escalation'].map((id) => ({
     id,
@@ -45,7 +47,7 @@ test('AI-33: the AI models screen has the settings band, three groups, labels ab
     assert.equal(await page.locator('select[name=effort_escalation]').inputValue(), 'high');
     assert.equal(await page.locator('select[name=effort_primary] option[value="auto"]').count(), 1);
     // The saved key is never in the page; the field only says it is set.
-    assert.equal(await page.locator('input[name=key_openai]').inputValue(), '');
+    assert.equal(await page.locator('input[name=key]').inputValue(), '');
     // Label above, then the model and its reasoning effort on one row.
     const label = await page.locator('label', { has: page.locator('select[name=role_primary]') }).boundingBox(),
       model = await page.locator('select[name=role_primary]').boundingBox(),

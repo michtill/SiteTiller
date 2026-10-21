@@ -4,6 +4,7 @@ import { cp, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { Project } from './project.ts';
 import { checkPublication } from './publication-check.ts';
+import type { CheckLevel } from './checks.ts';
 const image = (path: string) => /\.(png|jpe?g|webp|svg)$/i.test(path);
 // Treat all text files as potential users, including scripts, JSON and hidden pages.
 export async function cleanImages(source: Record<string, string>, bytes: (path: string) => Promise<Buffer>) {
@@ -77,7 +78,13 @@ export async function cleanImages(source: Record<string, string>, bytes: (path: 
   }
   return { files, removed, duplicates, retainedForDynamicReferences: dynamic };
 }
-export async function cleanupPublication(project: Project, commit: string, head: string, browserCheck?: any) {
+export async function cleanupPublication(
+  project: Project,
+  commit: string,
+  head: string,
+  browserCheck?: any,
+  level: CheckLevel = 'strict',
+) {
   const files = await project.committedFiles(commit),
     cleanup = await cleanImages(files, (path) => project.binary(commit, path));
   if (!cleanup.removed.length && !cleanup.duplicates.length) return { commit, head, mapping: {}, cleanup };
@@ -101,7 +108,7 @@ export async function cleanupPublication(project: Project, commit: string, head:
       mapping[original] = tip;
     }
     await draft.git(['checkout', '-B', 'main', tip]);
-    const tests = await checkPublication(draft, cleaned, undefined, browserCheck, tip);
+    const tests = await checkPublication(draft, cleaned, undefined, browserCheck, tip, draft, level);
     if (
       (await project.head()) !== head ||
       (await project.git(['status', '--porcelain', '--untracked-files=no'])) ||

@@ -5,6 +5,7 @@
 import http from 'node:http';
 import { join } from 'node:path';
 import { readJson } from '../../packages/settings/index.mjs';
+import { serveShare } from './shares.ts';
 const source = '/sources/unpublished';
 // The public path of a draft page → the preview service's path; null for everything that is not the current draft.
 export function publicPreviewPath(pathname: string) {
@@ -12,7 +13,7 @@ export function publicPreviewPath(pathname: string) {
   // The preview writes its own references with the content source prefix; both forms lead to the same page.
   const rest =
     pathname === source || pathname.startsWith(source + '/') ? pathname.slice(source.length) || '/' : pathname;
-  if (/^\/(versions|snapshots|drafts|sources|health)(\/|$)/.test(rest)) return null;
+  if (/^\/(versions|snapshots|drafts|shares|sources|health)(\/|$)/.test(rest)) return null;
   return source + rest;
 }
 export async function publicPreviewEnabled(data: string) {
@@ -30,8 +31,18 @@ export async function servePublicPreview(
   res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  const url = new URL(req.url || '/', options.origin),
-    form = req.method === 'POST' && url.pathname.startsWith('/__sitetiller/forms/'),
+  const url = new URL(req.url || '/', options.origin);
+  // Search engines stay out of the whole public preview address, shared links included (documentation 4.10).
+  if (url.pathname === '/robots.txt' && ['GET', 'HEAD'].includes(req.method || '')) {
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end('User-agent: *\nDisallow: /\n');
+  }
+  if (url.pathname === '/s' || url.pathname.startsWith('/s/')) {
+    if ((await publicPreviewEnabled(options.data)) && (await serveShare(req, res, url, options))) return;
+    res.writeHead(404);
+    return res.end();
+  }
+  const form = req.method === 'POST' && url.pathname.startsWith('/__sitetiller/forms/'),
     path = form ? source + url.pathname : publicPreviewPath(url.pathname);
   if (
     !path ||

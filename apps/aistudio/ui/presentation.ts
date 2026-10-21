@@ -176,7 +176,9 @@ export function compactProgress(
             (request.releaseDescription ? ' – ' + request.releaseDescription : '')
           : request?.firstStep === 'saved'
             ? t('saved_draft_step', { name: request.savedDraftName || '' })
-            : '',
+            : request?.assistant
+              ? t('assistant_step', { name: request.assistant })
+              : '',
       baseCommit: request?.baseCommit || group.events.find((e: any) => e.baseCommit)?.baseCommit,
       commit: request?.commit || group.events.findLast((e: any) => e.commit)?.commit,
       done: done && !failed,

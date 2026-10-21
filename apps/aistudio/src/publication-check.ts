@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Project } from './project.ts';
-import { staticChecks, browserChecks } from './checks.ts';
+import { staticChecks, browserChecks, keyChecks, type CheckLevel } from './checks.ts';
 import { raster, binaryAsset } from './images.ts';
 // Repository holding the version a draft was restored from: a published release lives in the production history
 // (when histories are separated); a saved draft or an earlier step lives in the draft repository.
@@ -22,6 +22,7 @@ export async function checkPublication(
   browserCheck = browserChecks,
   expectedHead = commit,
   restorationProject = project,
+  level: CheckLevel = 'strict',
 ) {
   if (!/^[a-f0-9]{40}$/.test(commit) || (await project.head()) !== expectedHead)
     throw Error('Návrh se mezitím změnil. Zobraz aktuální verzi.');
@@ -31,8 +32,12 @@ export async function checkPublication(
     throw Error('Vybraný krok není součástí aktuálního návrhu.');
   }
   const files = await project.committedFiles(commit),
-    checks = staticChecks(files);
-  if (!checks.passed) throw Error('Publikování zastaveno: ' + checks.errors.join('; '));
+    checks = level === 'none' ? { passed: true, errors: [], checks: [], skipped: true } : staticChecks(files),
+    key = level === 'key' ? keyChecks(files) : null,
+    warnings: string[] = [];
+  if (key && !key.passed) throw Error('Publikování zastaveno: ' + key.errors.join('; '));
+  if (!checks.passed && level === 'strict') throw Error('Publikování zastaveno: ' + checks.errors.join('; '));
+  if (!checks.passed) warnings.push(...checks.errors);
   let restoration: any = null;
   if (restoredFrom) {
     if (!/^[a-f0-9]{40}$/.test(restoredFrom)) throw Error('Neplatná obnovená verze.');
@@ -47,10 +52,22 @@ export async function checkPublication(
       await mkdir(join(root, path, '..'), { recursive: true });
       await writeFile(join(root, path), binaryAsset(path) ? await project.binary(commit, path) : content);
     }
-    const browser = await browserCheck(root, files);
-    if (!browser.passed) throw Error('Publikování zastaveno: ' + browser.errors.join('; '));
+    const browser =
+      level === 'none' || (level === 'key' && !checks.passed)
+        ? { passed: true, errors: [] as string[], checks: [], skipped: true }
+        : await browserCheck(root, files);
+    if (!browser.passed && level === 'strict') throw Error('Publikování zastaveno: ' + browser.errors.join('; '));
+    if (!browser.passed) warnings.push(...browser.errors);
     if ((await project.head()) !== expectedHead) throw Error('Návrh se během kontroly změnil.');
-    return { commit, passed: true, static: checks, browser: { ...browser, screenshots: undefined }, restoration };
+    return {
+      commit,
+      passed: true,
+      level,
+      warnings,
+      static: checks,
+      browser: { ...browser, screenshots: undefined },
+      restoration,
+    };
   } finally {
     await rm(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   }

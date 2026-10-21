@@ -8,6 +8,7 @@ import HistoryPanel from './history-panel.ts';
 import SavedDrafts from './saved-drafts.ts';
 import PreviewPanel from './preview-panel.ts';
 import SaveDraftDialog from './save-draft-dialog.ts';
+import ShareDialog from './share-dialog.ts';
 import RestoreDialog from './restore-dialog.ts';
 import PublishDialog from './publish-dialog.ts';
 import RealityDialog from './reality-dialog.ts';
@@ -18,7 +19,7 @@ const template = `<main id="workspace" ref="workspace" :hidden="!s.session?.auth
 <section id="edits-panel" role="tabpanel" aria-labelledby="edits-tab" :hidden="s.workspaceTab!=='edits'||undefined"><p v-if="!s.ready&&s.loadingText" class="timeline-loading">{{s.loadingText}}</p><WebsiteNotice/><Timeline v-if="s.current" @reality="dialogs.reality()"/><div v-else id="timeline" class="timeline" aria-live="polite"></div><PromptForm/></section>
 <SavedDrafts :hidden="s.workspaceTab!=='drafts'||undefined"/><HistoryPanel :hidden="s.workspaceTab!=='history'||undefined"/></aside>
 <div id="splitter" role="separator" :aria-label="t('chat_width')" aria-orientation="vertical" :aria-valuenow="String(Math.round(width))" tabindex="0" @pointerdown="dragStart" @pointermove="dragMove" @pointerup="dragEnd" @lostpointercapture="dragEnd" @keydown="splitterKey"></div><PreviewPanel/></main>
-<SaveDraftDialog/><RestoreDialog/><PublishDialog/><RealityDialog/>
+<SaveDraftDialog/><ShareDialog/><RestoreDialog/><PublishDialog/><RealityDialog/>
 <div id="notice" role="status" :hidden="!s.notice||undefined">{{s.notice}}</div><div id="preview-loading-status" class="preview-loading-status" role="status" aria-live="polite" aria-atomic="true">{{s.pendingSelection?t('preview_loading'):''}}</div>`;
 const tabs = [
   { name: 'edits', id: 'edits-tab', panel: 'edits-panel', label: 'edit_steps', scroller: 'timeline' },
@@ -35,6 +36,7 @@ export default {
     SavedDrafts,
     PreviewPanel,
     SaveDraftDialog,
+    ShareDialog,
     RestoreDialog,
     PublishDialog,
     RealityDialog,

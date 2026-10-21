@@ -1,76 +1,15 @@
 import { test } from 'node:test';
-import { sessionCookie } from '../apps/shell/session-cookie.mjs';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { writeFile, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { chromium } from 'playwright';
-import {
-  atomicJson,
-  readJson,
-  revision,
-  validateShared,
-  migrateSharedSiteUrl,
-  readSharedSiteUrl,
-  updateSettings,
-} from '../packages/settings/index.mjs';
-import { settingsSiteUrl } from '../apps/aistudio/src/settings-site-url.ts';
 import { isolatedStack } from './support/stack.mjs';
-import { launchBrowser } from './support/browser.mjs';
+// The live website to load is the published website from the installation; the Settings have no address field and
+// another address applies to one comparison only (documentation 2.4, 4.5).
 test(
-  'SH-09: shared address migration preserves legacy file, existing/empty authority, CAS and omitted address',
-  { timeout: 10000 },
-  async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'shared-address-'));
-    try {
-      const path = join(dir, 'shared.json'),
-        legacy = join(dir, 'legacy.json'),
-        initial = { name: 'Fixture', theme: 'green', adminEmail: 'admin@example.test' };
-      await atomicJson(path, initial);
-      await atomicJson(legacy, { siteUrl: 'https://legacy.example/a', providers: { fixture: 'unchanged' } });
-      const legacyBytes = await readFile(legacy, 'utf8');
-      const migrated = await migrateSharedSiteUrl(path, legacy, settingsSiteUrl);
-      assert.equal(migrated.siteUrl, 'https://legacy.example/a');
-      assert.equal(await readFile(legacy, 'utf8'), legacyBytes);
-      const kept = validateShared(
-        { name: 'New', theme: 'blue' },
-        { current: migrated, validateSiteUrl: settingsSiteUrl },
-      );
-      assert.equal(kept.siteUrl, migrated.siteUrl);
-      await updateSettings(path, { ...kept, siteUrl: '' }, revision(migrated));
-      assert.equal(
-        (
-          await migrateSharedSiteUrl(path, 'missing', () => {
-            throw Error('must not migrate empty');
-          })
-        ).siteUrl,
-        '',
-      );
-      assert.equal(await readSharedSiteUrl(path, 'https://legacy.example/', 'https://fallback.example/'), '');
-      await assert.rejects(updateSettings(path, migrated, revision(migrated)), { status: 409 });
-      await atomicJson(path, { ...initial, siteUrl: 'https://shared.example/' });
-      assert.equal((await migrateSharedSiteUrl(path, legacy, settingsSiteUrl)).siteUrl, 'https://shared.example/');
-      for (const siteUrl of ['javascript:alert(1)', 'https://user:pass@example.com/', 42, 'x'.repeat(2001)])
-        assert.throws(
-          () => validateShared({ ...initial, siteUrl }, { current: migrated, validateSiteUrl: settingsSiteUrl }),
-          { status: 422 },
-        );
-      assert.equal(
-        validateShared({ ...initial, siteUrl: '' }, { current: migrated, validateSiteUrl: settingsSiteUrl }).siteUrl,
-        '',
-      );
-      assert.equal(await readSharedSiteUrl(undefined, '', 'https://fallback.example/'), '');
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  },
-);
-test(
-  'SH-09: common address form round trips, AI reads shared live, legacy AI address writes rejected and return preserved',
+  'SH-09: the Settings show the instance addresses read only; the live website is the published website and another address applies to one load only',
   { timeout: 240000 },
   async () => {
-    const stack = await isolatedStack();
-    let browser;
+    const stack = await isolatedStack({ controllerImports: ['test/fixtures/live-website-snapshot.mjs'] });
     try {
       const response = await fetch(stack.origin + '/login', {
           method: 'POST',
@@ -79,74 +18,53 @@ test(
           redirect: 'manual',
         }),
         cookie = response.headers.get('set-cookie').split(';')[0],
-        headers = { Cookie: cookie, Origin: stack.origin },
-        path = join(stack.root, 'settings/shared.json'),
-        legacyPath = join(stack.root, '.sitetiller/config.json'),
-        legacyBefore = await readFile(legacyPath, 'utf8');
-      let shared = await readJson(path);
-      assert.equal(shared.siteUrl, stack.website + '/');
-      const save = async (values, rev = revision(shared)) =>
-        fetch(stack.origin + '/settings', {
+        headers = { Cookie: cookie, Origin: stack.origin, 'Content-Type': 'application/json' };
+      // An address left in the common settings by an older version is not used.
+      const sharedPath = join(stack.root, 'settings/shared.json'),
+        shared = JSON.parse(await readFile(sharedPath, 'utf8'));
+      await writeFile(sharedPath, JSON.stringify({ ...shared, siteUrl: 'https://old-setting.example/' }));
+      const state = await (await fetch(stack.origin + '/site/api/state', { headers })).json();
+      assert.equal(state.siteUrl, stack.website + '/');
+      // The Settings have no address field.
+      const settings = await (await fetch(stack.origin + '/settings', { headers })).text();
+      assert.doesNotMatch(settings, /name="siteUrl"/);
+      // Settings → Addresses and sharing: the instance addresses read only, editor, public preview and published
+      // website (internal mode: no Git).
+      const addresses = await (await fetch(stack.origin + '/settings/addresses', { headers })).text();
+      assert.match(addresses, /Adresy aplikace/);
+      for (const address of [stack.origin, stack.website + '/'])
+        assert.ok(addresses.includes('value="' + address + '"'), address);
+      assert.doesNotMatch(addresses, /Git webu/);
+      assert.doesNotMatch(settings, /Adresy aplikace/);
+      const compare = (body) =>
+        fetch(stack.origin + '/site/api/reality/compare', {
           method: 'POST',
           headers,
-          body: new URLSearchParams({
-            name: shared.name,
-            theme: shared.theme,
-            returnTo: '/site/?from=settings',
-            revision: rev,
-            ...values,
-          }),
-          redirect: 'manual',
+          body: JSON.stringify({ commit: state.head, expectedHead: state.head, ...body }),
         });
-      let saved = await save({ siteUrl: 'https://source.example/path' });
-      assert.equal(saved.status, 200);
-      assert.ok((await saved.text()).includes('class="shell-back" href="/site/?from=settings"'));
-      shared = await readJson(path);
-      const getState = async () => await (await fetch(stack.origin + '/site/api/state', { headers })).json();
-      let state = await getState();
-      assert.equal(state.siteUrl, 'https://source.example/path');
-      saved = await save({ name: 'Updated' });
-      assert.equal(saved.status, 200);
-      shared = await readJson(path);
-      assert.equal(shared.siteUrl, 'https://source.example/path');
-      const staleRevision = revision(shared);
-      saved = await save({ siteUrl: '' });
-      assert.equal(saved.status, 200);
-      shared = await readJson(path);
-      assert.equal((await getState()).siteUrl, '');
-      assert.equal((await save({ siteUrl: 'https://stale.example/' }, staleRevision)).status, 409);
-      assert.equal((await readJson(path)).siteUrl, '');
-      saved = await save({ siteUrl: 'javascript:alert(1)' });
-      assert.equal(saved.status, 422);
-      assert.match(await saved.text(), /href="\/site\/\?from=settings"><svg[^]*?<\/svg>Zpět/);
-      assert.equal((await readJson(path)).siteUrl, '');
-      const oldWrite = await fetch(stack.origin + '/site/api/settings', {
+      for (const url of ['javascript:alert(1)', 'https://user:pass@example.com/', 42])
+        assert.equal((await compare({ url })).status, 422, String(url));
+      // Another public address for this one comparison (the hosting stand-in serves it).
+      const other = await compare({ url: 'https://web.example.test/' });
+      assert.equal(other.status, 200, await other.clone().text());
+      assert.equal((await other.json()).url, 'https://web.example.test/');
+      assert.equal(
+        (await (await fetch(stack.origin + '/site/api/state', { headers })).json()).siteUrl,
+        stack.website + '/',
+      );
+      // The AI settings do not take an address.
+      const write = await fetch(stack.origin + '/site/api/settings', {
         method: 'POST',
-        headers: { ...headers, 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
-          siteUrl: 'https://legacy-write.example/',
+          siteUrl: 'https://x.example/',
           roles: state.roles,
           imageModels: state.imageModels,
           keys: {},
         }),
       });
-      assert.equal(oldWrite.status, 400);
-      assert.match((await oldWrite.json()).error, /společném nastavení/);
-      assert.equal(await readFile(legacyPath, 'utf8'), legacyBefore);
-      browser = await launchBrowser();
-      const page = await browser.newPage();
-      await page.context().addCookies([{ name: sessionCookie(stack.origin), value: cookie.split('=')[1], url: stack.origin }]);
-      await page.goto(stack.origin + '/settings?returnTo=%2Fsite%2F');
-      await page.getByRole('textbox', { name: 'Adresa skutečného webu', exact: true }).fill('https://source.example/');
-      await page.getByRole('button', { name: 'Uložit', exact: true }).click();
-      await page.getByText('Uloženo', { exact: true }).waitFor();
-      // The address lives only in the interface settings; AI models have no such field.
-      await page.goto(stack.origin + '/settings/aiapi');
-      assert.equal(await page.locator('[name=siteUrl]').count(), 0);
-      assert.equal((await getState()).siteUrl, 'https://source.example/');
-      assert.equal(await readFile(legacyPath, 'utf8'), legacyBefore);
+      assert.equal(write.status, 400);
     } finally {
-      if (browser) await browser.close();
       await stack.close();
     }
   },

@@ -7,6 +7,7 @@ export function publishApproval(config: any) {
     ? {
         commit: config.approvedCommit,
         head: config.technicalApproval?.head || config.approvedCommit,
+        checks: config.technicalApproval?.checks || 'strict',
         intent: config.pendingRelease || null,
       }
     : null;

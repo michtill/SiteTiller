@@ -9,7 +9,7 @@ import { productionSnapshot } from './production-snapshot.ts';
 import { hostedSnapshot } from './hosted-snapshot.ts';
 import { productionReleases, storeProductionRelease } from './production-history.ts';
 import { assertHostingPolicy } from './hosting-policy-probe.ts';
-import { staticChecks } from './checks.ts';
+import { staticChecks, keyChecks } from './checks.ts';
 import http from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -84,23 +84,23 @@ async function finishRecord(record: any) {
           Object.entries(expectedFiles)
             .filter(([name]) => !privateSiteFiles.has(name.slice(5)))
             .map(async ([name, content]) => {
-            const url = new URL(
-              name === 'site/index.html' ? './' : name.slice(5),
-              process.env.SITETILLER_PRODUCTION_URL,
-            );
-            url.searchParams.set('sitetiller', commit);
-            const response = await fetch(url, { signal: AbortSignal.timeout(10000), cache: 'no-store' });
-            return (
-              response.ok &&
-              (binaryAsset(name)
-                ? Buffer.from(await response.arrayBuffer()).equals(await project.binary(commit, name))
-                : (await response.text()).trim() ===
-                  (name.endsWith('.html')
-                    ? (await (await import('./cms-render.ts')).renderCmsPage(name, expectedFiles, false)) || content
-                    : content
-                  ).trim())
-            );
-          }),
+              const url = new URL(
+                name === 'site/index.html' ? './' : name.slice(5),
+                process.env.SITETILLER_PRODUCTION_URL,
+              );
+              url.searchParams.set('sitetiller', commit);
+              const response = await fetch(url, { signal: AbortSignal.timeout(10000), cache: 'no-store' });
+              return (
+                response.ok &&
+                (binaryAsset(name)
+                  ? Buffer.from(await response.arrayBuffer()).equals(await project.binary(commit, name))
+                  : (await response.text()).trim() ===
+                    (name.endsWith('.html')
+                      ? (await (await import('./cms-render.ts')).renderCmsPage(name, expectedFiles, false)) || content
+                      : content
+                    ).trim())
+              );
+            }),
         );
         if (checks.every(Boolean)) {
           verified = true;
@@ -333,13 +333,21 @@ http
       } catch {
         return json(409, { error: 'Snapshot is not in draft history' });
       }
-      const publishingFiles = await project.committedFiles(commit);
-      if (Object.keys(renderingPages(publishingFiles)).length && process.env.SITETILLER_WEBSITE_RUNTIME !== '1')
+      const publishingFiles = await project.committedFiles(commit),
+        // The checks level of an assistant's publication (documentation 2.8): key and strict keep the hosting checks,
+        // none skips every technical check; the button is always strict.
+        level = approval.checks === 'key' || approval.checks === 'none' ? approval.checks : 'strict';
+      if (
+        level !== 'none' &&
+        Object.keys(renderingPages(publishingFiles)).length &&
+        process.env.SITETILLER_WEBSITE_RUNTIME !== '1'
+      )
         return json(409, {
           error:
             'Serverové CMS šablony vyžadují nasazený SiteTiller website runtime. Samotný statický export je nevykreslí.',
         });
       if (
+        level !== 'none' &&
         Object.keys(formDefinitions(publishingFiles)).length &&
         process.env.SITETILLER_FORMS_RUNTIME !== '1' &&
         process.env.SITETILLER_WEBSITE_RUNTIME !== '1'
@@ -348,12 +356,13 @@ http
           error:
             'Kontaktní formulář vyžaduje nasazený SiteTiller website runtime a nastavení pošty. Statické publikování by odesílání nezprovoznilo.',
         });
-      const test = staticChecks(publishingFiles);
-      if (!test.passed) return json(409, { error: 'Tests failed' });
+      const test =
+        level === 'strict' ? staticChecks(publishingFiles) : level === 'key' ? keyChecks(publishingFiles) : null;
+      if (test && !test.passed) return json(409, { error: 'Tests failed' });
       busy = true;
       const temp = await mkdtemp(join(tmpdir(), 'sitetiller-publish-'));
       try {
-        if (process.env.SITETILLER_PRODUCTION_URL || process.env.SITETILLER_HOSTING_POLICY_URL) {
+        if (level !== 'none' && (process.env.SITETILLER_PRODUCTION_URL || process.env.SITETILLER_HOSTING_POLICY_URL)) {
           stage = 'policy';
           if (!process.env.SITETILLER_PRODUCTION_URL) throw Error('Hosting policy probe requires fixed production URL');
           await assertHostingPolicy(process.env.SITETILLER_PRODUCTION_URL, process.env.SITETILLER_HOSTING_POLICY_URL);

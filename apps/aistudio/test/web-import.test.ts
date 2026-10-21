@@ -30,6 +30,7 @@ const fixture: any = async (url: string) => {
   if (!item) throw Error('Missing fixture');
   return { url, mime: item[0], bytes: Buffer.from(item[1]) };
 };
+import '../../../test/fixtures/redirect-to-internal.mjs';
 test('RE-02: public import copies linked pages, CSS, JS and exact image bytes with working local references', async () => {
   const result = await importWebsite('https://example.org/', fixture);
   assert.equal(result.evidence.pages, 2);
@@ -68,6 +69,8 @@ test('RE-03: web fetch rejects private, reserved and metadata addresses and requ
   ])
     assert.throws(() => publicUrl(url));
   await assert.rejects(() => fetchPublic('http://127.0.0.1/'), /interní/);
+  // A public website that redirects into the internal network is refused at the redirect.
+  await assert.rejects(() => fetchPublic('http://redirect.example.test/'), /interní/);
   assert.equal(requestedUrl('https://www.example.org/', 'Načti web example.org.'), 'https://www.example.org/');
   assert.throws(() => requestedUrl('https://evil.org/', 'Načti example.org.'), /uživatel/);
   assert.throws(() => requestedUrl('https://example.org/', 'Načti badexample.org.'), /uživatel/);

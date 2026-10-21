@@ -167,3 +167,19 @@ test('AI-14: discussion collapses only when a result exists and live trailing di
   );
   assert.deepEqual(discussionBundles([entry('one', true), entry('running'), entry('result', false, true)]), []);
 });
+test('MC-03: a step from an MCP assistant is titled with the name the assistant registered with', () => {
+  const [group] = compactProgress([], null, false, {}, [
+    {
+      id: 'a',
+      sequence: 1,
+      prompt: 'Přidat stránku',
+      assistant: 'ChatGPT',
+      status: 'ready',
+      commit: 'c'.repeat(40),
+      tests: { passed: false, warnings: ['Kontrola neprošla: Chybí název stránky'] },
+    },
+  ]);
+  assert.equal(group.title, 'Asistent (ChatGPT)');
+  assert.equal(group.prompt, 'Přidat stránku');
+  assert.deepEqual(group.events.find((e: any) => e.stage === 'test').warnings, ['Kontrola neprošla: Chybí název stránky']);
+});

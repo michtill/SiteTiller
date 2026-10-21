@@ -14,6 +14,7 @@ import http from 'node:http';
 import { extname } from 'node:path';
 import { Project } from './project.ts';
 import { resolveSiteFile } from './core.ts';
+import { liveSnapshot } from './share-snapshot.ts';
 const project = new Project((process.env.SITETILLER_DATA_DIR || '/data') + '/project', { objectReader: true });
 export const frozenCache = 'private, max-age=31536000, immutable';
 const mime: any = {
@@ -63,6 +64,24 @@ http
         normalized.pathname = '/preview' + url.pathname;
         saved = await namedDraftPreview(project, normalized, record);
         if (saved) saved.prefix = saved.prefix.replace(/^\/preview/, '');
+      }
+      // A shared preview (documentation 4.10): the frozen state of a link whose step or saved draft still exists.
+      if (url.pathname.startsWith('/shares/')) {
+        const match = url.pathname.match(/^\/shares\/([a-f0-9]{32})\/(.*)$/),
+          shared = match ? await liveSnapshot(project, match[1]) : null;
+        if (!shared) {
+          res.writeHead(404);
+          return res.end();
+        }
+        saved = {
+          project,
+          commit: shared.commit,
+          frozen: true,
+          cmsMode: undefined,
+          relative: decodeURIComponent(match![2]),
+          prefix: '/shares/' + match![1] + '/',
+          share: true,
+        };
       }
       const version = saved || (await previewVersion(project, url));
       if (!version) {
@@ -115,8 +134,9 @@ http
                 (!version.cmsMode && selected.root === project.root && commit === (await project.head()))),
           )) || content;
       if (/\.(html|css)$/.test(name) && prefix !== '/') content = versionReferences(content, prefix);
-      if (name.endsWith('.html')) content = previewDocument(content, commit, url.searchParams.get('embedded') === '1');
-      res.setHeader('Content-Security-Policy', saved ? studioPreviewPolicy : websitePolicy);
+      if (name.endsWith('.html'))
+        content = previewDocument(content, version.share ? '' : commit, url.searchParams.get('embedded') === '1');
+      res.setHeader('Content-Security-Policy', saved && !saved.share ? studioPreviewPolicy : websitePolicy);
       // A frozen version is addressed by its commit, so its responses never change.
       res.writeHead(200, {
         'Content-Type': raster(name)

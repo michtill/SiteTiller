@@ -171,6 +171,56 @@ test('AI-33: AI models save new keys and team choices together with one Save', {
     assert.ok(state.providers.every((p) => p.hasKey));
     assert.equal(state.roles.ui.reasoningEffort, 'high');
     assert.doesNotMatch(await readFile(join(stack.root, '.sitetiller/config.json'), 'utf8'), /fixture-openai-key|fixture-anthropic-key/);
+    // The page comes at once with the saved choices and a loading note; the providers' lists follow and fill the
+    // selects while the chosen values stay selected.
+    const html = await (await page.request.get(stack.origin + '/settings/aiapi')).text();
+    assert.match(html, /Načítám seznam modelů/);
+    const catalog = await (await page.request.get(stack.origin + '/settings/aiapi/catalog')).json();
+    assert.ok(catalog.roles.every((role) => role.options.length > 1));
+    await page.goto(stack.origin + '/settings/aiapi');
+    await page.getByText('Seznam modelů je načtený.', { exact: true }).waitFor();
+    assert.ok((await page.locator('select[name=role_primary] option').count()) > 1);
+    assert.equal(await page.locator('select[name=effort_ui]').inputValue(), 'high');
+    assert.equal(
+      await page.locator('select[name=role_primary]').inputValue(),
+      state.roles.primary.provider + '|' + state.roles.primary.model,
+    );
+  } finally {
+    await browser?.close();
+    await stack.close();
+  }
+});
+
+test('UX-01: the AI Studio models page keeps every field in place while the model lists arrive', { timeout: 240000 }, async () => {
+  const stack = await isolatedStack({
+    networkMode: 'providers',
+    controllerImports: ['test/fixtures/provider-catalog-mock.mjs'],
+  });
+  let browser;
+  try {
+    browser = await launchBrowser();
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    page.setDefaultTimeout(30000);
+    await signIn(page, stack);
+    // The lists arrive only when the test lets them, so the place of the fields can be measured before and after.
+    let release;
+    const held = new Promise((resolve) => (release = resolve));
+    await page.route('**/settings/aiapi/catalog', async (route) => {
+      await held;
+      await route.continue();
+    });
+    await page.goto(stack.origin + '/settings/aiapi');
+    const places = () =>
+      page.evaluate(() =>
+        ['select[name=role_primary]', 'select[name=image_fast]', 'button:not([value])'].map(
+          (selector) => document.querySelector(selector).getBoundingClientRect().top,
+        ),
+      );
+    const before = await places();
+    assert.match(await page.locator('#model-catalog').textContent(), /Načítám seznam modelů/);
+    release();
+    await page.locator('#model-catalog').filter({ hasNotText: 'Načítám' }).waitFor();
+    assert.deepEqual(await places(), before);
   } finally {
     await browser?.close();
     await stack.close();

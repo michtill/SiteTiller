@@ -85,7 +85,7 @@ export default {
     });
     // Actions offered for the shown version, in their order; the others stay hidden.
     const actions = computed(() => {
-      const ids = ['delete-preview', 'save-draft', 'restore-preview', 'publish'],
+      const ids = ['delete-preview', 'save-draft', 'restore-preview', 'share-preview', 'publish'],
         shown: any[] = [];
       const current = s.current,
         selection = s.displayedSelection;
@@ -124,6 +124,16 @@ export default {
           );
         }
       }
+      // Sharing is offered while the public preview is on (documentation 4.10).
+      if (selection && current?.publicPreviewUrl) {
+        const publish = shown.findIndex((a) => a.id === 'publish');
+        shown.splice(publish < 0 ? shown.length : publish, 0, {
+          id: 'share-preview',
+          label: t('share'),
+          disabled: !!(s.previewPending || current.busy || s.submitting || s.restoring),
+          hidden: false,
+        });
+      }
       for (const id of ids)
         if (!shown.some((a) => a.id === id)) shown.push({ id, label: '', disabled: true, hidden: true });
       return shown;
@@ -154,6 +164,7 @@ export default {
       if (s.previewPending || !s.displayedSelection || !action || action.disabled) return;
       if (id === 'publish') dialogs.publish();
       else if (id === 'save-draft') dialogs.saveDraft();
+      else if (id === 'share-preview') dialogs.share();
       else if (id === 'restore-preview')
         dialogs.restore({ commit: viewedCommit(), message: t('currently_displayed_draft_version') });
       else void remove();

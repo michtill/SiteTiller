@@ -61,7 +61,10 @@ test('SH-10: the Shell serves the public preview on its own address (and its own
       JSON.stringify({ password: passwordHash('fixture-password-12') }),
     );
     const settings = (value) =>
-      writeFile(join(root, 'settings/shared.json'), JSON.stringify({ name: 'Modrý Kocour', theme: 'green', adminEmail: 'admin@example.test', ...value }));
+      writeFile(
+        join(root, 'settings/shared.json'),
+        JSON.stringify({ name: 'Modrý Kocour', theme: 'green', adminEmail: 'admin@example.test', ...value }),
+      );
     await settings({});
     const origin = 'http://127.0.0.1:' + shellPort,
       publicHost = 'localhost:' + shellPort;
@@ -128,13 +131,10 @@ test('SH-10: the Shell serves the public preview on its own address (and its own
     assert.equal(own.body, '<h1>Draft</h1>');
     assert.equal((await request('/site/', { port: previewOnlyPort, headers: { host: 'new.example.cz' } })).status, 200);
     assert.equal(seen.at(-1).url, '/sources/unpublished/site/');
-    assert.equal(
-      (await request('/versions/' + 'a'.repeat(40) + '/', { port: previewOnlyPort })).status,
-      404,
-    );
+    assert.equal((await request('/versions/' + 'a'.repeat(40) + '/', { port: previewOnlyPort })).status, 404);
     // The studios' own address is unchanged: it still asks for the password.
     assert.equal((await fetch(origin + '/site/', { redirect: 'manual' })).status, 303);
-    // The switch in the common settings, with the preview address beside it.
+    // The switch on Settings → Addresses and sharing, at the preview address.
     const login = await fetch(origin + '/login', {
         method: 'POST',
         headers: { Origin: origin, 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -142,18 +142,14 @@ test('SH-10: the Shell serves the public preview on its own address (and its own
         redirect: 'manual',
       }),
       cookie = login.headers.get('set-cookie').split(';')[0],
-      form = await (await fetch(origin + '/settings', { headers: { cookie } })).text();
+      form = await (await fetch(origin + '/settings/addresses', { headers: { cookie } })).text();
     assert.match(form, /name="publicPreview" checked/);
-    assert.ok(form.includes('http://' + publicHost + '/'));
-    const saved = await fetch(origin + '/settings', {
+    assert.ok(form.includes('http://' + publicHost + '"'));
+    const saved = await fetch(origin + '/settings/addresses', {
       method: 'POST',
       headers: { cookie, Origin: origin, 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        name: 'Modrý Kocour',
-        theme: 'green',
-        language: 'cs',
-        contentDefault: 'draft',
-        publicPreviewOffered: '1',
+        action: 'preview',
         revision: form.match(/name="revision" value="([^"]+)"/)[1],
         returnTo: '/',
       }).toString(),

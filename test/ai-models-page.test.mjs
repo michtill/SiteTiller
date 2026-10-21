@@ -17,7 +17,12 @@ const props = {
     effort: id === 'escalation' ? 'high' : 'auto',
     options: [option('openai|model-a', 'OpenAI · Model A'), option('anthropic|model-b', 'Anthropic · Model B')],
   })),
-  images: ['precise', 'fast'].map((id) => ({ id, label: 'Image ' + id, value: 'none', options: [option('image-x', 'Image X')] })),
+  images: ['precise', 'fast'].map((id) => ({
+    id,
+    label: 'Image ' + id,
+    value: 'none',
+    options: [option('image-x', 'Image X')],
+  })),
   returnTo: '/site/',
   mailWarning: false,
 };
@@ -27,8 +32,12 @@ test('AI-33: the AI models screen has the settings band, three groups, labels ab
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await page.setContent(html);
-    assert.deepEqual(await page.locator('legend').allTextContents(), ['API klíče', 'Modely pro tým', 'Obrazové nástroje']);
-    assert.equal(await page.locator('.settings-nav a[aria-current="page"]').textContent(), 'AI modely');
+    assert.deepEqual(await page.locator('legend').allTextContents(), [
+      'API klíče',
+      'Modely pro tým',
+      'Obrazové nástroje',
+    ]);
+    assert.equal(await page.locator('.settings-nav a[aria-current="page"]').textContent(), 'Modely AI studia');
     assert.equal(await page.locator('select[name^="role_"]').count(), 4);
     assert.equal(await page.locator('select[name^="image_"]').count(), 2);
     assert.equal(await page.locator('select[name=effort_escalation]').inputValue(), 'high');

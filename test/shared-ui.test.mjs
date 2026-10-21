@@ -86,14 +86,16 @@ test('SH-03: real shared settings use CM authority/CAS, return destination, shar
     assert.equal(r.status, 200);
     browser = await launchBrowser();
     const page = await browser.newPage();
-    await page.context().addCookies([{ name: sessionCookie(stack.origin), value: cookie.split('=')[1], url: stack.origin }]);
+    await page
+      .context()
+      .addCookies([{ name: sessionCookie(stack.origin), value: cookie.split('=')[1], url: stack.origin }]);
     await page.route('**/site/api/models', (route) =>
       route.fulfill({ json: { models: [], issues: [], optionalIssues: [] } }),
     );
     // AI models are a settings screen of the Shell, in the shared language.
     await page.goto(stack.origin + '/settings/aiapi?returnTo=%2Fsite%2F');
     assert.equal(await page.locator('html').getAttribute('lang'), 'en');
-    assert.equal(await page.locator('h1').textContent(), 'AI models');
+    assert.equal(await page.locator('h1').textContent(), 'AI Studio models');
     await page.getByRole('link', { name: 'Back', exact: true }).click();
     const ai = await studioFrame(page, 'site');
     assert.equal(await ai.locator('html').getAttribute('data-shared-language'), 'en');

@@ -12,7 +12,7 @@ import {
   confirmedPublicationEvidence,
   restoreConfirmedPublicationEvidence,
 } from './publication-evidence.ts';
-import { readSharedSiteUrl, atomicJson } from '../../../packages/settings/index.mjs';
+import { atomicJson } from '../../../packages/settings/index.mjs';
 import { writeApprovals } from './approvals.ts';
 import { settingsSiteUrl } from './settings-site-url.ts';
 async function editorName() {
@@ -49,6 +49,8 @@ import { productionProject, syncProduction } from './production-history.ts';
 import { rebaseWorkspace } from './workspace-history.ts';
 import { restoreProduction } from './restore-production.ts';
 import { compareReality, loadReality } from './reality.ts';
+import { assistantStep } from './assistant-step.ts';
+import { shareSnapshot, removeShareSnapshot, aliveShares } from './share-snapshot.ts';
 import { importWebsite, publicUrl } from './web-import.ts';
 import { realitySnapshot } from './reality-source.ts';
 import { studioPreviewPolicy } from './site-policy.ts';
@@ -71,7 +73,7 @@ import { Project } from './project.ts';
 import { workflow } from './workflow.ts';
 import { closeStepsBefore, publicationClosing, unpublishedRequests } from './publication-history.ts';
 import { runWithStop, StoppedError } from './run-control.ts';
-import { browserChecks } from './checks.ts';
+import { browserChecks, checkLevel } from './checks.ts';
 import { websiteGit, websiteState, websiteForeign } from './static-website.ts';
 import {
   initialTeam,
@@ -336,12 +338,9 @@ async function outsideLinks() {
 }
 const realitySnapshots = new Map<string, any>();
 
+// The published website's address from the installation (documentation 4.5).
 async function siteUrl() {
-  return readSharedSiteUrl(
-    process.env.SITETILLER_SHARED_SETTINGS_FILE,
-    config.siteUrl,
-    process.env.SITETILLER_SITE_URL || '',
-  );
+  return process.env.SITETILLER_SITE_URL || '';
 }
 let historyCache: any = null;
 // Reading state never rebases or closes pending publication history.
@@ -661,34 +660,11 @@ const server = http.createServer(async (req, res) => {
       if (path === '/api/settings' && req.method === 'POST') {
         if (busy) throw new Problem(409, 'Počkej na dokončení úlohy.');
         const input = await body(req);
-        if (process.env.SITETILLER_SHARED_SETTINGS_FILE && input.siteUrl !== undefined)
-          throw Error('Adresu skutečného webu upravte ve společném nastavení.');
+        if (input.siteUrl !== undefined) throw Error('Adresa webu je adresa publikovaného webu z instalace.');
         if (input.imageModels && typeof input.imageModels === 'object')
           input.imageModels = { precise: input.imageModels.precise, fast: input.imageModels.fast };
         if (!validTeam(input.roles) || !validImages(input.imageModels))
           throw new Problem(422, 'Vyber model pro každou capability.');
-        const addressOnly =
-          input.siteUrl !== undefined &&
-          Object.entries(config.roles).every(([role, v]: [string, any]) =>
-            ['provider', 'model', 'reasoningEffort'].every((k) => v[k] === input.roles[role]?.[k]),
-          ) &&
-          Object.entries(config.imageModels).every(([k, v]) => v === input.imageModels[k]) &&
-          !Object.values(input.keys || {}).some((v) => typeof v === 'string' && v.trim());
-        if (addressOnly) {
-          if (busy) throw new Problem(409, 'Počkej na dokončení úlohy.');
-          if (typeof input.siteUrl !== 'string' || input.siteUrl.length > 2000)
-            throw new Problem(422, 'Neplatná adresa webu.');
-          const address = settingsSiteUrl(input.siteUrl);
-          claim();
-          try {
-            config.siteUrl = address;
-            realitySnapshots.clear();
-            await save('config.json', config);
-            return response(res, 200, { ok: true });
-          } finally {
-            busy = false;
-          }
-        }
         const keys = providerKeys(),
           providers = structuredClone(config.providers);
         for (const provider of ['openai', 'anthropic'] as const) {
@@ -708,12 +684,6 @@ const server = http.createServer(async (req, res) => {
             resolved = resolvePrimary(input.roles, list.models),
             issues = unavailable(resolved, list, ['primary']);
           if (issues.length) return response(res, 400, { error: issues.join('\n') });
-          if (input.siteUrl !== undefined) {
-            if (typeof input.siteUrl !== 'string' || input.siteUrl.length > 2000)
-              throw new Problem(422, 'Neplatná adresa webu.');
-            config.siteUrl = settingsSiteUrl(input.siteUrl);
-            realitySnapshots.clear();
-          }
           config.providers = providers;
           config.roles = input.roles;
           config.imageModels = input.imageModels;
@@ -923,8 +893,17 @@ const server = http.createServer(async (req, res) => {
         if (busy) throw new Problem(409, 'Počkej na dokončení úlohy.');
         const input = await body(req);
         if (busy) throw new Problem(409, 'Počkej na dokončení úlohy.');
-        const url = await siteUrl();
-        if (!url) throw Error('Nejdřív nastav adresu skutečného webu.');
+        // The published website, or another address for this one comparison (taking over a website from elsewhere).
+        let url = await siteUrl();
+        if (input.url !== undefined) {
+          if (typeof input.url !== 'string' || input.url.length > 2000) throw new Problem(422, 'Neplatná adresa webu.');
+          try {
+            url = settingsSiteUrl(input.url);
+          } catch {
+            throw new Problem(422, 'Zadejte veřejnou HTTP/HTTPS adresu bez přihlašovacích údajů.');
+          }
+        }
+        if (!url) throw new Problem(422, 'Instance nemá adresu publikovaného webu. Zadejte adresu webu k načtení.');
         claim();
         try {
           const head = await project.head();
@@ -941,7 +920,10 @@ const server = http.createServer(async (req, res) => {
                 process.env.SITETILLER_PUBLISH_TOKEN,
               );
               if (stop.signal.aborted) throw new StoppedError();
-              return { snapshot, result: await compareReality(project, config, input.commit, snapshot, productionProject()) };
+              return {
+                snapshot,
+                result: await compareReality(project, config, input.commit, snapshot, productionProject()),
+              };
             }).catch((e) => {
               console.error('Live website comparison failed: ' + (e.message || e.name));
               if (stop.signal.aborted) throw new Problem(409, 'Načítání bylo zrušeno.');
@@ -971,6 +953,64 @@ const server = http.createServer(async (req, res) => {
         realityStop.abort();
         return response(res, 200, { ok: true });
       }
+      // An AI assistant's step over MCP (documentation 2.8); the Shell checks access and permissions.
+      if (path === '/api/assistant-step' && req.method === 'POST') {
+        if (busy || config.pendingRelease) throw new Problem(409, 'Počkej na dokončení úlohy.');
+        const input = await body(req, 25000000);
+        claim();
+        try {
+          const request = await assistantStep(project, config, input);
+          await save('config.json', config);
+          historyCache = null;
+          return response(res, 200, {
+            ok: true,
+            step: request.sequence,
+            commit: request.commit,
+            checks: request.tests.passed ? 'passed' : 'warnings',
+            warnings: request.tests.warnings,
+          });
+        } finally {
+          busy = false;
+        }
+      }
+      // Shared previews (documentation 4.10): freeze and pin the shared state; the Shell keeps the list of links.
+      if (path === '/api/share-snapshot' && req.method === 'POST') {
+        if (busy || config.pendingRelease) throw new Problem(409, 'Počkej na dokončení úlohy nebo publikování.');
+        const input = await body(req);
+        claim();
+        try {
+          return response(res, 200, await shareSnapshot(project, config, input));
+        } finally {
+          busy = false;
+        }
+      }
+      if (path === '/api/share-snapshot/alive' && req.method === 'POST')
+        return response(res, 200, { alive: await aliveShares(project, config, (await body(req)).ids) });
+      if (path === '/api/share-snapshot/remove' && req.method === 'POST') {
+        await removeShareSnapshot(project, (await body(req)).id);
+        return response(res, 200, { ok: true });
+      }
+      // Website files of the latest step, for the assistant to read (documentation 2.8).
+      if (path === '/api/site-files' && req.method === 'GET') {
+        const head = await project.head(),
+          files = await project.committedFiles(head),
+          name = url.searchParams.get('path');
+        if (!name)
+          return response(res, 200, {
+            commit: head,
+            files: Object.keys(files)
+              .filter((p) => !p.startsWith('site/cms/'))
+              .sort(),
+          });
+        if (!Object.hasOwn(files, name)) throw new Problem(404, 'Soubor v posledním kroku neexistuje: ' + name);
+        return response(
+          res,
+          200,
+          binaryAsset(name)
+            ? { commit: head, path: name, base64: (await project.binary(head, name)).toString('base64') }
+            : { commit: head, path: name, text: files[name] },
+        );
+      }
       if (path === '/api/reality/load' && req.method === 'POST') {
         if (busy) throw new Problem(409, 'Počkej na dokončení úlohy.');
         const input = await body(req);
@@ -979,7 +1019,6 @@ const server = http.createServer(async (req, res) => {
         if (
           !cached ||
           Date.now() - cached.created > 10 * 60 * 1000 ||
-          cached.url !== (await siteUrl()) ||
           cached.publication !== (config.publishedCommit || null)
         )
           throw new Problem(409, 'Porovnání již není aktuální. Porovnej web znovu.');
@@ -1021,8 +1060,7 @@ const server = http.createServer(async (req, res) => {
             ).catch((e) => {
               console.error('Live website load failed: ' + (e.message || e.name));
               if (stop.signal.aborted) throw new Problem(409, 'Načítání bylo zrušeno. Návrh zůstal beze změny.');
-              if (budget.aborted)
-                throw Error('Kontrola načteného webu nedoběhla do 60 s. Návrh zůstal beze změny.');
+              if (budget.aborted) throw Error('Kontrola načteného webu nedoběhla do 60 s. Návrh zůstal beze změny.');
               throw e;
             });
           realityStop = null;
@@ -1444,6 +1482,8 @@ const server = http.createServer(async (req, res) => {
             config.technicalApproval = null;
             await save('config.json', config);
             const restored = config.requests.findLast((r: any) => r.commit === input.commit && r.restoredFrom);
+            // An assistant's publication follows its MCP limits (documentation 2.8); the button is always strict.
+            const level = checkLevel(input.checks);
             let tests = await checkPublication(
               project,
               input.commit,
@@ -1451,9 +1491,10 @@ const server = http.createServer(async (req, res) => {
               undefined,
               target.head,
               restorationSource(config, restored?.restoredFrom, productionProject(), project),
+              level,
             );
             await emit({ stage: 'publish', status: 'running', message: 'Uklízím nepoužívané a totožné obrázky.' });
-            const cleaned = await cleanupPublication(project, input.commit, target.head);
+            const cleaned = await cleanupPublication(project, input.commit, target.head, undefined, level);
             if (cleaned.commit !== input.commit) {
               mapCleanupHistory(config, events, cleaned.mapping);
               input.commit = cleaned.commit;
@@ -1482,6 +1523,7 @@ const server = http.createServer(async (req, res) => {
               commit: input.commit,
               head: target.head,
               checkedAt: new Date().toISOString(),
+              checks: level,
               tests,
             };
             await save('config.json', config);

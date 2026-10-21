@@ -1,7 +1,6 @@
 import { withSharedSettingsSave, sharedLanguage } from '../../packages/settings/shared-ui.mjs';
 import { renderPage, settingsError } from './pages.ts';
 import { translate } from '../../packages/i18n/index.mjs';
-import { settingsSiteUrl } from '../aistudio/src/settings-site-url.ts';
 import {
   atomicJson,
   passwordHash,
@@ -10,12 +9,23 @@ import {
   revision,
   updateSettings,
   validateShared,
-  migrateSharedSiteUrl,
 } from '../../packages/settings/index.mjs';
 import { settingsReturnTo } from './settings-return.mjs';
 import { servePublicPreview } from './public-preview.ts';
 import { sessionCookie } from './session-cookie.mjs';
 import { mailSettings, saveMailSettings, sendMail, validEmail } from '../../packages/settings/mail.mjs';
+import {
+  handleMcp,
+  mcpMachinePaths,
+  mcpSettings,
+  saveMcpSettings,
+  createAccessToken,
+  disconnect,
+  endConnections,
+  mcpLog,
+} from './mcp.ts';
+import { appVersion } from '../aistudio/src/app-version.ts';
+import { createShare, sharesFor, allShares, revokeShare, shareUrl } from './shares.ts';
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -31,14 +41,15 @@ const publicPreviewOrigin = process.env.SITETILLER_PUBLIC_PREVIEW_ORIGIN
   : '';
 if (publicPreviewOrigin && new URL(publicPreviewOrigin).host === new URL(origin).host)
   throw Error('The public preview needs its own address');
+// Shared previews (documentation 4.10) live on the public preview address.
+const shareContext = {
+  data,
+  secret,
+  aiPort: Number(process.env.AISTUDIO_PORT),
+  publicOrigin: publicPreviewOrigin,
+};
 const sessions = new Map<string, number>(),
   attempts = new Map<string, { count: number; at: number }>();
-await migrateSharedSiteUrl(
-  join(data, 'settings/shared.json'),
-  join(data, '.sitetiller/config.json'),
-  settingsSiteUrl,
-  process.env.SITETILLER_SITE_URL || '',
-);
 // Sessions and preview access survive a Shell restart: settings/sessions.json keeps only SHA-256 hashes of the
 // tokens, so the file cannot be used to log in. Maps are keyed by those hashes; a password change clears both.
 const previewAccess = new Map<string, { session: string; expires: number }>(),
@@ -100,10 +111,22 @@ async function resetAvailable() {
 async function resetState() {
   try {
     const value = await readJson(resetFile);
-    return { token: value.token || '', expires: Number(value.expires) || 0, sent: (value.sent || []).filter((at: number) => at > Date.now() - 3600000) };
+    return {
+      token: value.token || '',
+      expires: Number(value.expires) || 0,
+      sent: (value.sent || []).filter((at: number) => at > Date.now() - 3600000),
+    };
   } catch {
     return { token: '', expires: 0, sent: [] as number[] };
   }
+}
+async function readBody(req: http.IncomingMessage) {
+  let text = '';
+  for await (const part of req) {
+    text += part;
+    if (Buffer.byteLength(text) > 4000) throw Object.assign(Error('Too large'), { status: 413 });
+  }
+  return text;
 }
 async function readForm(req: http.IncomingMessage) {
   let text = '';
@@ -115,6 +138,7 @@ async function readForm(req: http.IncomingMessage) {
 }
 // Signs out everywhere: a new password ends every session and preview access.
 async function endSessions() {
+  await endConnections(data);
   sessions.clear();
   previewAccess.clear();
   issuedPreviewKeys.clear();
@@ -146,7 +170,7 @@ http
         ) => {
           res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });
           // Settings screens mark E-mails in the side band until sending e-mail is set up (documentation 2.8).
-          const settingsScreen = ['settings', 'mail', 'aiapi', 'password'].includes(name);
+          const settingsScreen = ['settings', 'mail', 'aiapi', 'mcp', 'addresses', 'password'].includes(name);
           res.end(
             await renderPage(name, settingsScreen ? { ...props, mailWarning: !(await resetAvailable()) } : props, {
               ...look,
@@ -161,7 +185,8 @@ http
       if (
         !['GET', 'HEAD'].includes(req.method || '') &&
         req.headers.origin !== origin &&
-        !(previewForm && req.headers.origin === 'null')
+        !(previewForm && req.headers.origin === 'null') &&
+        !mcpMachinePaths.includes(url.pathname)
       ) {
         res.writeHead(403);
         return res.end();
@@ -178,6 +203,43 @@ http
         res.writeHead(303, { Location: to });
         res.end();
       };
+      // MCP server and its OAuth (documentation 2.8): 404 while switched off.
+      if (
+        await handleMcp(req, res, url, {
+          origin,
+          data,
+          secret,
+          aiPort: Number(process.env.AISTUDIO_PORT),
+          cmsPort: Number(process.env.CMSTUDIO_PORT),
+          version: appVersion,
+          site: async () => look.site,
+          share: (input) => createShare(shareContext, input),
+          checkPassword: async (password, ip) => {
+            const a = attempts.get(ip) || { count: 0, at: Date.now() };
+            if (Date.now() - a.at > 600000) {
+              a.count = 0;
+              a.at = Date.now();
+            }
+            attempts.set(ip, a);
+            if (a.count >= 8) return 'locked';
+            if (passwordMatches(password, (await readJson(join(data, 'settings/auth.json'))).password)) {
+              attempts.delete(ip);
+              return 'ok';
+            }
+            a.count++;
+            return 'wrong';
+          },
+          renderAuthorize: async (props, status) => {
+            res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
+            await page(status, 'mcpAuthorize', {
+              ...props,
+              error:
+                props.error === 'locked' ? t('too_many_attempts_short') : props.error ? t('incorrect_password') : '',
+            });
+          },
+        })
+      )
+        return;
       if (url.pathname === '/login' && req.method === 'POST') {
         let text = '';
         for await (const part of req) {
@@ -282,13 +344,15 @@ http
             }
           }
           if (ok) {
+            await endConnections(data);
             sessions.clear();
             previewAccess.clear();
             issuedPreviewKeys.clear();
             await persistSessions();
             res.setHeader(
               'Set-Cookie',
-              cookieName + '=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0' +
+              cookieName +
+                '=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0' +
                 (origin.startsWith('https:') ? '; Secure' : ''),
             );
             return page(200, 'passwordChanged');
@@ -326,7 +390,11 @@ http
           console.error('Password reset e-mail not sent: ' + (e.code || e.name));
           return page(502, 'forgot', { available, error: t('reset_link_failed'), notice: '' });
         }
-        await atomicJson(resetFile, { token: hashed(secretToken), expires: Date.now() + 1800000, sent: [...state.sent, Date.now()] });
+        await atomicJson(resetFile, {
+          token: hashed(secretToken),
+          expires: Date.now() + 1800000,
+          sent: [...state.sent, Date.now()],
+        });
         return page(200, 'forgot', { available, error: '', notice: t('reset_link_sent') });
       }
       const resetMatch = url.pathname.match(/^\/reset\/([a-f0-9]{64})$/);
@@ -341,7 +409,11 @@ http
         if (next.length < 8 || next.length > 256 || next !== (params.get('confirmPassword') || ''))
           return page(422, 'reset', { valid, action, error: t('new_password_requirements') });
         const config = await readJson(join(settingsDirectory, 'auth.json'));
-        await updateSettings(join(settingsDirectory, 'auth.json'), { ...config, password: passwordHash(next) }, revision(config));
+        await updateSettings(
+          join(settingsDirectory, 'auth.json'),
+          { ...config, password: passwordHash(next) },
+          revision(config),
+        );
         await atomicJson(resetFile, { token: '', expires: 0, sent: state.sent });
         await endSessions();
         // The new password signs the user in at once.
@@ -350,7 +422,11 @@ http
         await persistSessions();
         res.setHeader(
           'Set-Cookie',
-          cookieName + '=' + session + '; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800' + (origin.startsWith('https:') ? '; Secure' : ''),
+          cookieName +
+            '=' +
+            session +
+            '; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800' +
+            (origin.startsWith('https:') ? '; Secure' : ''),
         );
         return redirect('/content/');
       }
@@ -383,13 +459,8 @@ http
           }
           const input = new URLSearchParams(body);
           entered = Object.fromEntries(
-            [...input].filter(([key]) =>
-              ['name', 'theme', 'language', 'siteUrl', 'contentDefault'].includes(key),
-            ),
+            [...input].filter(([key]) => ['name', 'theme', 'language', 'contentDefault'].includes(key)),
           );
-          // An unchecked box sends nothing; the form marks that it offered the switch.
-          if (publicPreviewOrigin && input.has('publicPreviewOffered'))
-            entered.publicPreview = input.has('publicPreview');
           returnTo = settingsReturnTo(input.get('returnTo'));
           try {
             await withSharedSettingsSave(path, async () => {
@@ -399,11 +470,9 @@ http
                   name: input.get('name'),
                   theme: input.get('theme'),
                   ...(input.has('language') ? { language: input.get('language') } : {}),
-                  ...(input.has('siteUrl') ? { siteUrl: input.get('siteUrl') } : {}),
                   ...(input.has('contentDefault') ? { contentDefault: input.get('contentDefault') } : {}),
-                  ...(Object.hasOwn(entered, 'publicPreview') ? { publicPreview: entered.publicPreview } : {}),
                 },
-                { current, validateSiteUrl: settingsSiteUrl },
+                { current },
               );
               if (input.get('revision') !== revision(current))
                 throw Object.assign(Error('Nastavení se mezitím změnilo.'), { status: 409 });
@@ -426,7 +495,6 @@ http
             ...entered,
             language: entered?.language ?? current.language ?? shown,
             contentDefault: entered?.contentDefault ?? current.contentDefault ?? 'draft',
-            publicPreview: entered?.publicPreview ?? current.publicPreview === true,
           };
         return page(
           res.statusCode || 200,
@@ -437,8 +505,6 @@ http
             notice: notice ? translate('saved', shown) : '',
             returnTo,
             revision: revision(current),
-            publicPreviewUrl: publicPreviewOrigin ? publicPreviewOrigin + '/' : '',
-            mailConfigured: await resetAvailable(),
           },
           { language: shown },
         );
@@ -459,7 +525,10 @@ http
             const sharedPath = join(settingsDirectory, 'shared.json');
             await withSharedSettingsSave(sharedPath, async () => {
               const current = await readJson(sharedPath),
-                candidate = validateShared({ name: current.name, theme: current.theme, adminEmail: shownAdmin }, { current });
+                candidate = validateShared(
+                  { name: current.name, theme: current.theme, adminEmail: shownAdmin },
+                  { current },
+                );
               await updateSettings(sharedPath, candidate, revision(current));
             });
             mail = await saveMailSettings(settingsDirectory, Object.fromEntries(input));
@@ -475,7 +544,9 @@ http
                 });
                 notice = translate('test_email_sent', language, { email: to });
               } catch (e: any) {
-                throw Object.assign(Error(translate('test_email_failed', language, { detail: e.message })), { test: true });
+                throw Object.assign(Error(translate('test_email_failed', language, { detail: e.message })), {
+                  test: true,
+                });
               }
             }
           } catch (e: any) {
@@ -493,8 +564,181 @@ http
         });
       }
 
+      // The Share dialog of the AI Studio (documentation 4.10): the links to one state, a new link, revoking one.
+      if (url.pathname === '/__shell/shares' || url.pathname === '/__shell/shares/revoke') {
+        const reply = (status: number, value: unknown) => {
+          res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify(value));
+        };
+        try {
+          if (req.method === 'GET' && url.pathname === '/__shell/shares') {
+            const source = Object.fromEntries(url.searchParams) as any,
+              shares = await sharesFor(shareContext, source);
+            return reply(200, {
+              shares: shares.map((share) => ({
+                id: share.id,
+                url: shareUrl(shareContext, share),
+                createdBy: share.createdBy,
+                createdAt: share.createdAt,
+                expires: share.expires,
+              })),
+            });
+          }
+          if (req.method !== 'POST') return reply(405, { error: 'Nepovolená metoda.' });
+          const input = JSON.parse(await readBody(req));
+          if (url.pathname === '/__shell/shares/revoke')
+            return reply(200, { revoked: await revokeShare(shareContext, String(input.id || '')) });
+          return reply(200, await createShare(shareContext, { ...input, createdBy: t('share_by_user') }));
+        } catch (e: any) {
+          return reply(e.status || 400, { error: e.message });
+        }
+      }
+      // Addresses and sharing (documentation 2.4): the instance addresses read only, the public preview switch and
+      // every shared link (copy again, revoke one, revoke all after asking).
+      if (url.pathname === '/settings/addresses') {
+        const sharedPath = join(settingsDirectory, 'shared.json');
+        let confirmAll = false,
+          error = '',
+          notice = '',
+          back = url.searchParams.get('returnTo');
+        if (req.method === 'POST') {
+          const input = await readForm(req);
+          back = input.get('returnTo');
+          try {
+            if (input.get('action') === 'preview') {
+              if (!publicPreviewOrigin) throw Object.assign(Error(t('shares_unavailable')), { status: 409 });
+              await withSharedSettingsSave(sharedPath, async () => {
+                const current = await readJson(sharedPath);
+                if (input.get('revision') !== revision(current))
+                  throw Object.assign(Error('Nastavení se mezitím změnilo.'), { status: 409 });
+                await updateSettings(
+                  sharedPath,
+                  validateShared(
+                    { name: current.name, theme: current.theme, publicPreview: input.has('publicPreview') },
+                    { current },
+                  ),
+                  revision(current),
+                );
+              });
+              notice = t('saved');
+            } else if (input.get('action') === 'revokeAll' && input.get('confirm') !== 'yes') confirmAll = true;
+            else {
+              await revokeShare(shareContext, input.get('action') === 'revokeAll' ? null : input.get('id') || '');
+              notice = t('share_revoked');
+            }
+          } catch (e: any) {
+            error = settingsError(e.message, language);
+            res.statusCode = e.status || 500;
+          }
+        }
+        let shares: any[] = [];
+        try {
+          shares = publicPreviewOrigin ? await allShares(shareContext) : [];
+        } catch (e: any) {
+          error = error || e.message;
+        }
+        const current = await readJson(sharedPath);
+        return page(res.statusCode || 200, 'addresses', {
+          error,
+          notice,
+          confirmAll,
+          revision: revision(current),
+          publicPreview: current.publicPreview === true,
+          previewAvailable: !!publicPreviewOrigin,
+          // They come from instance.json at start.
+          addresses: [
+            { label: 'address_editor', value: origin, help: 'address_editor_help' },
+            { label: 'address_preview', value: publicPreviewOrigin, help: 'address_preview_help' },
+            {
+              label: 'address_website',
+              value: process.env.SITETILLER_SITE_URL || '',
+              help: process.env.SITETILLER_WEBSITE_GIT
+                ? 'address_website_external_help'
+                : 'address_website_internal_help',
+            },
+            ...(process.env.SITETILLER_WEBSITE_GIT
+              ? [
+                  {
+                    label: 'address_website_git',
+                    value: process.env.SITETILLER_WEBSITE_GIT,
+                    help: 'address_website_git_help',
+                  },
+                ]
+              : []),
+          ],
+          shares: shares
+            .slice()
+            .reverse()
+            .map((share) => ({
+              id: share.id,
+              label: share.label,
+              url: shareUrl(shareContext, share),
+              createdBy: share.createdBy,
+              createdAt: share.createdAt,
+              expires: share.expires,
+            })),
+          returnTo: settingsReturnTo(back),
+        });
+      }
+      // MCP (documentation 2.4, 2.8): access, permissions, checks and the connected assistants.
+      if (url.pathname === '/settings/mcp') {
+        let error = '',
+          notice = '',
+          token = '',
+          back = url.searchParams.get('returnTo');
+        if (req.method === 'POST') {
+          const input = await readForm(req);
+          back = input.get('returnTo');
+          try {
+            const action = input.get('action');
+            if (action === 'token') {
+              token = await createAccessToken(data, input.get('tokenName') || '');
+              notice = t('mcp_token_created');
+            } else if (action === 'disconnect') {
+              await disconnect(data, input.get('id') || '');
+              notice = t('mcp_disconnected');
+            } else {
+              await saveMcpSettings(data, {
+                enabled: input.has('enabled'),
+                edit: input.has('edit'),
+                delete: input.has('delete'),
+                publish: input.has('publish'),
+                checks: (['strict', 'key', 'none'] as const).find((v) => v === input.get('checks')) || 'strict',
+              });
+              notice = t('saved');
+            }
+          } catch (e: any) {
+            error = e.message;
+            res.statusCode = 422;
+          }
+        }
+        const settings = await mcpSettings(data);
+        return page(res.statusCode || 200, 'mcp', {
+          error,
+          notice,
+          token,
+          settings: {
+            enabled: settings.enabled,
+            edit: settings.edit,
+            delete: settings.delete,
+            publish: settings.publish,
+            checks: settings.checks,
+          },
+          connections: settings.connections.map(({ id, name, kind, createdAt, lastUsed }) => ({
+            id,
+            name,
+            kind,
+            createdAt,
+            lastUsed,
+          })),
+          log: (await mcpLog(data)).slice().reverse(),
+          address: origin + '/mcp',
+          returnTo: settingsReturnTo(back),
+        });
+      }
+
       // AI models (documentation 2.10): the AI Studio's keys, team models and image tools, edited here.
-      if (url.pathname === '/settings/aiapi') {
+      if (url.pathname === '/settings/aiapi' || url.pathname === '/settings/aiapi/catalog') {
         let error = '',
           notice = '',
           back = url.searchParams.get('returnTo');
@@ -513,6 +757,69 @@ http
           if (!response.ok) throw Error(result.error || t('studio_starting'));
           return result;
         };
+        // The team roles and image tools with their options: from the catalog, or only the saved choice before it.
+        const modelView = (state: any, catalog: any, entered: any) => {
+          const provider = (id: string) => (id === 'openai' ? 'OpenAI' : 'Anthropic'),
+            usable = (catalog?.models || []).filter((m: any) => m.usable),
+            // Without the catalog yet, the saved choice is the only option and is not marked as unconfirmed.
+            withSaved = (options: any[], value: string, label: string) =>
+              value && value !== 'none' && !options.some((o) => o.value === value)
+                ? [...options, { value, label: label + (catalog ? t('availability_unconfirmed') : '') }]
+                : options,
+            chosen = entered?.roles || state.roles || {},
+            imageChoice = entered?.imageModels || state.imageModels || {};
+          const roleLabels: Record<string, string> = {
+            primary: t('web_lead_primary_agent'),
+            ui: t('ui_code_specialist_larger_implementations'),
+            verify: t('verifier_independent_verification'),
+            escalation: t('escalation_repeated_failure'),
+          };
+          const roles = Object.entries(roleLabels).map(([id, label]) => {
+            const choice = chosen[id] || {},
+              value = choice.provider ? choice.provider + '|' + choice.model : '';
+            return {
+              id,
+              label,
+              value,
+              effort: choice.reasoningEffort || (id === 'escalation' ? 'high' : 'auto'),
+              options: withSaved(
+                usable.map((m: any) => ({
+                  value: m.provider + '|' + m.id,
+                  label: provider(m.provider) + ' · ' + m.name,
+                })),
+                value,
+                choice.provider ? provider(choice.provider) + ' · ' + choice.model : '',
+              ),
+            };
+          });
+          const imageOptions = (catalog?.models || [])
+            .filter((m: any) => m.provider === 'openai' && /^gpt-image-/.test(m.id))
+            .map((m: any) => ({ value: m.id, label: m.name }));
+          const images = [
+            ['precise', t('images_precise_editing')],
+            ['fast', t('images_fast_generation')],
+          ].map(([id, label]) => ({
+            id,
+            label,
+            value: imageChoice[id] || 'none',
+            options: withSaved(imageOptions, imageChoice[id], imageChoice[id]),
+          }));
+          return {
+            roles,
+            images,
+            alerts: catalog ? [...(catalog.issues || []), ...(catalog.optionalIssues || [])] : [],
+          };
+        };
+        if (url.pathname === '/settings/aiapi/catalog') {
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          try {
+            const view = modelView(await ai('state'), await ai('models', { keys: {} }), null);
+            return res.end(JSON.stringify(view));
+          } catch (e: any) {
+            res.statusCode = 502;
+            return res.end(JSON.stringify({ error: e.message }));
+          }
+        }
         let entered: any = null;
         if (req.method === 'POST') {
           const input = await readForm(req);
@@ -523,11 +830,18 @@ http
                 separator = value.indexOf('|');
               return [
                 role,
-                { provider: value.slice(0, separator), model: value.slice(separator + 1), reasoningEffort: input.get('effort_' + role) || 'auto' },
+                {
+                  provider: value.slice(0, separator),
+                  model: value.slice(separator + 1),
+                  reasoningEffort: input.get('effort_' + role) || 'auto',
+                },
               ];
             }),
           );
-          entered = { roles, imageModels: { precise: input.get('image_precise') || 'none', fast: input.get('image_fast') || 'none' } };
+          entered = {
+            roles,
+            imageModels: { precise: input.get('image_precise') || 'none', fast: input.get('image_fast') || 'none' },
+          };
           try {
             // Save and load models: the keys with the saved team, then the fresh model lists; the choices on the
             // page stay as entered so they can be picked from the new lists.
@@ -544,55 +858,19 @@ http
             res.statusCode = 422;
           }
         }
-        let state: any = {},
-          catalog: any = { models: [], issues: [], optionalIssues: [] };
+        let state: any = {};
         try {
           state = await ai('state');
-          catalog = await ai('models', { keys: {} });
         } catch (e: any) {
           error = error || e.message;
         }
-        const provider = (id: string) => (id === 'openai' ? 'OpenAI' : 'Anthropic'),
-          usable = (catalog.models || []).filter((m: any) => m.usable),
-          withSaved = (options: any[], value: string, label: string) =>
-            value && value !== 'none' && !options.some((o) => o.value === value)
-              ? [...options, { value, label: label + t('availability_unconfirmed') }]
-              : options,
-          chosen = entered?.roles || state.roles || {},
-          imageChoice = entered?.imageModels || state.imageModels || {};
-        const roleLabels: Record<string, string> = {
-          primary: t('web_lead_primary_agent'),
-          ui: t('ui_code_specialist_larger_implementations'),
-          verify: t('verifier_independent_verification'),
-          escalation: t('escalation_repeated_failure'),
-        };
-        const roles = Object.entries(roleLabels).map(([id, label]) => {
-          const choice = chosen[id] || {},
-            value = choice.provider ? choice.provider + '|' + choice.model : '';
-          return {
-            id,
-            label,
-            value,
-            effort: choice.reasoningEffort || (id === 'escalation' ? 'high' : 'auto'),
-            options: withSaved(
-              usable.map((m: any) => ({ value: m.provider + '|' + m.id, label: provider(m.provider) + ' · ' + m.name })),
-              value,
-              choice.provider ? provider(choice.provider) + ' · ' + choice.model : '',
-            ),
-          };
-        });
-        const imageOptions = (catalog.models || [])
-          .filter((m: any) => m.provider === 'openai' && /^gpt-image-/.test(m.id))
-          .map((m: any) => ({ value: m.id, label: m.name }));
-        const images = [
-          ['precise', t('images_precise_editing')],
-          ['fast', t('images_fast_generation')],
-        ].map(([id, label]) => ({ id, label, value: imageChoice[id] || 'none', options: withSaved(imageOptions, imageChoice[id], imageChoice[id]) }));
+        const { roles, images } = modelView(state, null, entered);
         const keys = Object.fromEntries((state.providers || []).map((p: any) => [p.provider, !!p.hasKey]));
         return page(res.statusCode || 200, 'aiapi', {
           error,
           notice,
-          alerts: [...(catalog.issues || []), ...(catalog.optionalIssues || [])],
+          alerts: [],
+          catalogLoading: true,
           networkMode: state.networkMode,
           keys,
           roles,

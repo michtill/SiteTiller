@@ -20,5 +20,5 @@ RUN apt-get update \
   && git config --system safe.directory '*'
 WORKDIR /app
 COPY --from=build /app /app
-ENV SITETILLER_INSTANCE=/instance HOME=/tmp
+ENV SITETILLER_INSTANCE=/instance HOME=/tmp SITETILLER_PUBLIC_PREVIEW_PORT=4541
 CMD ["node", "scripts/serve.mjs"]

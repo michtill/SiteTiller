@@ -60,7 +60,7 @@ import { closePublishedHistory, publicationSummary, visibleVersionHistory } from
 import { checkPublication, restorationSource } from './publication-check.ts';
 import { cleanupPublication, mapCleanupHistory } from './image-cleanup.ts';
 import { previewVersion, versionReferences } from './preview-version.ts';
-import { previewDocument } from './preview-document.ts';
+import { previewDocument, previewLabel } from './preview-document.ts';
 import { imageIssues, websiteImages } from './image-editor.ts';
 import { decodeImage, selectImages, raster, binaryAsset, imageMime } from './images.ts';
 import http from 'node:http';
@@ -323,12 +323,15 @@ async function state() {
 }
 // Links out of the studio: the instance's published website and, while it is on, the public draft preview.
 async function outsideLinks() {
-  let publicPreview = false;
+  let publicPreview = false,
+    chosen = '';
   try {
-    publicPreview =
-      JSON.parse(await readFile(process.env.SITETILLER_SHARED_SETTINGS_FILE || '', 'utf8')).publicPreview === true;
+    const shared = JSON.parse(await readFile(process.env.SITETILLER_SHARED_SETTINGS_FILE || '', 'utf8'));
+    publicPreview = shared.publicPreview === true;
+    chosen = typeof shared.publicPreviewOrigin === 'string' ? shared.publicPreviewOrigin : '';
   } catch {}
-  const origin = process.env.SITETILLER_PUBLIC_PREVIEW_ORIGIN;
+  // The address set on Settings → Addresses and sharing, otherwise the installation's.
+  const origin = chosen || process.env.SITETILLER_PUBLIC_PREVIEW_ORIGIN;
   return {
     liveSiteUrl: process.env.SITETILLER_SITE_URL || null,
     publicPreviewUrl: publicPreview && origin ? new URL(origin).origin + '/' : null,
@@ -496,7 +499,13 @@ async function servePreview(req: http.IncomingMessage, res: http.ServerResponse,
             (!version.cmsMode && selected.root === project.root && commit === (await project.head()))),
       )) || content;
   if (/\.(html|css)$/.test(name)) content = versionReferences(content, prefix);
-  if (name.endsWith('.html')) content = previewDocument(content, commit, url.searchParams.get('embedded') === '1');
+  if (name.endsWith('.html'))
+    content = previewDocument(
+      content,
+      commit,
+      url.searchParams.get('embedded') === '1',
+      await previewLabel(project, commit),
+    );
   // A frozen version is addressed by its commit, so its responses never change.
   res.writeHead(200, {
     'Content-Type': raster(name) ? imageMime(name) : mime[extname(name).toLowerCase()] || 'application/octet-stream',

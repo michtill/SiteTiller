@@ -8,7 +8,7 @@ import { serveForm } from './contact-forms.ts';
 import { liveCms } from './cms-live.ts';
 import { websitePolicy } from './site-policy.ts';
 import { previewVersion, versionReferences } from './preview-version.ts';
-import { previewDocument } from './preview-document.ts';
+import { previewDocument, previewLabel } from './preview-document.ts';
 import { raster, binaryAsset, imageMime } from './images.ts';
 import http from 'node:http';
 import { extname } from 'node:path';
@@ -135,7 +135,12 @@ http
           )) || content;
       if (/\.(html|css)$/.test(name) && prefix !== '/') content = versionReferences(content, prefix);
       if (name.endsWith('.html'))
-        content = previewDocument(content, version.share ? '' : commit, url.searchParams.get('embedded') === '1');
+        content = previewDocument(
+          content,
+          version.share ? '' : commit,
+          url.searchParams.get('embedded') === '1',
+          await previewLabel(project, version.share ? '' : commit, !!version.share),
+        );
       res.setHeader('Content-Security-Policy', saved && !saved.share ? studioPreviewPolicy : websitePolicy);
       // A frozen version is addressed by its commit, so its responses never change.
       res.writeHead(200, {

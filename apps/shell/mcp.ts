@@ -159,6 +159,8 @@ export type McpContext = {
   version: string;
   site: () => Promise<string>;
   share: (input: any) => Promise<{ url: string; expires: string | null; label: string }>;
+  shares: () => Promise<any[]>;
+  revokeShare: (id: string) => Promise<number>;
   // 'locked' after too many wrong passwords (the sign-in limit, documentation 2.1).
   checkPassword: (password: string, ip: string) => Promise<'ok' | 'wrong' | 'locked'>;
   renderAuthorize: (props: Record<string, unknown>, status: number) => Promise<void>;
@@ -490,12 +492,18 @@ function summary(tool: string, result: any) {
   if (tool === 'publish_step') return result.version ? 'Verze ' + result.version : 'Publikace se dokončuje';
   if (tool === 'read_site_file') return result.path;
   if (tool === 'share_preview') return 'Sdílen ' + result.label;
+  if (tool === 'revoke_share') return 'Zrušen sdílený odkaz ' + result.label;
   return 'OK';
 }
 function allowed(level: string, settings: McpSettings) {
   return level === 'read' || (level === 'edit' && settings.edit) || (level === 'publish' && settings.publish);
 }
 type ToolContext = McpContext & { settings: McpSettings; assistant: string };
+// A private preview link on the editor address: it works after signing in, like Open in the AI Studio. The latest
+// step shows the working content, an older step or a version its frozen state (documentation 2.8).
+function previewLink(ctx: McpContext, state: any, commit?: string) {
+  return ctx.origin + '/preview/' + (commit && commit !== state.head ? 'versions/' + commit + '/' : '');
+}
 // Deleting steps or saved drafts needs its own permission (promise 4): in the AI Studio the user confirms it in a dialog.
 function mayDelete(ctx: ToolContext) {
   if (!ctx.settings.delete)
@@ -679,7 +687,13 @@ const tools: {
         remove: args.remove || [],
         checks: ctx.settings.checks,
       });
-      return { step: result.step, commit: result.commit, checks: result.checks, warnings: result.warnings };
+      return {
+        step: result.step,
+        commit: result.commit,
+        checks: result.checks,
+        warnings: result.warnings,
+        preview_url: ctx.origin + '/preview/',
+      };
     },
   },
   {
@@ -913,6 +927,33 @@ const tools: {
     },
   },
   {
+    name: 'preview_link',
+    level: 'read',
+    description:
+      'A private link to the preview of a draft step (default the latest, with the working content), a saved draft or a published version. It opens after signing in to the editor, like Open in the AI Studio; nothing becomes public. A saved draft link is valid 15 minutes.',
+    inputSchema: object({
+      commit: { type: 'string', description: 'A step or version commit from get_overview.' },
+      saved_draft_id: { type: 'string', description: 'A saved draft id from get_overview.' },
+    }),
+    async run(args, ctx) {
+      const state = await ai(ctx, 'state');
+      if (args.saved_draft_id) {
+        if (!(state.savedDrafts || []).some((d: any) => d.id === args.saved_draft_id))
+          throw Error('Uložený návrh neexistuje: ' + args.saved_draft_id);
+        // Like Open in the AI Studio: a saved draft's link is valid 15 minutes, then the assistant asks for a new one.
+        const access = await ai(ctx, 'drafts/preview', { id: args.saved_draft_id });
+        return { url: ctx.origin + access.url, sign_in: true, expires: new Date(access.expires).toISOString() };
+      }
+      const known =
+        !args.commit ||
+        args.commit === state.head ||
+        (state.requests || []).some((r: any) => r.commit === args.commit && ['ready', 'legacy'].includes(r.status)) ||
+        (state.releases || []).some((r: any) => r.commit === args.commit);
+      if (!known) throw Error('Krok ani verze neexistuje: ' + args.commit);
+      return { url: previewLink(ctx, state, args.commit), sign_in: true };
+    },
+  },
+  {
     name: 'share_preview',
     level: 'edit',
     description:
@@ -932,6 +973,28 @@ const tools: {
         validity: args.validity,
         createdBy: 'Asistent (' + ctx.assistant + ')',
       });
+    },
+  },
+  {
+    name: 'list_shares',
+    level: 'read',
+    description:
+      'Lists the valid public shared links (Settings → Addresses and sharing): what each shows, who created it, when it expires and its address.',
+    inputSchema: object({}),
+    async run(_args, ctx) {
+      return { shares: await ctx.shares() };
+    },
+  },
+  {
+    name: 'revoke_share',
+    level: 'edit',
+    description:
+      'Revokes one public shared link (any, not only those the assistant created), like Revoke on Settings → Addresses and sharing. Nothing is deleted, the link just stops working. Ids from list_shares.',
+    inputSchema: object({ id: { type: 'string' } }, ['id']),
+    async run(args, ctx) {
+      const share = (await ctx.shares()).find((s) => s.id === args.id);
+      if (!share || !(await ctx.revokeShare(share.id))) throw Error('Sdílený odkaz neexistuje: ' + args.id);
+      return { revoked: share.id, label: share.label };
     },
   },
   {

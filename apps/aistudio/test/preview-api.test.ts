@@ -71,14 +71,18 @@ test('HI-12: dedicated preview resolves directory pages, redirects correctly and
     await frame.getByRole('link', { name: 'Contact' }).waitFor();
     assert.equal(await frame.locator('[data-sitetiller-preview-banner]').count(), 0);
     await tab.goto(origin + '/contact/');
-    assert.equal(await tab.locator('[data-sitetiller-preview-banner]').count(), 1);
-    await tab.getByRole('button', { name: 'Skrýt upozornění na testovací verzi' }).click();
-    assert.equal(await tab.locator('[data-sitetiller-preview-banner]').count(), 0);
+    // Opened on its own the page has a small corner with "i"; hovering it says what is shown. It covers nothing.
+    const corner = tab.locator('[data-sitetiller-preview-banner]');
+    assert.equal(await corner.count(), 1);
+    assert.equal(await corner.locator('span').isVisible(), false);
+    const box = await corner.boundingBox();
+    assert.ok(box && box.width < 40 && box.height <= 24);
+    await corner.hover();
+    assert.match(await corner.locator('span').textContent(), /^Náhled: /);
+    assert.equal(await corner.locator('span').isVisible(), true);
     await tab.getByRole('link', { name: 'Home', exact: true }).click();
     await tab.getByRole('link', { name: 'Contact' }).waitFor();
-    assert.equal(await tab.locator('[data-sitetiller-preview-banner]').count(), 0);
-    await tab.reload();
-    assert.equal(await tab.locator('[data-sitetiller-preview-banner]').count(), 0);
+    assert.equal(await tab.locator('[data-sitetiller-preview-banner]').count(), 1);
     await tab.goto(origin + '/storage.html');
     assert.equal(await tab.locator('body').getAttribute('data-storage'), 'ok');
     const fresh = await browser.newPage();

@@ -9,6 +9,9 @@ export default defineConfig({
   // The Formatted content editor (Tiptap + Markdown) is one lazily loaded chunk of about 550 kB.
   build: { chunkSizeWarningLimit: 600 },
   plugins: [
-    templatePlugin(/\/(apps\/cmstudio\/editor\/(main|architect|markdown-editor)|packages\/ui\/[\w-]+)\.ts$/, compile),
+    templatePlugin(
+      /\/(apps\/cmstudio\/editor\/(main|architect|markdown-editor|structure-templates)|packages\/ui\/[\w-]+)\.ts$/,
+      compile,
+    ),
   ],
 });

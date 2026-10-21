@@ -115,11 +115,14 @@ test('ST-06: catalog row shape/default/key/relation rules match actual stored va
       store.validateRows('items', [{ id: 'one', value: 'Label instead of key' }]),
       (e) => e.status === 422,
     );
-    assert.equal(
-      (await store.validateRows('items', [{ id: 'one', value: 'one' }], { items: [{ id: 'one', value: 'one' }] }))[0]
-        .value,
-      'one',
-    );
+    // A link to the own collection points to another record; a record under itself is a cycle (ED-22).
+    const linked = [
+      { id: 'one', value: '' },
+      { id: 'two', value: 'one' },
+    ];
+    assert.equal((await store.validateRows('items', linked, { items: linked }))[1].value, 'one');
+    const self = [{ id: 'one', value: 'one' }];
+    await assert.rejects(store.validateRows('items', self, { items: self }), (e) => e.status === 422);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

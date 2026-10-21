@@ -261,6 +261,35 @@ summary {
   font-size: 12px;
   padding: 7px 10px;
 }
+/* Share and Live website read like Open: plain text actions, no frame. */
+.preview-actions .text-action {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+}
+.preview-actions .text-action:hover:not(:disabled) {
+  background: transparent;
+}
+/* No frame after the Share dialog returns focus; the keyboard focus shows as the accent colour instead. */
+.preview-actions .text-action:focus {
+  outline: none;
+}
+.preview-actions .text-action:focus-visible {
+  color: var(--accent);
+}
+/* Notes above the live link and above the fixed links sit in rows of their own, so the link rows align. */
+.share-links .share-note + tr td {
+  border-top: 0;
+}
+.share-public-help {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
 .frame {
   flex: 1;
   display: flex;
@@ -1725,8 +1754,9 @@ aside {
   padding-bottom: 4px;
 }
 
+/* The workspace tabs sit at the right end of the header, away from the studio menu. */
 .workspace-tabs {
-  margin-left: 12px;
+  margin-left: auto;
 }
 .interface-language {
   display: flex;
@@ -2555,7 +2585,8 @@ aside {
   width: max-content;
   max-width: 100%;
   gap: 2px;
-  margin: 0;
+  /* At the right end of the header; when the header wraps, the tabs still end at the right. */
+  margin: 0 0 0 auto;
 }
 .workspace-tabs button {
   white-space: nowrap;

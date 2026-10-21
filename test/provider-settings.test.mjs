@@ -4,20 +4,38 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { catalog } from '../apps/aistudio/src/catalog.ts';
 import { allowedNetworkURL } from '../scripts/network-policy.mjs';
+import { detectProvider } from '../packages/providers/index.mjs';
+import { fixtureKeys } from './fixtures/provider-catalog-mock.mjs';
 import { isolatedStack } from './support/stack.mjs';
 import { launchBrowser } from './support/browser.mjs';
+const keyPattern = new RegExp(Object.values(fixtureKeys).join('|'));
 test('OP-05: provider mode allows only intended APIs; fixture offline remains explicit', () => {
   assert.equal(allowedNetworkURL('offline', 'https://api.openai.com/v1/models'), false);
   assert.equal(allowedNetworkURL('providers', 'https://api.openai.com/v1/models'), true);
   assert.equal(allowedNetworkURL('providers', 'https://api.anthropic.com/v1/models'), true);
+  assert.equal(allowedNetworkURL('providers', 'https://generativelanguage.googleapis.com/v1beta/models'), true);
+  assert.equal(allowedNetworkURL('offline', 'https://generativelanguage.googleapis.com/v1beta/models'), false);
   for (const url of [
     'https://example.com/',
     'http://api.openai.com/v1/models',
     'https://api.openai.com:444/v1/models',
     'https://api.openai.com.other/v1/models',
+    'https://api.openai.com/v1beta/models',
+    'https://generativelanguage.googleapis.com/v1/models',
+    'https://generativelanguage.googleapis.com.other/v1beta/models',
   ])
-    assert.equal(allowedNetworkURL('providers', url), false);
+    assert.equal(allowedNetworkURL('providers', url), false, url);
   assert.equal(allowedNetworkURL('offline', 'http://127.0.0.1:4510/api/bootstrap'), true);
+});
+test('AI-33: the provider is told by the key shape only; unknown and admin keys are refused', () => {
+  assert.deepEqual(detectProvider(fixtureKeys.anthropic), { provider: 'anthropic' });
+  assert.deepEqual(detectProvider(fixtureKeys.openai), { provider: 'openai' });
+  assert.deepEqual(detectProvider('sk-' + 'a'.repeat(48)), { provider: 'openai' });
+  assert.deepEqual(detectProvider('sk-svcacct-' + 'b'.repeat(40)), { provider: 'openai' });
+  assert.deepEqual(detectProvider(fixtureKeys.gemini), { provider: 'gemini' });
+  assert.deepEqual(detectProvider('sk-admin-' + 'c'.repeat(40)), { problem: 'admin' });
+  for (const value of ['', 'hello', 'AIza-too-short', 'xai-' + 'd'.repeat(40), 'sk-short'])
+    assert.deepEqual(detectProvider(value), { problem: 'unknown' }, value);
 });
 test('AI-33: catalog errors distinguish offline/network/auth/access/quota/rate without leaking bodies', async () => {
   for (const [status, code, kind] of [
@@ -27,22 +45,67 @@ test('AI-33: catalog errors distinguish offline/network/auth/access/quota/rate w
     [429, 'rate_limit_exceeded', 'rate_limit'],
     [503, 'unknown', 'provider'],
   ]) {
-    const result = await catalog({ openai: 'fixture-openai-key', anthropic: '' }, async () =>
+    const result = await catalog({ openai: fixtureKeys.openai, anthropic: '', gemini: '' }, async () =>
       Response.json({ error: { code, message: 'must-not-leak-fixture-secret' } }, { status }),
     );
     assert.equal(result.providers[0].errorKind, kind);
     assert.equal(result.providers[0].httpStatus, status);
-    assert.doesNotMatch(JSON.stringify(result), /must-not-leak|fixture-openai-key/);
+    assert.doesNotMatch(JSON.stringify(result), new RegExp('must-not-leak|' + fixtureKeys.openai));
   }
-  const blocked = await catalog({ openai: 'fixture', anthropic: '' }, async () => {
+  const blocked = await catalog({ openai: 'fixture', anthropic: '', gemini: '' }, async () => {
     throw Object.assign(Error('blocked'), { code: 'ERR_SITETILLER_NETWORK_BLOCKED', networkMode: 'offline' });
   });
   assert.equal(blocked.providers[0].errorKind, 'blocked_network');
-  const network = await catalog({ openai: 'fixture', anthropic: '' }, async () => {
+  const network = await catalog({ openai: 'fixture', anthropic: '', gemini: '' }, async () => {
     throw Error('ECONNRESET private body');
   });
   assert.equal(network.providers[0].errorKind, 'network');
   assert.doesNotMatch(JSON.stringify(network), /private body/);
+  // Gemini: the key in its header, pages followed, only text models that answer generateContent; preview marked.
+  const seen = [];
+  const gemini = await catalog({ openai: '', anthropic: '', gemini: fixtureKeys.gemini }, async (url, options) => {
+    seen.push({ url: String(url), key: new Headers(options.headers).get('x-goog-api-key') });
+    return String(url).includes('pageToken=next')
+      ? Response.json({
+          models: [
+            {
+              name: 'models/gemini-3-pro-preview',
+              displayName: 'Gemini 3 Pro',
+              supportedGenerationMethods: ['generateContent'],
+            },
+          ],
+        })
+      : Response.json({
+          models: [
+            {
+              name: 'models/gemini-2.5-pro',
+              displayName: 'Gemini 2.5 Pro',
+              supportedGenerationMethods: ['generateContent'],
+            },
+            {
+              name: 'models/text-embedding-004',
+              displayName: 'Embedding',
+              supportedGenerationMethods: ['embedContent'],
+            },
+            {
+              name: 'models/gemini-2.5-flash-preview-tts',
+              displayName: 'TTS',
+              supportedGenerationMethods: ['generateContent'],
+            },
+          ],
+          nextPageToken: 'next',
+        });
+  });
+  const listed = gemini.providers.find((p) => p.provider === 'gemini');
+  assert.equal(listed.error, null);
+  assert.ok(seen.every((call) => call.key === fixtureKeys.gemini && !call.url.includes(fixtureKeys.gemini)));
+  assert.deepEqual(
+    gemini.models.filter((m) => m.provider === 'gemini' && m.usable).map((m) => [m.id, m.name]),
+    [
+      ['gemini-2.5-pro', 'Gemini 2.5 Pro'],
+      ['gemini-3-pro-preview', 'Gemini 3 Pro (preview)'],
+    ],
+  );
 });
 test(
   'AI-33: real controller saves supplied fixture keys encrypted and validates stored keys through model-list only',
@@ -70,7 +133,7 @@ test(
       const input = {
         roles: state.roles,
         imageModels: state.imageModels,
-        keys: { openai: 'fixture-openai-key', anthropic: 'fixture-anthropic-key' },
+        keys: { openai: fixtureKeys.openai, anthropic: fixtureKeys.anthropic },
       };
       const save = await fetch(stack.origin + '/site/api/settings', {
         method: 'POST',
@@ -78,13 +141,27 @@ test(
         body: JSON.stringify(input),
       });
       assert.equal(save.status, 200, JSON.stringify(await save.clone().json()));
+      // A Gemini key: checked with Google's model list only, then saved encrypted.
+      const add = (provider, key) =>
+        fetch(stack.origin + '/site/api/keys/add', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ provider, key }),
+        });
+      assert.equal((await add('gemini', fixtureKeys.gemini)).status, 200);
+      const refused = await add('gemini', 'AIza' + 'X'.repeat(35));
+      assert.equal(refused.status, 422);
+      assert.match((await refused.json()).error, /Klíč se neuložil: chybí přístup k API nebo modelům \(HTTP 403\)/);
+      // A key whose shape names another provider is refused before any call.
+      assert.equal((await add('openai', fixtureKeys.gemini)).status, 422);
       const configText = await readFile(join(stack.root, '.sitetiller/config.json'), 'utf8');
-      assert.doesNotMatch(configText, /fixture-openai-key|fixture-anthropic-key/);
+      assert.doesNotMatch(configText, keyPattern);
       const configured = await (await fetch(stack.origin + '/site/api/state', { headers })).json();
       assert.ok(configured.providers.every((p) => p.hasKey));
-      assert.doesNotMatch(JSON.stringify(configured), /fixture-openai-key|fixture-anthropic-key/);
+      assert.doesNotMatch(JSON.stringify(configured), keyPattern);
       const models = await (await fetch(stack.origin + '/site/api/models', { headers })).json();
       assert.ok(models.providers.every((p) => p.error === null && p.count > 0));
+      assert.ok(models.models.some((m) => m.provider === 'gemini' && m.id === 'gemini-2.5-pro' && m.usable));
       assert.equal(models.issues.length, 0);
       const blank = await fetch(stack.origin + '/site/api/settings', {
         method: 'POST',
@@ -96,7 +173,7 @@ test(
       const invalid = await fetch(stack.origin + '/site/api/settings', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ ...input, keys: { openai: 'bad-fixture-key' } }),
+        body: JSON.stringify({ ...input, keys: { openai: 'sk-proj-badFixtureKey000000000000' } }),
       });
       // A key the provider refuses is not saved, even when no team model uses it; the saved one stays.
       assert.equal(invalid.status, 200);
@@ -115,143 +192,186 @@ async function signIn(page, stack) {
   await page.locator('button:not(.show-password)').click();
   await page.waitForURL('**/content/');
 }
-test('AI-33: AI models save keys encrypted, never show them again, refuse a key the provider rejects, keep them when the fields stay empty and remove one after the app confirm dialog', { timeout: 240000 }, async () => {
-  const stack = await isolatedStack({
-    networkMode: 'providers',
-    controllerImports: ['test/fixtures/provider-catalog-mock.mjs'],
-  });
-  let browser;
-  try {
-    browser = await launchBrowser();
-    const page = await browser.newPage();
-    page.setDefaultTimeout(30000);
-    await signIn(page, stack);
-    await page.goto(stack.origin + '/settings/aiapi?returnTo=%2Fsite%2F');
-    const load = page.getByRole('button', { name: 'Uložit a načíst modely', exact: true });
-    // Save and load models appears only once a new key is typed in.
-    assert.equal(await load.isVisible(), false);
-    await page.locator('input[name=key_openai]').fill('fixture-openai-key');
-    await page.locator('input[name=key_anthropic]').fill('fixture-anthropic-key');
-    assert.equal(await load.isVisible(), true);
-    await load.click();
-    await page.getByText('Klíče jsou uložené a seznam modelů je načtený.', { exact: true }).waitFor();
-    // The keys are never sent back to the browser.
-    assert.equal(await page.locator('input[name=key_openai]').inputValue(), '');
-    assert.doesNotMatch(await page.content(), /fixture-openai-key|fixture-anthropic-key/);
-    assert.ok((await page.locator('select[name=role_primary] option').count()) > 0);
-    const text = await readFile(join(stack.root, '.sitetiller/config.json'), 'utf8');
-    assert.doesNotMatch(text, /fixture-openai-key|fixture-anthropic-key/);
-    const state = await (await page.request.get(stack.origin + '/site/api/state')).json();
-    assert.ok(state.providers.every((p) => p.hasKey));
-    // A refused key is not saved: the reason is under its field and the status is red.
-    await page.locator('input[name=key_openai]').fill('bad-fixture-key');
-    await load.click();
-    await page.getByText('Klíč se neuložil: klíč nebyl přijat (HTTP 401).', { exact: true }).waitFor();
-    assert.equal(await page.locator('#model-catalog').getAttribute('data-state'), 'failed');
-    assert.equal(await page.locator('#key-note-anthropic').textContent(), 'Klíč je uložený šifrovaně.');
-    assert.equal(await readFile(join(stack.root, '.sitetiller/config.json'), 'utf8'), text);
-    // Saving with empty key fields keeps the saved keys.
-    await page.getByRole('button', { name: 'Uložit', exact: true }).click();
-    await page.getByText('Uloženo', { exact: true }).waitFor();
-    assert.ok((await (await page.request.get(stack.origin + '/site/api/state')).json()).providers.every((p) => p.hasKey));
-    // Remove key asks first, then removes the key even though the team uses it; without keys the status says so.
-    for (const provider of ['openai', 'anthropic']) {
-      // The app's confirm dialog: Cancel keeps the key, Confirm removes it.
-      await page.locator('button[value=remove_' + provider + ']').click();
-      const dialog = page.getByRole('dialog', { name: 'Potvrdit akci' });
-      await dialog.getByText(/Opravdu odebrat klíč/).waitFor();
-      await dialog.getByRole('button', { name: 'Zrušit' }).click();
-      assert.equal(await dialog.count(), 0);
-      assert.ok((await (await page.request.get(stack.origin + '/site/api/state')).json()).providers.find((p) => p.provider === provider).hasKey);
-      await page.locator('button[value=remove_' + provider + ']').click();
-      await dialog.getByRole('button', { name: 'Potvrdit' }).click();
-      await page.getByText('Klíč je odebraný.', { exact: true }).waitFor();
-      assert.equal(await page.locator('#key-note-' + provider).textContent(), 'Klíč zatím není uložený.');
-    }
-    assert.ok((await (await page.request.get(stack.origin + '/site/api/state')).json()).providers.every((p) => !p.hasKey));
-    assert.match(await page.locator('#model-catalog').textContent(), /nejsou zadané žádné API klíče/);
-  } finally {
-    await browser?.close();
-    await stack.close();
-  }
-});
-test('AI-33: AI models save new keys and team choices together with one Save', { timeout: 240000 }, async () => {
-  const stack = await isolatedStack({
-    networkMode: 'providers',
-    controllerImports: ['test/fixtures/provider-catalog-mock.mjs'],
-  });
-  let browser;
-  try {
-    browser = await launchBrowser();
-    const page = await browser.newPage();
-    page.setDefaultTimeout(30000);
-    await signIn(page, stack);
-    await page.goto(stack.origin + '/settings/aiapi');
-    await page.locator('input[name=key_openai]').fill('fixture-openai-key');
-    await page.locator('input[name=key_anthropic]').fill('fixture-anthropic-key');
-    await page.locator('select[name=effort_ui]').selectOption('high');
-    await page.getByRole('button', { name: 'Uložit', exact: true }).click();
-    await page.getByText('Uloženo', { exact: true }).waitFor();
-    assert.equal(await page.locator('select[name=effort_ui]').inputValue(), 'high');
-    const state = await (await page.request.get(stack.origin + '/site/api/state')).json();
-    assert.ok(state.providers.every((p) => p.hasKey));
-    assert.equal(state.roles.ui.reasoningEffort, 'high');
-    assert.doesNotMatch(await readFile(join(stack.root, '.sitetiller/config.json'), 'utf8'), /fixture-openai-key|fixture-anthropic-key/);
-    // The page comes at once with the saved choices and a loading note; the providers' lists follow and fill the
-    // selects while the chosen values stay selected.
-    const html = await (await page.request.get(stack.origin + '/settings/aiapi')).text();
-    assert.match(html, /Načítám seznam modelů/);
-    const catalog = await (await page.request.get(stack.origin + '/settings/aiapi/catalog')).json();
-    assert.ok(catalog.roles.every((role) => role.options.length > 1));
-    await page.goto(stack.origin + '/settings/aiapi');
-    await page.getByText('Seznam modelů je načtený.', { exact: true }).waitFor();
-    assert.ok((await page.locator('select[name=role_primary] option').count()) > 1);
-    assert.equal(await page.locator('select[name=effort_ui]').inputValue(), 'high');
-    assert.equal(
-      await page.locator('select[name=role_primary]').inputValue(),
-      state.roles.primary.provider + '|' + state.roles.primary.model,
-    );
-  } finally {
-    await browser?.close();
-    await stack.close();
-  }
-});
-
-test('UX-01: the AI Studio models page keeps every field in place while the model lists arrive', { timeout: 240000 }, async () => {
-  const stack = await isolatedStack({
-    networkMode: 'providers',
-    controllerImports: ['test/fixtures/provider-catalog-mock.mjs'],
-  });
-  let browser;
-  try {
-    browser = await launchBrowser();
-    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-    page.setDefaultTimeout(30000);
-    await signIn(page, stack);
-    // The lists arrive only when the test lets them, so the place of the fields can be measured before and after.
-    let release;
-    const held = new Promise((resolve) => (release = resolve));
-    await page.route('**/settings/aiapi/catalog', async (route) => {
-      await held;
-      await route.continue();
+async function addKey(page, value) {
+  await page.locator('input[name=key]').fill(value);
+  await page.getByRole('button', { name: 'Přidat klíč', exact: true }).click();
+}
+test(
+  'AI-33: one key field tells the provider, saves the key encrypted and never shows it, refuses an unknown or rejected key, replaces a key after the app confirm dialog and removes one',
+  { timeout: 240000 },
+  async () => {
+    const stack = await isolatedStack({
+      networkMode: 'providers',
+      controllerImports: ['test/fixtures/provider-catalog-mock.mjs'],
     });
-    await page.goto(stack.origin + '/settings/aiapi');
-    const places = () =>
-      page.evaluate(() =>
-        ['select[name=role_primary]', 'select[name=image_fast]', 'button:not([value])'].map(
-          (selector) => document.querySelector(selector).getBoundingClientRect().top,
+    let browser;
+    try {
+      browser = await launchBrowser();
+      const page = await browser.newPage();
+      page.setDefaultTimeout(30000);
+      await signIn(page, stack);
+      await page.goto(stack.origin + '/settings/aiapi?returnTo=%2Fsite%2F');
+      await addKey(page, fixtureKeys.openai);
+      await page.getByText('Klíč OpenAI je uložený.', { exact: true }).waitFor();
+      await addKey(page, fixtureKeys.anthropic);
+      await page.getByText('Klíč Anthropic je uložený.', { exact: true }).waitFor();
+      await addKey(page, fixtureKeys.gemini);
+      await page.getByText('Klíč Google Gemini je uložený.', { exact: true }).waitFor();
+      // The table names the providers only; the keys are never sent back to the browser.
+      assert.deepEqual(await page.locator('.keys-table .key-provider').allTextContents(), [
+        'OpenAI',
+        'Anthropic',
+        'Google Gemini',
+      ]);
+      assert.equal(await page.locator('input[name=key]').inputValue(), '');
+      assert.doesNotMatch(await page.content(), keyPattern);
+      const text = await readFile(join(stack.root, '.sitetiller/config.json'), 'utf8');
+      assert.doesNotMatch(text, keyPattern);
+      // Gemini models are offered for the team roles.
+      await page.getByText('Seznam modelů je načtený.', { exact: true }).waitFor();
+      assert.ok(
+        (await page.locator('select[name=role_primary] option').allTextContents()).includes(
+          'Google Gemini · Gemini 2.5 Pro',
         ),
       );
-    const before = await places();
-    // Without keys the status line says so in the place of the Save and load models button.
-    assert.match(await page.locator('#model-catalog').textContent(), /nejsou zadané žádné API klíče/);
-    const arrived = page.waitForResponse('**/settings/aiapi/catalog');
-    release();
-    await arrived;
-    await page.waitForTimeout(100);
-    assert.deepEqual(await places(), before);
-  } finally {
-    await browser?.close();
-    await stack.close();
-  }
-});
+      // Unknown and admin keys are refused with the reason under the field; nothing is saved.
+      await addKey(page, 'hello-not-a-key');
+      await page
+        .getByText('Tento klíč aplikace nepoznává. Podporuje klíče OpenAI, Anthropic a Google Gemini.', { exact: true })
+        .waitFor();
+      await addKey(page, 'sk-admin-' + 'c'.repeat(40));
+      await page.getByText(/správcovský klíč OpenAI/).waitFor();
+      assert.equal(await readFile(join(stack.root, '.sitetiller/config.json'), 'utf8'), text);
+      // Another key of a saved provider: the app's confirm dialog; Cancel keeps the saved key.
+      await addKey(page, 'sk-proj-badFixtureKey000000000000');
+      const dialog = page.getByRole('dialog', { name: 'Potvrdit akci' });
+      await dialog.getByText('Nahradit uložený klíč OpenAI?').waitFor();
+      await dialog.getByRole('button', { name: 'Zrušit' }).click();
+      assert.equal(await readFile(join(stack.root, '.sitetiller/config.json'), 'utf8'), text);
+      // Confirm: the provider refuses it, so it is not saved and the saved key stays.
+      await page.getByRole('button', { name: 'Přidat klíč', exact: true }).click();
+      await dialog.getByRole('button', { name: 'Potvrdit' }).click();
+      await page.getByText('Klíč se neuložil: klíč nebyl přijat (HTTP 401).', { exact: true }).waitFor();
+      assert.equal(await readFile(join(stack.root, '.sitetiller/config.json'), 'utf8'), text);
+      // Saving the team keeps the saved keys.
+      await page.getByRole('button', { name: 'Uložit', exact: true }).click();
+      await page.getByText('Uloženo', { exact: true }).waitFor();
+      assert.ok(
+        (await (await page.request.get(stack.origin + '/site/api/state')).json()).providers.every((p) => p.hasKey),
+      );
+      // Remove key asks first, then removes the key even though the team uses it; without keys the status says so.
+      for (const provider of ['openai', 'anthropic', 'gemini']) {
+        await page.locator('button[value=remove_' + provider + ']').click();
+        await dialog.getByText(/Opravdu odebrat klíč/).waitFor();
+        await dialog.getByRole('button', { name: 'Zrušit' }).click();
+        assert.equal(await dialog.count(), 0);
+        assert.ok(
+          (await (await page.request.get(stack.origin + '/site/api/state')).json()).providers.find(
+            (p) => p.provider === provider,
+          ).hasKey,
+        );
+        await page.locator('button[value=remove_' + provider + ']').click();
+        await dialog.getByRole('button', { name: 'Potvrdit' }).click();
+        await page.getByText('Klíč je odebraný.', { exact: true }).waitFor();
+        assert.equal(await page.locator('button[value=remove_' + provider + ']').count(), 0);
+      }
+      assert.ok(
+        (await (await page.request.get(stack.origin + '/site/api/state')).json()).providers.every((p) => !p.hasKey),
+      );
+      assert.match(await page.locator('#model-catalog').textContent(), /nejsou zadané žádné API klíče/);
+    } finally {
+      await browser?.close();
+      await stack.close();
+    }
+  },
+);
+test(
+  'AI-33: AI models save team choices with one Save; the lists arrive after the page',
+  { timeout: 240000 },
+  async () => {
+    const stack = await isolatedStack({
+      networkMode: 'providers',
+      controllerImports: ['test/fixtures/provider-catalog-mock.mjs'],
+    });
+    let browser;
+    try {
+      browser = await launchBrowser();
+      const page = await browser.newPage();
+      page.setDefaultTimeout(30000);
+      await signIn(page, stack);
+      await page.goto(stack.origin + '/settings/aiapi');
+      await addKey(page, fixtureKeys.openai);
+      await page.getByText('Klíč OpenAI je uložený.', { exact: true }).waitFor();
+      await addKey(page, fixtureKeys.anthropic);
+      await page.getByText('Klíč Anthropic je uložený.', { exact: true }).waitFor();
+      await page.locator('select[name=effort_ui]').selectOption('high');
+      await page.getByRole('button', { name: 'Uložit', exact: true }).click();
+      await page.getByText('Uloženo', { exact: true }).waitFor();
+      assert.equal(await page.locator('select[name=effort_ui]').inputValue(), 'high');
+      const state = await (await page.request.get(stack.origin + '/site/api/state')).json();
+      assert.ok(state.providers.filter((p) => p.provider !== 'gemini').every((p) => p.hasKey));
+      assert.equal(state.roles.ui.reasoningEffort, 'high');
+      assert.doesNotMatch(await readFile(join(stack.root, '.sitetiller/config.json'), 'utf8'), keyPattern);
+      // The page comes at once with the saved choices and a loading note; the providers' lists follow and fill the
+      // selects while the chosen values stay selected.
+      const html = await (await page.request.get(stack.origin + '/settings/aiapi')).text();
+      assert.match(html, /Načítám seznam modelů/);
+      const catalog = await (await page.request.get(stack.origin + '/settings/aiapi/catalog')).json();
+      assert.ok(catalog.roles.every((role) => role.options.length > 1));
+      await page.goto(stack.origin + '/settings/aiapi');
+      await page.getByText('Seznam modelů je načtený.', { exact: true }).waitFor();
+      assert.ok((await page.locator('select[name=role_primary] option').count()) > 1);
+      assert.equal(await page.locator('select[name=effort_ui]').inputValue(), 'high');
+      assert.equal(
+        await page.locator('select[name=role_primary]').inputValue(),
+        state.roles.primary.provider + '|' + state.roles.primary.model,
+      );
+    } finally {
+      await browser?.close();
+      await stack.close();
+    }
+  },
+);
+
+test(
+  'UX-01: the AI Studio models page keeps every field in place while the model lists arrive',
+  { timeout: 240000 },
+  async () => {
+    const stack = await isolatedStack({
+      networkMode: 'providers',
+      controllerImports: ['test/fixtures/provider-catalog-mock.mjs'],
+    });
+    let browser;
+    try {
+      browser = await launchBrowser();
+      const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+      page.setDefaultTimeout(30000);
+      await signIn(page, stack);
+      // The lists arrive only when the test lets them, so the place of the fields can be measured before and after.
+      let release;
+      const held = new Promise((resolve) => (release = resolve));
+      await page.route('**/settings/aiapi/catalog', async (route) => {
+        await held;
+        await route.continue();
+      });
+      await page.goto(stack.origin + '/settings/aiapi');
+      const places = () =>
+        page.evaluate(() =>
+          ['select[name=role_primary]', 'select[name=image_fast]', 'button:not([value])'].map(
+            (selector) => document.querySelector(selector).getBoundingClientRect().top,
+          ),
+        );
+      const before = await places();
+      // Without keys the status line says so in the place of the Save and load models button.
+      assert.match(await page.locator('#model-catalog').textContent(), /nejsou zadané žádné API klíče/);
+      const arrived = page.waitForResponse('**/settings/aiapi/catalog');
+      release();
+      await arrived;
+      await page.waitForTimeout(100);
+      assert.deepEqual(await places(), before);
+    } finally {
+      await browser?.close();
+      await stack.close();
+    }
+  },
+);

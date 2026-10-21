@@ -3,7 +3,7 @@ import { t } from './i18n.ts';
 import { s } from './studio.ts';
 import { dialogs } from './dialogs.ts';
 // Sharing the shown step, saved draft or version (documentation 4.10): the links to it, to copy or revoke, and a new one.
-const template = `<dialog id="share-dialog" ref="dialog"><form id="share-form" @submit.prevent="create"><h2>{{t('share_title')}}</h2><p>{{t('share_warning')}}</p><template v-if="d.shares.length"><h3>{{t('share_existing')}}</h3><table id="share-links" class="share-links"><thead><tr><th>{{t('share_link')}}</th><th>{{t('share_valid')}}</th><th></th></tr></thead><tbody><tr v-for="share in d.shares" :key="share.id" :data-share-id="share.id"><td><input class="share-url" readonly :value="share.url" :title="share.createdBy" @focus="$event.target.select()"></td><td class="share-days">{{left(share)}}</td><td class="share-row-actions"><button type="button" class="copy-share" @click="copy(share)">{{d.copied===share.id?t('share_copied'):t('share_copy')}}</button><button type="button" class="revoke-share" @click="revoke(share)">{{t('share_revoke')}}</button></td></tr></tbody></table></template><h3>{{t('share_new')}}</h3><label for="share-validity">{{t('share_validity')}}</label><select id="share-validity" v-model="d.validity"><option value="1d">{{t('share_1d')}}</option><option value="7d">{{t('share_7d')}}</option><option value="30d">{{t('share_30d')}}</option><option value="none">{{t('share_none')}}</option></select><p id="share-status" role="status">{{d.status}}</p><div class="confirm-actions"><button id="cancel-share" type="button" @click="dialog.close()">{{t('back')}}</button><button id="confirm-share" type="submit" class="primary" :disabled="d.saving">{{t('share_create')}}</button></div></form></dialog>`;
+const template = `<dialog id="share-dialog" ref="dialog"><form id="share-form" @submit.prevent="create"><h2>{{t('share_title')}}</h2><p>{{t('share_warning')}}</p><table id="share-links" class="share-links"><thead><tr><th>{{t('share_link')}}</th><th>{{t('share_valid')}}</th><th></th></tr></thead><tbody><tr v-if="d.publicUrl" class="share-note"><td colspan="3"><small class="share-public-help">{{t('share_live_note')}}</small></td></tr><tr v-if="d.publicUrl" data-share-id="public" ><td><input class="share-url" readonly :value="d.publicUrl" @focus="$event.target.select()"></td><td class="share-days">{{t('share_always')}}</td><td class="share-row-actions"><button type="button" class="copy-share" @click="copy({id:'public',url:d.publicUrl})">{{d.copied==='public'?t('share_copied'):t('share_copy')}}</button></td></tr><tr v-if="d.shares.length" class="share-note"><td colspan="3"><small class="share-public-help">{{t('share_fixed_note')}}</small></td></tr><tr v-for="share in d.shares" :key="share.id" :data-share-id="share.id"><td><input class="share-url" readonly :value="share.url" :title="share.createdBy" @focus="$event.target.select()"></td><td class="share-days">{{left(share)}}</td><td class="share-row-actions"><button type="button" class="copy-share" @click="copy(share)">{{d.copied===share.id?t('share_copied'):t('share_copy')}}</button><button type="button" class="revoke-share" @click="revoke(share)">{{t('share_revoke')}}</button></td></tr><tr class="share-note"><td colspan="3"><small class="share-public-help">{{t('share_new_note')}}</small></td></tr><tr class="share-new"><td colspan="2"><select id="share-validity" v-model="d.validity" :aria-label="t('share_validity')"><option value="1d">{{t('share_option_1d')}}</option><option value="7d">{{t('share_option_7d')}}</option><option value="30d">{{t('share_option_30d')}}</option><option value="none">{{t('share_option_none')}}</option></select></td><td class="share-row-actions"><button id="confirm-share" type="submit" class="primary" :disabled="d.saving">{{t('share_create')}}</button></td></tr></tbody></table><p id="share-status" role="status">{{d.status}}</p><div class="confirm-actions"><button id="cancel-share" type="button" @click="dialog.close()">{{t('close')}}</button></div></form></dialog>`;
 export default {
   template,
   setup() {
@@ -14,6 +14,7 @@ export default {
       saving: false,
       copied: '',
       source: {} as Record<string, string>,
+      publicUrl: '',
       shares: [] as any[],
     });
     async function call(path: string, body?: unknown) {
@@ -37,6 +38,11 @@ export default {
         status: '',
         copied: '',
         shares: [],
+        // The public draft preview always shows the latest step: offered only when that is what is shown.
+        publicUrl:
+          ['step', 'draft'].includes(selection.kind) && selection.commit === s.current?.head
+            ? s.current?.publicPreviewUrl || ''
+            : '',
         source:
           selection.kind === 'saved'
             ? { kind: 'draft', draftId: selection.id }

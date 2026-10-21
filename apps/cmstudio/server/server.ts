@@ -1,6 +1,7 @@
 import { fieldCatalog } from '../field-catalog.ts';
 import { previewGeneratedValues } from './generated-values.ts';
 import { writeDesignStructure } from './design-structure.ts';
+import { templateOffer, applyTemplates } from './structure-templates.ts';
 import { discardChanges } from './discard-changes.ts';
 import { designRestoreState, restoreDesignContent, recoverDesignRestore, restoreRevision } from './design-restore.ts';
 import { mediaUsage, deleteMedia } from './media-delete.ts';
@@ -21,8 +22,17 @@ const distRoot = resolve(process.env.CMS_DIST),
   root = resolve(process.env.SITETILLER_INSTANCE_ROOT),
   store = new Store(root),
   port = Number(process.env.PORT || 4510),
-  origin = `http://127.0.0.1:${port}`,
-  token = randomUUID();
+  origin = `http://127.0.0.1:${port}`;
+// The write token of the Editor page (Origin + X-CMS-Token on every change) is kept in the instance, so a page left
+// open across a restart or an update still saves its work instead of failing with Invalid request.
+const tokenFile = join(root, 'cms/editor-token');
+await mkdir(join(root, 'cms'), { recursive: true });
+try {
+  await writeFile(tokenFile, randomUUID() + '\n', { flag: 'wx', mode: 0o600 });
+} catch (e: any) {
+  if (e.code !== 'EEXIST') throw e;
+}
+const token = (await readFile(tokenFile, 'utf8')).trim();
 await recoverDesignRestore(root);
 for (const folder of ['schema', 'data', 'media']) await mkdir(join(root, folder), { recursive: true });
 try {
@@ -351,6 +361,32 @@ http
       }
       if (req.method === 'GET' && url.pathname === '/api/brand')
         return json(200, { name: (await editorSettings.snapshot()).settings.name });
+      // Structure templates (documentation 3.9): offered, created only on Create, in one structure write.
+      if (url.pathname === '/api/structure-templates') {
+        const language = (await sharedLook()).language,
+          current = await schemaSnapshot(root);
+        if (req.method === 'GET') return json(200, { templates: templateOffer(current.schema, language) });
+        if (req.method === 'POST') {
+          const chunks: Buffer[] = [];
+          for await (const chunk of req) chunks.push(chunk);
+          let body;
+          try {
+            body = JSON.parse(Buffer.concat(chunks).toString());
+          } catch {
+            throw new Problem(400, 'Neplatný JSON.');
+          }
+          if (body?.schemaRevision !== current.revision)
+            throw new Problem(409, 'Struktura se mezitím změnila. Obnovte ji.');
+          const { schema, changes } = applyTemplates(current.schema, body.ids, language);
+          const result = await writeDesignStructure(store, {
+            schema,
+            schemaRevision: current.revision,
+            expectedRevision: await restoreRevision(root),
+            changes,
+          });
+          return json(200, { ...result, publicationWarning: await afterSave() });
+        }
+      }
       if (req.method === 'PUT' && url.pathname === '/api/structure') {
         const chunks: Buffer[] = [];
         let size = 0;
@@ -414,6 +450,7 @@ http
           body.rows,
           body.revision,
           typeof body.schemaRevision === 'string' ? body.schemaRevision : '',
+          body.rename,
         );
         return json(200, { ...result, publicationWarning: await afterSave() });
       }

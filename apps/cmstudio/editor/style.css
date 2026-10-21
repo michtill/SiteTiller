@@ -2808,3 +2808,50 @@ select {
   border: 1px solid #d9a400;
   border-radius: 6px;
 }
+/* Structure templates (documentation 3.9): the empty Editor and the Structure editor's "From a template…". */
+.template-start {
+  max-width: 620px;
+  padding: 18px 0;
+}
+.template-start .template-picker {
+  padding: 28px 30px;
+  background: white;
+  border: 1px solid #e3e8df;
+  border-radius: 12px;
+}
+.template-picker h2 {
+  margin: 0;
+}
+.template-help {
+  margin: 10px 0 18px;
+  color: #6f7d68;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.template-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 0;
+  font-size: 14px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.template-option input {
+  flex: none;
+  width: auto;
+  margin: 3px 0 0;
+}
+.template-option span {
+  flex: 1;
+}
+.template-error {
+  color: #a03939;
+  font-size: 13px;
+}
+.template-actions {
+  margin-top: 18px;
+}
+.template-dialog {
+  width: min(560px, 100%);
+}

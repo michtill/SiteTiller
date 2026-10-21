@@ -252,13 +252,18 @@ a.card:hover {
   }
 }
 /* Back to the studio: a button under the site name in the side band. */
+/* Settings lead back to the two studios, one under the other (like the home page cards). */
+.shell-studios {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 22px;
+}
 .shell-back {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 8px;
-  width: fit-content;
-  margin-top: 22px;
-  padding: 8px 14px 8px 10px;
+  padding: 9px 14px;
   border: 1px solid color-mix(in srgb, var(--sidebar-strong) 28%, transparent);
   border-radius: 8px;
   background: color-mix(in srgb, var(--sidebar-strong) 10%, transparent);
@@ -477,6 +482,42 @@ label.token input {
 .confirm-all p {
   flex-basis: 100%;
   margin: 0;
+}
+/* API keys as a table like the shared links: provider, state, Remove key; the last row adds a key. */
+.keys-table {
+  width: 100%;
+  margin-top: 12px;
+  border-collapse: collapse;
+}
+.keys-table td {
+  padding: 8px 6px;
+  border-top: 1px solid #e3e8df;
+  vertical-align: middle;
+}
+.keys-table .key-provider {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.keys-table small {
+  margin-top: 0;
+}
+.keys-table .key-add label {
+  margin-top: 0;
+}
+.keys-table .key-add small {
+  margin-top: 6px;
+}
+.keys-table .key-actions {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+}
+.keys-table .key-actions button {
+  margin: 0;
+}
+.keys-table .key-add .key-actions {
+  vertical-align: bottom;
+  padding-bottom: 30px;
 }
 /* Under a key field one row: what is saved, and Remove key at its end. */
 .key-row {

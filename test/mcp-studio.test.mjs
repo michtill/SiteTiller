@@ -21,6 +21,26 @@ async function ok(name, args) {
   assert.equal(result.error, '', name);
   return result.value;
 }
+// Publishing: under load the Publisher may confirm later; the tool then says it is finishing internally and the
+// version appears once it is done (documentation 2.8). The test waits for it like the assistant would.
+async function publish(args) {
+  const before = (await signedIn('/site/api/state')).releases.length,
+    result = await ok('publish_step', args);
+  if (result.version) return result;
+  assert.equal(result.publishing, true);
+  for (let i = 0; i < 240; i++) {
+    const releases = (await signedIn('/site/api/state')).releases;
+    if (releases.length > before) {
+      const release = releases.at(-1);
+      return {
+        version: release.number + (release.minor !== undefined ? '.' + release.minor : ''),
+        commit: release.commit,
+      };
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  throw Error('The publication did not finish');
+}
 const step = async (path, text) =>
   (await ok('write_site_files', { summary: 'Stránka ' + text, files: [{ path, text: page(text) }] })).commit;
 before(async () => {
@@ -145,14 +165,14 @@ test(
   { timeout: 240000 },
   async () => {
     await step('site/verze.html', 'Verze od asistenta');
-    const first = await ok('publish_step', { description: 'MCP verze', include_unpublished_content: true });
+    const first = await publish({ description: 'MCP verze', include_unpublished_content: true });
     let state = await signedIn('/site/api/state');
     const release = state.releases.at(-1);
     assert.equal(release.description, 'MCP verze');
     assert.equal(String(release.number), first.version);
     assert.equal(state.requests[0].firstStep, 'published');
     await step('site/subverze.html', 'Subverze');
-    const sub = await ok('publish_step', { description: 'Oprava', create_subversion: true });
+    const sub = await publish({ description: 'Oprava', create_subversion: true });
     assert.equal(sub.version, release.number + '.1');
     state = await signedIn('/site/api/state');
     const before = state.requests.length;
@@ -255,7 +275,7 @@ test(
     const warned = await ok('write_site_files', untitled('site/bez-nazvu.html'));
     assert.equal(warned.checks, 'warnings');
     // Not key: the publication goes through, with the checks as warnings.
-    const published = await ok('publish_step', { description: 'S upozorněním' });
+    const published = await publish({ description: 'S upozorněním' });
     assert.ok(published.version);
     // A broken form definition is key: the publication stops.
     await ok('write_site_files', {
@@ -267,7 +287,7 @@ test(
     const unchecked = await ok('write_site_files', untitled('site/dalsi-bez-nazvu.html'));
     assert.equal(unchecked.checks, 'passed');
     await ok('write_site_files', { summary: 'Oprava formuláře', remove: ['site/forms.json'] });
-    assert.ok((await ok('publish_step', { description: 'Bez kontrol' })).version);
+    assert.ok((await publish({ description: 'Bez kontrol' })).version);
     // Content data are protected at every level.
     const content = await ok('read_content'),
       rows = content.collections.pages.rows;

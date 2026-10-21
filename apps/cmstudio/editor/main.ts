@@ -9,9 +9,11 @@ import DOMPurify from 'dompurify';
 import type { Schema, Row, Field } from '../server/store.ts';
 import './style.css';
 import '../../../packages/ui/confirm-dialog.css';
+import '../../../packages/ui/studio-switcher.css';
 import { rowLabel, groupFields, filterRows, rowSubtitle } from './schema-view.ts';
 import { reorder } from './reorder.ts';
 import Architect from './architect.ts';
+import TemplatePicker from './structure-templates.ts';
 type Snapshot = { rows: Row[]; revision: string };
 // Inside the Shell frame the studio stays alive; switching studios and leaving go through the frame.
 const framed = (() => {
@@ -55,8 +57,9 @@ const template = `
  <div class="cms-publication"><details class="publication-view-menu" v-if="publication.published&&(publication.unpublished||viewPublished)"><summary><span class="publication-view-label">{{viewPublished?publishedDate:t('unpublished_changes')}}<strong v-if="viewPublished" class="publication-readonly">{{t('read_only')}}</strong></span><svg class="publication-view-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary><div class="publication-view-options"><button @click="chooseContentView(false,$event)" :aria-current="!viewPublished?'true':undefined">{{t('unpublished_changes')}}</button><button @click="chooseContentView(true,$event)" :aria-current="viewPublished?'true':undefined">{{publishedDate}}</button></div></details><small v-if="publication.website?.foreign||publication.website?.error" class="website-notice" role="status">{{publication.website.foreign?t('someone_else_changed_the_website_on_the_hosting'):t('hosted_website_not_updated_next_publication_retries')}}</small><template v-if="publication.unpublished&&!viewPublished"><small v-if="!publication.published" class="publication-status">{{t('unpublished_changes')}}</small><button class="publication-pending" @click="publishCms" :disabled="publishing||busy">{{t('publish_changes')}}</button><button class="discard-changes-entry" @click="discardAllChanges" :disabled="!publication.published||publishing||busy">{{t('discard_changes')}}</button></template><template v-else><small v-if="!viewPublished" class="publication-status">{{publishedDate}}</small><label v-if="!viewPublished"><input type="checkbox" :checked="liveEditing" @change="toggleLive($event)"> {{t('live_editing')}}</label></template></div><div class="sidebar-spacer" aria-hidden="true"></div><button class="structure-entry" @click="openStructure"><svg class="sidebar-action-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2" width="6" height="5" rx="1"/><rect x="2" y="17" width="6" height="5" rx="1"/><rect x="16" y="17" width="6" height="5" rx="1"/><path d="M12 7v5M5 17v-5h14v5"/></svg><span>{{t('structure_editor')}}</span></button></div></aside>
  <main :inert="actionDialog?true:undefined" :class="{'files-main':mediaView}"><header v-if="mediaView" class="files-header"><h1>{{schema?.folders?.[mediaFolder]?.label||t('files')}}</h1><label v-if="!viewPublished" class="primary upload">{{t('upload_file')}}<input type="file" :accept="uploadAccept" @change="upload"></label></header>
  <p v-if="externalPending">{{t('content_was_changed_elsewhere_your_unsaved_edits')}} <button @click="reload">{{t('load_current_content')}}</button></p><div role="status" aria-live="polite" class="toast" :class="noticeKind" v-if="notice"><span>{{notice}}</span><button type="button" :aria-label="t('dismiss_message')" @click="notice=''">×</button></div><div class="loading" v-if="!schema&&!notice">{{t('loading_working_content')}}</div>
- <template v-if="schema&&!mediaView&&definition">
- <div class="workspace"><section class="collection-panel" :aria-label="t('selected_collection')"><div class="collection-panel-head"><input :aria-label="t('search_records')" :placeholder="t('search_collection')" v-model="search"><select v-for="group in groups" :key="group.key" v-model="filters[group.key]" :aria-label="(t('filter')+' ')+group.field.label"><option value="">{{schema.lists[group.field.list]?.label||group.field.label}}{{t('all')}}</option><option v-for="option in groupOptions(group.key)" :value="option.value">{{option.label}}</option></select><div class="collection-panel-actions"><button v-if="!viewPublished" class="primary" @click="newRow">{{t('new_record')}}</button><button @click="reload" :disabled="busy" :aria-label="t('refresh_collection')" :title="t('refresh_collection')">↻</button><span>{{filtered.length}}</span></div></div><section class="record-list" :aria-label="t('collection_records')"><div v-for="item in filtered" :key="item.row[definition.key]" class="record" :data-row-index="item.index" :class="{selected:selected===item.index,dragging:dragFrom===item.index,'drop-before':dragTarget===item.index&&dragSide==='before','drop-after':dragTarget===item.index&&dragSide==='after'}"><button type="button" class="drag-handle" :disabled="viewPublished||busy||dirty" :aria-label="(t('reorder')+' ')+label(collection,item.row)" :title="t('drag_to_reorder_keyboard_up_down_arrow')" @pointerdown="startDrag(item.index,$event)" @pointermove="dragMove" @pointerup="dropRow" @pointercancel="endDrag" @lostpointercapture="endDrag" @keydown.up.prevent="keyboardMove(item.index,-1)" @keydown.down.prevent="keyboardMove(item.index,1)"><svg viewBox="0 0 12 18" aria-hidden="true"><circle cx="3" cy="3" r="1.6"/><circle cx="9" cy="3" r="1.6"/><circle cx="3" cy="9" r="1.6"/><circle cx="9" cy="9" r="1.6"/><circle cx="3" cy="15" r="1.6"/><circle cx="9" cy="15" r="1.6"/></svg></button><button class="record-select" @click="selectRow(item.index)"><div><strong>{{label(collection,item.row)}}</strong><small>{{subtitle(item.row)}}</small></div><span class="chevron">›</span></button></div><div class="empty" v-if="!filtered.length">{{t('no_records')}}<br>{{t('change_your_search_or_add_a_new')}}</div></section></section>
+ <div v-if="schema&&!mediaView&&!viewPublished&&!Object.keys(schema.lists).length&&!Object.keys(schema.folders||{}).length" class="template-start"><TemplatePicker :token="token" :schema-revision="schemaRevision" @created="templatesCreated"/></div>
+<template v-if="schema&&!mediaView&&definition">
+ <div class="workspace"><section class="collection-panel" :aria-label="t('selected_collection')"><div class="collection-panel-head"><input :aria-label="t('search_records')" :placeholder="t('search_collection')" v-model="search"><select v-for="group in groups" :key="group.key" v-model="filters[group.key]" :aria-label="(t('filter')+' ')+group.field.label"><option value="">{{group.field.label}}{{t('all')}}</option><option v-for="option in groupOptions(group.key)" :value="option.value">{{option.label}}</option></select><div class="collection-panel-actions"><button v-if="!viewPublished" class="primary" @click="newRow">{{t('new_record')}}</button><button @click="reload" :disabled="busy" :aria-label="t('refresh_collection')" :title="t('refresh_collection')">↻</button><span>{{filtered.length}}</span></div></div><section class="record-list" :aria-label="t('collection_records')"><div v-for="item in filtered" :key="item.row[definition.key]" class="record" :data-row-index="item.index" :class="{selected:selected===item.index,dragging:dragFrom===item.index,'drop-before':dragTarget===item.index&&dragSide==='before','drop-after':dragTarget===item.index&&dragSide==='after'}"><button type="button" class="drag-handle" :disabled="viewPublished||busy||dirty" :aria-label="(t('reorder')+' ')+label(collection,item.row)" :title="t('drag_to_reorder_keyboard_up_down_arrow')" @pointerdown="startDrag(item.index,$event)" @pointermove="dragMove" @pointerup="dropRow" @pointercancel="endDrag" @lostpointercapture="endDrag" @keydown.up.prevent="keyboardMove(item.index,-1)" @keydown.down.prevent="keyboardMove(item.index,1)"><svg viewBox="0 0 12 18" aria-hidden="true"><circle cx="3" cy="3" r="1.6"/><circle cx="9" cy="3" r="1.6"/><circle cx="3" cy="9" r="1.6"/><circle cx="9" cy="9" r="1.6"/><circle cx="3" cy="15" r="1.6"/><circle cx="9" cy="15" r="1.6"/></svg></button><button class="record-select" @click="selectRow(item.index)"><div><strong>{{label(collection,item.row)}}</strong><small>{{subtitle(item.row)}}</small></div><span class="chevron">›</span></button></div><div class="empty" v-if="!filtered.length">{{t('no_records')}}<br>{{t('change_your_search_or_add_a_new')}}</div></section></section>
  <div class="form-pane"><section class="editor" v-if="draft"><div class="editor-heading"><div class="eyebrow">{{viewPublished?t('published_content_read_only'):selected===-1?t('new_record_2'):t('edit_record')}}</div><h2>{{label(collection,draft)}}</h2><span class="badge" :class="{dirty}">{{dirty?t('unsaved_changes'):t('saved')}}</span></div>
  <form @submit.prevent="save"><div class="fields"><div v-for="(field,key) in definition.columns" :key="collection+':'+key" class="field" :class="field.width||'full'"><span>{{field.label}} <b v-if="field.required">*</b></span>
  <template v-if="field.type==='generated'"><input :value="selected===-1?(draft[key]||generatedPreview[key]||''):draft[key]" @input="draft[key]=$event.target.value" :aria-label="field.label" :readonly="isReadonly(field)" :placeholder="t('assigned_on_save')"><small>{{selected===-1?t('suggested_value_assigned_only_when_saved'):t('automatically_assigned_value')}}</small></template><select v-else-if="field.type==='list'" :disabled="isReadonly(field)" v-model="draft[key]" :aria-label="field.label" :required="field.required"><option value="">{{t('select')}}</option><option v-for="row in lists[field.list]?.rows" :value="row[schema.lists[field.list].key]">{{label(field.list,row)}}</option></select>
@@ -239,8 +242,7 @@ createApp({
         if (state.architectMode && (await architectureEditor.value?.canLeave())) await returnToContent();
         return;
       }
-      if (!['/site/', '/site/?settings=ai', '/logout'].includes(target) && !target.startsWith('/settings?returnTo='))
-        return;
+      if (!['/site/', '/logout'].includes(target) && !target.startsWith('/settings?returnTo=')) return;
       // AI Studio stays alive next to this one: switching keeps unsaved forms, so no leave dialog.
       if (framed && target.startsWith('/site/')) {
         navigateStudio(target);
@@ -264,6 +266,14 @@ createApp({
       if (push) history.pushState({}, '', appPath('/'));
       await load();
       await selectRow(0, true);
+    }
+    // Templates created from the empty Editor (documentation 3.9): the new structure, its first collection open.
+    async function templatesCreated(result: any) {
+      await structureSaved(result);
+      const first = Object.keys(result.schema.lists)[0];
+      if (first) await switchCollection(first);
+      else if (Object.keys(result.schema.folders || {})[0]) showMedia(Object.keys(result.schema.folders)[0]);
+      notice(t('tpl_created'));
     }
     async function structureSaved(result: any) {
       state.schema = result.schema;
@@ -658,7 +668,7 @@ createApp({
         }
       }
     }
-    async function persist(rows: Row[], message = t('changes_were_saved')) {
+    async function persist(rows: Row[], message = t('changes_were_saved'), rename?: { from: string; to: string }) {
       if (state.viewPublished) return false;
       state.busy = true;
       try {
@@ -668,12 +678,15 @@ createApp({
             rows,
             revision: state.lists[state.collection].revision,
             schemaRevision: state.schemaRevision,
+            ...(rename ? { rename } : {}),
           }),
         });
         await refreshPublication();
+        const saved = state.lists[state.collection] as any;
+        // Links in the content follow a renamed key; a fixed link in the presentation does not (documentation 3.3).
         notice(
-          (state.lists[state.collection] as any).publicationWarning || message,
-          (state.lists[state.collection] as any).publicationWarning ? 'error' : 'success',
+          saved.publicationWarning || (saved.renamedLinks ? t('key_renamed_in_links') : message),
+          saved.publicationWarning || saved.renamedLinks ? 'error' : 'success',
         );
         return true;
       } catch (e: any) {
@@ -690,12 +703,18 @@ createApp({
       for (const [k, f] of Object.entries(definition.value!.columns))
         if (f.type === 'html') state.draft[k] = DOMPurify.sanitize(state.draft[k]);
       const rows = clone(state.lists[state.collection].rows);
-      let index = state.selected;
+      let index = state.selected,
+        rename: { from: string; to: string } | undefined;
       if (index === -1) {
         rows.push(clone(state.draft));
         index = rows.length - 1;
-      } else rows[index] = clone(state.draft);
-      if (await persist(rows)) {
+      } else {
+        const key = definition.value!.key,
+          from = rows[index][key];
+        if (from && from !== state.draft[key]) rename = { from, to: state.draft[key] };
+        rows[index] = clone(state.draft);
+      }
+      if (await persist(rows, undefined, rename)) {
         await selectRow(index, true);
         return true;
       }
@@ -922,6 +941,7 @@ createApp({
       openStructure,
       returnToContent,
       structureSaved,
+      templatesCreated,
       ...Object.fromEntries(
         Object.keys(linkState).map((k) => [
           k,
@@ -990,5 +1010,6 @@ createApp({
   .provide('translate', t)
   .component('StudioSwitcher', StudioSwitcher)
   .component('Architect', Architect)
+  .component('TemplatePicker', TemplatePicker)
   .component('MarkdownEditor', MarkdownEditor)
   .mount('#app');

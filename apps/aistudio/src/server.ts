@@ -1,3 +1,10 @@
+import { providerIds, detectProvider } from '../../../packages/providers/index.mjs';
+import {
+  recommendedUrl,
+  recommendedLimit,
+  parseRecommendation,
+  recommendedTeam,
+} from '../../../packages/models/index.mjs';
 import { Problem } from './problem.ts';
 import { appVersion } from './app-version.ts';
 import { readResponseLanguage } from './final-answer.ts';
@@ -68,7 +75,7 @@ import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import { resolve, join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes, timingSafeEqual, createHash } from 'node:crypto';
-import { defaults, seal, unseal, resolveSiteFile, type Slot } from './core.ts';
+import { defaults, seal, unseal, resolveSiteFile, type Slot, type Provider } from './core.ts';
 import { Project } from './project.ts';
 import { workflow } from './workflow.ts';
 import { closeStepsBefore, publicationClosing, unpublishedRequests } from './publication-history.ts';
@@ -152,15 +159,56 @@ if (!config.automaticReasoningPolicy) {
 // AI settings are the only key source; environment variables are deliberately ignored.
 function providerKeys() {
   return Object.fromEntries(
-    ['openai', 'anthropic'].map((provider) => [
+    providerIds.map((provider) => [
       provider,
       config.providers[provider]?.key ? unseal(config.providers[provider].key, key) : '',
     ]),
-  ) as { openai: string; anthropic: string };
+  ) as Record<Provider, string>;
+}
+// Recommended models (documentation 4.6): the file shipped with the release, and with the option on the current file
+// from GitHub at most every 6 hours; the newer valid one by date wins.
+const bundledRecommendation = parseRecommendation(
+  await readFile(new URL('../../../packages/models/recommended.json', import.meta.url), 'utf8'),
+);
+if (!bundledRecommendation) throw Error('The recommended models file shipped with the release is invalid');
+let recommendationSource: { date: string; source: 'bundled' | 'online' } = {
+  date: bundledRecommendation.date,
+  source: 'bundled',
+};
+async function currentRecommendation() {
+  let online: any = null;
+  try {
+    online = JSON.parse(await readFile(join(data, 'recommended-online.json'), 'utf8'));
+  } catch {}
+  if (
+    (process.env.SITETILLER_NETWORK_MODE || 'offline') === 'providers' &&
+    (!online || Date.now() - Date.parse(online.fetchedAt) > 6 * 3600000)
+  ) {
+    try {
+      const response = await fetch(recommendedUrl, { signal: AbortSignal.timeout(10000) });
+      const text = response.ok ? await response.text() : '';
+      online = { fetchedAt: new Date().toISOString(), text: text.length <= recommendedLimit ? text : '' };
+    } catch {
+      online = { fetchedAt: new Date().toISOString(), text: online?.text || '' };
+    }
+    await save('recommended-online.json', online);
+  }
+  const fetched = online ? parseRecommendation(online.text) : null;
+  const value = fetched && fetched.date > bundledRecommendation.date ? fetched : bundledRecommendation;
+  recommendationSource = { date: value.date, source: value === fetched ? 'online' : 'bundled' };
+  return value;
+}
+// With "Team automatically by the recommendation" on, the team follows the recommendation and the catalog.
+async function applyAutoTeam(models: any[]) {
+  if (!config.autoTeam) return;
+  const team = recommendedTeam(await currentRecommendation(), models, providerKeys(), config.roles);
+  if (JSON.stringify(team) === JSON.stringify(config.roles)) return;
+  config.roles = team;
+  await save('config.json', config);
 }
 function activeSlots(): Slot[] {
   const keys = providerKeys();
-  return (['openai', 'anthropic'] as const).map((provider) => ({
+  return (providerIds as Provider[]).map((provider) => ({
     provider,
     key: keys[provider],
     ...defaults[provider],
@@ -302,6 +350,8 @@ async function state() {
     imageModels: config.imageModels,
     providers: Object.entries(providerKeys()).map(([provider, key]) => ({ provider, hasKey: !!key })),
     roles: config.roles,
+    autoTeam: !!config.autoTeam,
+    recommendation: recommendationSource,
     requests: config.requests,
     job,
     events,
@@ -648,15 +698,16 @@ const server = http.createServer(async (req, res) => {
       if (path === '/api/models' && (req.method === 'GET' || req.method === 'POST')) {
         const input = req.method === 'POST' ? await body(req) : {};
         const keys = providerKeys();
-        for (const provider of ['openai', 'anthropic'] as const) {
+        for (const provider of providerIds as Provider[]) {
           const value = input.keys?.[provider];
           if (value !== undefined) {
             if (typeof value !== 'string' || value.length > 512) throw new Problem(422, 'Neplatný klíč.');
             if (value.trim()) keys[provider] = value.trim();
           }
         }
-        const list = await catalog(keys),
-          resolved = resolvePrimary(config.roles, list.models);
+        const list = await catalog(keys);
+        await applyAutoTeam(list.models);
+        const resolved = resolvePrimary(config.roles, list.models);
         return response(res, 200, {
           ...list,
           issues: unavailable(resolved, list, ['primary']),
@@ -666,12 +717,33 @@ const server = http.createServer(async (req, res) => {
           ],
         });
       }
+      // Add a key (Settings → AI Studio models, documentation 2.4): the provider told by the key's shape, the key checked
+      // with that provider's model list only; a key the provider refuses is not saved.
+      if (path === '/api/keys/add' && req.method === 'POST') {
+        if (busy) throw new Problem(409, 'Počkej na dokončení úlohy.');
+        const input = await body(req),
+          value = typeof input.key === 'string' ? input.key.trim() : '',
+          detected = detectProvider(value);
+        if (!detected.provider || detected.provider !== input.provider || value.length > 512)
+          throw new Problem(422, 'Neplatný klíč.');
+        const provider = detected.provider as Provider,
+          keys = Object.fromEntries(providerIds.map((p) => [p, p === provider ? value : ''])) as Record<
+            Provider,
+            string
+          >,
+          checked = (await catalog(keys)).providers.find((p) => p.provider === provider)!;
+        if (['authentication', 'access'].includes(checked.errorKind || ''))
+          throw new Problem(422, 'Klíč se neuložil: ' + (checked as any).detail + '.');
+        config.providers = { ...config.providers, [provider]: { key: seal(value, key) } };
+        await save('config.json', config);
+        return response(res, 200, { ok: true, provider, warning: checked.error || null });
+      }
       // Remove a key (Settings → AI Studio models, documentation 2.4): it is deleted even when the team then has no
       // usable model; the page says so.
       if (path === '/api/keys/remove' && req.method === 'POST') {
         if (busy) throw new Problem(409, 'Počkej na dokončení úlohy.');
         const input = await body(req);
-        if (!['openai', 'anthropic'].includes(input.provider)) throw new Problem(422, 'Neznámý poskytovatel.');
+        if (!providerIds.includes(input.provider)) throw new Problem(422, 'Neznámý poskytovatel.');
         config.providers = { ...config.providers, [input.provider]: { key: '' } };
         await save('config.json', config);
         return response(res, 200, { ok: true });
@@ -684,11 +756,13 @@ const server = http.createServer(async (req, res) => {
           input.imageModels = { precise: input.imageModels.precise, fast: input.imageModels.fast };
         if (!validTeam(input.roles) || !validImages(input.imageModels))
           throw new Problem(422, 'Vyber model pro každou capability.');
+        if (input.autoTeam !== undefined && typeof input.autoTeam !== 'boolean')
+          throw new Problem(422, 'Neplatná volba týmu.');
         const saved = providerKeys(),
           keys = { ...saved },
           providers = structuredClone(config.providers),
           entered: string[] = [];
-        for (const provider of ['openai', 'anthropic'] as const) {
+        for (const provider of providerIds as Provider[]) {
           const value = input.keys?.[provider];
           if (value !== undefined) {
             if (typeof value !== 'string' || value.length > 512) throw new Problem(422, 'Neplatný klíč.');
@@ -711,11 +785,16 @@ const server = http.createServer(async (req, res) => {
               providers[p.provider] = config.providers[p.provider];
             }
           if (Object.keys(rejectedKeys).length) list = await catalog(keys);
-          const resolved = resolvePrimary(input.roles, list.models),
+          const autoTeam = input.autoTeam ?? !!config.autoTeam,
+            team = autoTeam
+              ? recommendedTeam(await currentRecommendation(), list.models, keys, config.roles)
+              : input.roles;
+          const resolved = resolvePrimary(team, list.models),
             issues = unavailable(resolved, list, ['primary']);
           if (issues.length) return response(res, 400, { error: issues.join('\n') });
           config.providers = providers;
-          config.roles = input.roles;
+          config.roles = team;
+          config.autoTeam = autoTeam;
           config.imageModels = input.imageModels;
           await save('config.json', config);
           return response(res, 200, {
@@ -778,8 +857,9 @@ const server = http.createServer(async (req, res) => {
         if (attachments.reduce((n: number, i: any) => n + i.size, 0) > 12 * 1024 * 1024)
           throw new Problem(422, 'Přílohy dohromady musí mít nejvýše 12 MB.');
         const images = await imageInputs(attachments);
-        const list = await catalog(providerKeys()),
-          resolvedTeam = resolvePrimary(config.roles, list.models),
+        const list = await catalog(providerKeys());
+        await applyAutoTeam(list.models);
+        const resolvedTeam = resolvePrimary(config.roles, list.models),
           issues = unavailable(resolvedTeam, list, ['primary']);
         if (issues.length) throw new Error(issues.join('\n'));
         if (busy) throw new Problem(409, 'Jiná úloha právě běží.');

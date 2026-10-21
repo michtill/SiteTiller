@@ -1,6 +1,7 @@
-import { createApp, watch } from 'vue';
+import { createApp } from 'vue';
 import App from './app.ts';
 import '../../../packages/ui/confirm-dialog.css';
+import '../../../packages/ui/studio-switcher.css';
 import { t, locale } from './i18n.ts';
 import { s, start, notice, openSettingsDialog, onOpenSettings } from './studio.ts';
 import { usePreviewModule } from './studio.ts';
@@ -30,19 +31,4 @@ window.addEventListener('beforeunload', () => {
     sessionStorage.setItem('sitetiller-unsent-attachments', JSON.stringify(s.attachments));
   } catch {}
 });
-// /site/?settings=ai opens AI settings once the studio is ready; the address then drops the parameter.
-if (new URL(location.href).searchParams.get('settings') === 'ai') {
-  const stop = watch(
-    () => s.ready,
-    (ready) => {
-      if (!ready) return;
-      stop();
-      openSettingsDialog(true);
-      const url = new URL(location.href);
-      url.searchParams.delete('settings');
-      history.replaceState(null, '', url);
-    },
-    { immediate: true },
-  );
-}
 start().catch((e) => notice(e.message));

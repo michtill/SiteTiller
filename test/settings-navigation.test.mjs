@@ -23,7 +23,7 @@ test('SH-03: settings return only to normalized Editor or Studio internal paths'
     assert.equal(settingsReturnTo(value), '/content/');
 });
 test(
-  'SH-03: shared settings return GET, Back, successful Save and reject hostile POST; Studio shows safe loading UI before state',
+  'SH-03: shared settings return GET, the studio buttons, successful Save and reject hostile POST; Studio shows safe loading UI before state',
   { timeout: 240000 },
   async () => {
     const stack = await isolatedStack();
@@ -42,7 +42,11 @@ test(
           response = await fetch(stack.origin + '/settings?returnTo=' + encodeURIComponent(destination), { headers }),
           html = await response.text();
         assert.match(html, new RegExp('name="returnTo" value="' + safe.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '"'));
-        assert.ok(html.includes('class="shell-back" href="' + safe + '">') && html.includes('</svg>Zpět</a>'));
+        assert.ok(
+          html.includes('class="shell-back" href="' + safe + '">') &&
+            html.includes('>Editor obsahu</a>') &&
+            html.includes('>AI Studio</a>'),
+        );
         const revision = html.match(/name="revision" value="([^"]+)"/)[1];
         const saved = await fetch(stack.origin + '/settings', {
           method: 'POST',
@@ -57,7 +61,9 @@ test(
       const page = await browser.newPage();
       const errors = [];
       page.on('pageerror', (e) => errors.push(e.message));
-      await page.context().addCookies([{ name: sessionCookie(stack.origin), value: cookie.split('=')[1], url: stack.origin }]);
+      await page
+        .context()
+        .addCookies([{ name: sessionCookie(stack.origin), value: cookie.split('=')[1], url: stack.origin }]);
       let release;
       const held = new Promise((r) => (release = r));
       await page.route('**/site/api/state', async (route) => {
@@ -66,7 +72,9 @@ test(
       });
       await page.route('**/site/api/design-content-status', (route) => route.fulfill({ json: { unpublished: true } }));
       // Available models: AI Studio does not lead to the AI models screen by itself.
-      await page.route('**/site/api/models', (route) => route.fulfill({ json: { models: [], issues: [], optionalIssues: [] } }));
+      await page.route('**/site/api/models', (route) =>
+        route.fulfill({ json: { models: [], issues: [], optionalIssues: [] } }),
+      );
       await page.goto(stack.origin + '/site/?origin=test', { waitUntil: 'domcontentloaded' });
       let ai = await studioFrame(page, 'site');
       await ai.locator('#workspace').waitFor({ state: 'visible' });
@@ -99,12 +107,14 @@ test(
           }
           await page.waitForURL('**/settings?**');
           assert.equal(await page.locator('input[name=returnTo]').inputValue(), source);
-          // Save only saves (the screen stays open); Back returns where the user came from.
+          // Save only saves (the screen stays open); the button of the studio the user came from returns there.
           if (action === 'save') {
             await page.getByRole('button', { name: 'Uložit', exact: true }).click();
             await page.getByText('Uloženo', { exact: true }).waitFor();
           }
-          await page.getByRole('link', { name: 'Zpět', exact: true }).click();
+          await page
+            .getByRole('link', { name: source.startsWith('/site/') ? 'AI Studio' : 'Editor obsahu', exact: true })
+            .click();
           await page.waitForURL(stack.origin + source);
         }
       }

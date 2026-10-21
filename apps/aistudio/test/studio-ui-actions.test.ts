@@ -167,6 +167,8 @@ test('HI-01: real Studio UI menu, language priority, responsive tabs, version ac
     );
     await page.evaluate(() => (document.getElementById('workspace')!.style.gridTemplateColumns = '700px 1fr'));
     assert.equal(await page.locator('#delete-preview').isVisible(), true);
+    // Open shows the page on its own, with its corner "i": without the studio's frame parameter.
+    assert.doesNotMatch((await page.locator('#open-preview').getAttribute('href')) || '', /embedded=|refresh=/);
     assert.equal(await page.locator('#save-draft').textContent(), 'Uložit');
     await page.locator('#delete-preview').click();
     await page.locator('#confirm-restore').waitFor({ state: 'visible' });

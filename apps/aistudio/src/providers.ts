@@ -24,6 +24,10 @@ export async function callModel(
         },
       ]
     : prompt;
+  const geminiParts = [
+    { text: prompt },
+    ...images.map((i: any) => ({ inline_data: { mime_type: i.mime, data: i.data } })),
+  ];
   const claudeInput = images.length
     ? [
         ...images.map((i: any) => ({ type: 'image', source: { type: 'base64', media_type: i.mime, data: i.data } })),
@@ -50,39 +54,83 @@ export async function callModel(
             store: false,
           }),
         })
-      : await diagnosticFetch(fetcher, 'https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          signal: controller,
-          headers: { 'x-api-key': slot.key, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: slot.model,
-            ...(/^claude-(?:sonnet|opus)-5(?:-|$)/.test(slot.model) && slot.reasoningEffort
-              ? { thinking: { type: 'adaptive' }, output_config: { effort: slot.reasoningEffort } }
-              : {}),
-            max_tokens: slot.textOnlyFinal ? 4096 : 32000,
-            system: instruction + '\nReturn only valid JSON.',
-            messages: [{ role: 'user', content: claudeInput }],
-          }),
-        });
+      : slot.provider === 'gemini'
+        ? // Gemini (documentation 4.6): the key in its header, never in the address; JSON by responseMimeType.
+          await diagnosticFetch(
+            fetcher,
+            'https://generativelanguage.googleapis.com/v1beta/models/' +
+              encodeURIComponent(slot.model) +
+              ':generateContent',
+            {
+              method: 'POST',
+              signal: controller,
+              headers: { 'x-goog-api-key': slot.key, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                systemInstruction: { parts: [{ text: instruction + '\nReturn only valid JSON.' }] },
+                contents: [{ role: 'user', parts: geminiParts }],
+                generationConfig: {
+                  responseMimeType: 'application/json',
+                  maxOutputTokens: slot.textOnlyFinal ? 4096 : repair ? 32000 : 16000,
+                  // Gemini 3 and later take a thinking level; older models decide their thinking themselves.
+                  ...(/^gemini-(?:[3-9]|[1-9][0-9])/.test(slot.model)
+                    ? { thinkingConfig: { thinkingLevel: slot.reasoningEffort === 'high' ? 'high' : 'low' } }
+                    : {}),
+                },
+              }),
+            },
+          )
+        : await diagnosticFetch(fetcher, 'https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            signal: controller,
+            headers: { 'x-api-key': slot.key, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: slot.model,
+              ...(/^claude-(?:sonnet|opus)-5(?:-|$)/.test(slot.model) && slot.reasoningEffort
+                ? { thinking: { type: 'adaptive' }, output_config: { effort: slot.reasoningEffort } }
+                : {}),
+              max_tokens: slot.textOnlyFinal ? 4096 : 32000,
+              system: instruction + '\nReturn only valid JSON.',
+              messages: [{ role: 'user', content: claudeInput }],
+            }),
+          });
   // Never forward provider response bodies: they may echo confidential request data.
   if (!response.ok)
     throw new Error(`Poskytovatel ${slot.provider} vrátil HTTP ${response.status}. Ověř klíč, model a kredit.`);
   const body: any = await response.json();
+  const candidate = slot.provider === 'gemini' ? body.candidates?.[0] : null;
+  // A Gemini answer blocked by Google is an exact error without any of its content.
+  if (
+    slot.provider === 'gemini' &&
+    (body.promptFeedback?.blockReason ||
+      ['SAFETY', 'PROHIBITED_CONTENT', 'BLOCKLIST', 'SPII', 'RECITATION', 'OTHER'].includes(candidate?.finishReason))
+  )
+    throw new Error(
+      'Google Gemini odpověď zablokoval (' +
+        (body.promptFeedback?.blockReason || candidate.finishReason) +
+        '). Návrh zůstal zachován.',
+    );
   const text =
-    slot.provider === 'openai'
-      ? (body.output || [])
-          .flatMap((item: any) =>
-            (item.content || []).filter((c: any) => c.type === 'output_text').map((c: any) => c.text),
-          )
+    slot.provider === 'gemini'
+      ? (candidate?.content?.parts || [])
+          .filter((p: any) => typeof p.text === 'string' && !p.thought)
+          .map((p: any) => p.text)
           .join('\n')
-      : (body.content || [])
-          .filter((c: any) => c.type === 'text')
-          .map((c: any) => c.text)
-          .join('\n');
+      : slot.provider === 'openai'
+        ? (body.output || [])
+            .flatMap((item: any) =>
+              (item.content || []).filter((c: any) => c.type === 'output_text').map((c: any) => c.text),
+            )
+            .join('\n')
+        : (body.content || [])
+            .filter((c: any) => c.type === 'text')
+            .map((c: any) => c.text)
+            .join('\n');
   const truncated =
-    slot.provider === 'anthropic'
-      ? body.stop_reason === 'max_tokens'
-      : body.status === 'incomplete' && body.incomplete_details?.reason === 'max_output_tokens';
+    slot.provider === 'gemini'
+      ? candidate?.finishReason === 'MAX_TOKENS'
+      : slot.provider === 'anthropic'
+        ? body.stop_reason === 'max_tokens'
+        : body.status === 'incomplete' && body.incomplete_details?.reason === 'max_output_tokens';
   if (truncated) {
     if (repair || slot.textOnlyFinal)
       throw new Error(
@@ -105,7 +153,12 @@ export async function callModel(
       /<\s*(?:invoke|function_calls|tool_call)\b/i.test(start < 0 ? trimmed : trimmed.slice(0, start))
     )
       throw Error('XML/tool wrappers are not JSON actions');
-    return { value: parseJSON(text), usage: body.usage || {}, model: slot.model, provider: slot.provider };
+    return {
+      value: parseJSON(text),
+      usage: body.usage || body.usageMetadata || {},
+      model: slot.model,
+      provider: slot.provider,
+    };
   } catch {
     if (repair || slot.textOnlyFinal)
       throw new Error('Model nevrátil platný JSON ani po opakování. Náhled zůstal zachován.');

@@ -1,8 +1,15 @@
 import { roleNames, type Team, type Role } from './team.ts';
 import type { Provider } from './core.ts';
+import { providerIds, providerName } from '../../../packages/providers/index.mjs';
 export type ListedModel = { provider: Provider; id: string; name: string; usable: boolean };
-export function usableModel(provider: Provider, id: string) {
+export function usableModel(provider: Provider, id: string, methods?: string[]) {
   if (provider === 'anthropic') return id.startsWith('claude-');
+  if (provider === 'gemini')
+    return (
+      id.startsWith('gemini-') &&
+      (!methods || methods.includes('generateContent')) &&
+      !/(embedding|tts|live|image|aqa|audio|robotics|computer-use)/i.test(id)
+    );
   return (
     /^(gpt-|chatgpt-|o[1-9](?:-|$)|ft:(?:gpt-|o[1-9]))/.test(id) &&
     !/(audio|realtime|transcrib|tts|image|embedding|moderation|search|instruct)/i.test(id)
@@ -10,7 +17,7 @@ export function usableModel(provider: Provider, id: string) {
 }
 export async function catalog(keys: Record<Provider, string>, fetcher = fetch) {
   const results = await Promise.all(
-    (['openai', 'anthropic'] as const).map(async (provider) => {
+    (providerIds as Provider[]).map(async (provider) => {
       if (!keys[provider])
         return {
           provider,
@@ -27,13 +34,19 @@ export async function catalog(keys: Record<Provider, string>, fetcher = fetch) {
           const url =
             provider === 'openai'
               ? 'https://api.openai.com/v1/models'
-              : 'https://api.anthropic.com/v1/models?limit=1000' +
-                (after ? '&after_id=' + encodeURIComponent(after) : '');
+              : provider === 'gemini'
+                ? 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000' +
+                  (after ? '&pageToken=' + encodeURIComponent(after) : '')
+                : 'https://api.anthropic.com/v1/models?limit=1000' +
+                  (after ? '&after_id=' + encodeURIComponent(after) : '');
+          // The Gemini key goes in its header, never in the address.
           const response = await fetcher(url, {
             headers:
               provider === 'openai'
                 ? { Authorization: 'Bearer ' + keys[provider] }
-                : { 'x-api-key': keys[provider], 'anthropic-version': '2023-06-01' },
+                : provider === 'gemini'
+                  ? { 'x-goog-api-key': keys[provider] }
+                  : { 'x-api-key': keys[provider], 'anthropic-version': '2023-06-01' },
             signal: AbortSignal.timeout(20000),
           });
           if (!response.ok) {
@@ -47,6 +60,26 @@ export async function catalog(keys: Record<Provider, string>, fetcher = fetch) {
             throw Object.assign(Error('HTTP ' + response.status), { httpStatus: response.status, providerCode: code });
           }
           const body: any = await response.json();
+          if (provider === 'gemini') {
+            if (!Array.isArray(body.models)) throw new Error('invalid');
+            for (const item of body.models) {
+              const id = typeof item.name === 'string' ? item.name.replace(/^models\//, '') : '';
+              if (!id || seen.has(id)) continue;
+              seen.add(id);
+              const name = typeof item.displayName === 'string' ? item.displayName : id;
+              models.push({
+                provider,
+                id,
+                // Preview models say so (documentation 4.6).
+                name: /preview|exp/i.test(id) && !/preview/i.test(name) ? name + ' (preview)' : name,
+                usable: usableModel(provider, id, item.supportedGenerationMethods),
+              });
+            }
+            if (!body.nextPageToken) return { provider, models, error: null, errorKind: null, httpStatus: null };
+            if (after === body.nextPageToken) throw new Error('pagination');
+            after = body.nextPageToken;
+            continue;
+          }
           if (!Array.isArray(body.data)) throw new Error('invalid');
           for (const item of body.data)
             if (typeof item.id === 'string' && !seen.has(item.id)) {
@@ -94,7 +127,7 @@ export async function catalog(keys: Record<Provider, string>, fetcher = fetch) {
           provider,
           models: [] as ListedModel[],
           error:
-            (provider === 'openai' ? 'OpenAI' : 'Claude / Anthropic') +
+            (provider === 'anthropic' ? 'Claude / Anthropic' : providerName(provider)) +
             ': ' +
             detail +
             '. Nelze ověřit dostupnost modelů.',

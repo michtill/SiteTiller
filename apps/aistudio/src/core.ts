@@ -3,11 +3,12 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { raster, binaryAsset } from './images.ts';
 import { resolve, relative, extname } from 'node:path';
 
-export type Provider = 'openai' | 'anthropic';
+export type Provider = 'openai' | 'anthropic' | 'gemini';
 export type Slot = { provider: Provider; key: string; highModel: string; lowModel: string };
 export const defaults = {
   openai: { highModel: 'gpt-6.1-sol', lowModel: 'gpt-6-luna' },
   anthropic: { highModel: 'claude-sonnet-5-5', lowModel: 'claude-sonnet-5-5' },
+  gemini: { highModel: 'gemini-4-argon', lowModel: 'gemini-3.8-flash' },
 };
 export function roleSlot(slots: Slot[], role: 'design' | 'build' | 'review') {
   const configured = slots.filter((s) => s.key);

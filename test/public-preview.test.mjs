@@ -159,6 +159,37 @@ test('SH-10: the Shell serves the public preview on its own address (and its own
     // Switched off: gone at once, on both.
     assert.equal((await request('/')).status, 404);
     assert.equal((await request('/', { port: previewOnlyPort })).status, 404);
+    // Another preview address entered on the same screen applies at once, without a restart; the old one no longer
+    // shows the preview. The editor address and an invalid address are refused.
+    const address = async (previewOrigin, on = true) => {
+      const current = await (await fetch(origin + '/settings/addresses', { headers: { cookie } })).text();
+      return fetch(origin + '/settings/addresses', {
+        method: 'POST',
+        headers: { cookie, Origin: origin, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          action: 'preview',
+          revision: current.match(/name="revision" value="([^"]+)"/)[1],
+          previewOrigin,
+          ...(on ? { publicPreview: 'on' } : {}),
+          returnTo: '/',
+        }).toString(),
+        redirect: 'manual',
+      });
+    };
+    const otherHost = 'pre.localhost:' + shellPort;
+    assert.equal((await address('http://' + otherHost)).status, 200);
+    const moved = await request('/contact/', { headers: { host: otherHost } });
+    assert.equal(moved.status, 200);
+    assert.equal(moved.body, '<h1>Draft</h1>');
+    assert.notEqual((await request('/contact/')).status, 200);
+    assert.match(
+      await (await fetch(origin + '/settings/addresses', { headers: { cookie } })).text(),
+      new RegExp('value="http://' + otherHost + '"'),
+    );
+    assert.equal((await address(origin)).status, 422);
+    assert.equal((await address('ftp://pre.example.cz')).status, 422);
+    assert.equal((await address('http://pre.example.cz/path')).status, 422);
+    assert.equal((await request('/contact/', { headers: { host: otherHost } })).status, 200);
   } finally {
     if (shell) {
       const exited = new Promise((r) => shell.once('exit', r));

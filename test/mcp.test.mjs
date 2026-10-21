@@ -139,7 +139,10 @@ test('MC-01: MCP is off by default (404); switched on it reads and edits the dra
     'load_into_draft',
     'compare_live_website',
     'load_live_website',
+    'preview_link',
     'share_preview',
+    'list_shares',
+    'revoke_share',
   ]);
   await settings({ edit: 'on' });
   assert.equal((await rpc(token, 'initialize')).status, 404);
@@ -216,6 +219,21 @@ test(
     assert.equal(request.prompt, 'Přidat stránku ukázky');
     assert.equal(request.commit, state.head);
     assert.match(await (await fetch(state.previewUrl + 'ukazka.html')).text(), /Text od asistenta/);
+    // A private preview link: it asks for the sign-in first and then opens the preview, like Open in the AI Studio.
+    assert.equal(r.value.preview_url, stack.origin + '/preview/');
+    const link = (await call(token, 'preview_link', {})).value.url + 'ukazka.html',
+      anonymous = await fetch(link, { redirect: 'manual' });
+    assert.equal(anonymous.status, 303);
+    assert.equal(anonymous.headers.get('location'), '/login?next=' + encodeURIComponent('/preview/ukazka.html'));
+    const signedIn = await fetch(stack.origin + '/login?next=' + encodeURIComponent('/preview/ukazka.html'), {
+      method: 'POST',
+      headers: { Origin: stack.origin },
+      body: new URLSearchParams({ password: stack.password }),
+      redirect: 'manual',
+    });
+    assert.equal(signedIn.headers.get('location'), '/preview/ukazka.html');
+    assert.match(await (await fetch(link, { headers: { Cookie: cookie } })).text(), /Text od asistenta/);
+    assert.match((await call(token, 'preview_link', { commit: 'f'.repeat(40) })).error, /neexistuje/);
     assert.match((await call(token, 'read_site_file', { path: 'site/ukazka.html' })).value.text, /Ukázka asistenta/);
     // A page without a title does not pass the checks: no step, the exact reason.
     r = await call(token, 'write_site_files', {

@@ -113,6 +113,12 @@ test(
     assert.equal(state.head, b);
     const saved = await ok('save_draft', { name: 'Návrh A', commit: a, clear_previous: false });
     assert.equal(saved.name, 'Návrh A');
+    // A private link to the saved draft shows its state after signing in.
+    const draftLink = (await ok('preview_link', { saved_draft_id: saved.id })).url;
+    assert.ok(draftLink.startsWith(stack.origin + '/preview/drafts/' + saved.id + '/access/'));
+    assert.equal((await fetch(draftLink + 'a.html', { redirect: 'manual' })).status, 303);
+    assert.match(await (await fetch(draftLink + 'a.html', { headers: { Cookie: cookie } })).text(), /Krok A/);
+    assert.match((await call('preview_link', { saved_draft_id: 'draft-' + '0'.repeat(32) })).error, /neexistuje/);
     await ok('return_to_step', { commit: a });
     state = await signedIn('/site/api/state');
     assert.equal(state.head, a);

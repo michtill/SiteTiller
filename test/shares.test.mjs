@@ -266,7 +266,7 @@ test(
 );
 
 test(
-  'SD-05: an MCP assistant with Edit the draft shares a step under its name; without it, or with the public preview off, an exact error',
+  'SD-05: an MCP assistant with Edit the draft shares a step under its name, lists the links and revokes one; without it, or with the public preview off, an exact error',
   { timeout: 60000 },
   async () => {
     const form = (values) =>
@@ -279,7 +279,7 @@ test(
     const token = (await (await form({ action: 'token', tokenName: 'Claude Code' })).text()).match(
       /value="(st_[a-f0-9]{64})"/,
     )[1];
-    const call = async (args) => {
+    const call = async (args, name = 'share_preview') => {
       const r = await fetch(stack.origin + '/mcp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
@@ -287,7 +287,7 @@ test(
           jsonrpc: '2.0',
           id: 1,
           method: 'tools/call',
-          params: { name: 'share_preview', arguments: args },
+          params: { name, arguments: args },
         }),
       });
       return (await r.json()).result;
@@ -300,6 +300,15 @@ test(
       latest = state.requests.findLast((r) => r.commit === state.head),
       listed = await listFor(latest ? { kind: 'step', stepId: latest.id } : { kind: 'step', commit: state.head });
     assert.ok(listed.some((s) => s.createdBy === 'Asistent (Claude Code)' && s.url === result.structuredContent.url));
+    // The assistant sees every valid link and revokes any of them; the link stops working at once.
+    const url = result.structuredContent.url,
+      mine = (await call({}, 'list_shares')).structuredContent.shares.find((s) => s.url === url);
+    assert.equal(mine.created_by, 'Asistent (Claude Code)');
+    result = await call({ id: mine.id }, 'revoke_share');
+    assert.equal(result.isError, false);
+    assert.equal((await pub(path(url))).status, 404);
+    assert.ok(!(await call({}, 'list_shares')).structuredContent.shares.some((s) => s.id === mine.id));
+    assert.match((await call({ id: mine.id }, 'revoke_share')).content[0].text, /Sdílený odkaz neexistuje/);
     await publicPreview(false);
     result = await call({});
     assert.match(result.content[0].text, /Sdílení vyžaduje zapnutý veřejný náhled/);
@@ -307,5 +316,7 @@ test(
     await form({ action: 'save', enabled: 'on' });
     result = await call({});
     assert.match(result.content[0].text, /nemá oprávnění Upravovat návrh/);
+    assert.match((await call({ id: 'x' }, 'revoke_share')).content[0].text, /nemá oprávnění Upravovat návrh/);
+    assert.equal((await call({}, 'list_shares')).isError, false);
   },
 );

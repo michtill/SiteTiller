@@ -67,6 +67,29 @@ export function validateShared(value, { current = {} } = {}) {
       throw Object.assign(Error('Neplatná volba veřejného náhledu.'), { status: 422 });
     result.publicPreview = value.publicPreview;
   }
+  // The public preview address, set on Settings → Addresses and sharing (documentation 2.4); empty = the installation's.
+  if (Object.hasOwn(value, 'publicPreviewOrigin')) {
+    const text = String(value.publicPreviewOrigin ?? '').trim();
+    if (text) {
+      let url;
+      try {
+        url = new URL(text);
+      } catch {}
+      if (
+        !url ||
+        !['http:', 'https:'].includes(url.protocol) ||
+        url.username ||
+        url.password ||
+        (url.pathname !== '/' && url.pathname !== '') ||
+        url.search ||
+        url.hash
+      )
+        throw Object.assign(Error('Zadejte adresu náhledu jako https://subdomena.example.cz bez cesty.'), {
+          status: 422,
+        });
+      result.publicPreviewOrigin = url.origin;
+    } else result.publicPreviewOrigin = '';
+  }
   // The administrator's e-mail (documentation 2.8): required on the Sending e-mail screen, which saves it here.
   if (Object.hasOwn(value, 'adminEmail')) {
     result.adminEmail = String(value.adminEmail ?? '').trim();

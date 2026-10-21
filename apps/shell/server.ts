@@ -35,18 +35,30 @@ const port = Number(process.env.PORT || 4540),
   data = process.env.SITETILLER_INSTANCE_ROOT!,
   secret = process.env.SITETILLER_GATEWAY_TOKEN!;
 if (!data || !secret) throw Error('Configure gateway data and token');
-// The instance's public draft preview address (see public-preview.ts); none = no public preview.
-const publicPreviewOrigin = process.env.SITETILLER_PUBLIC_PREVIEW_ORIGIN
+// The public preview address (see public-preview.ts): the one set on Settings → Addresses and sharing, otherwise the
+// installation's; none = no public preview. It is read for every request, so a change applies at once.
+const installedPreviewOrigin = process.env.SITETILLER_PUBLIC_PREVIEW_ORIGIN
   ? new URL(process.env.SITETILLER_PUBLIC_PREVIEW_ORIGIN).origin
   : '';
-if (publicPreviewOrigin && new URL(publicPreviewOrigin).host === new URL(origin).host)
+if (installedPreviewOrigin && new URL(installedPreviewOrigin).host === new URL(origin).host)
   throw Error('The public preview needs its own address');
+let publicPreviewOrigin = installedPreviewOrigin;
+async function refreshPreviewOrigin() {
+  let chosen = '';
+  try {
+    chosen = (await readJson(join(data, 'settings/shared.json'))).publicPreviewOrigin || '';
+  } catch {}
+  publicPreviewOrigin = chosen && new URL(chosen).host !== new URL(origin).host ? chosen : installedPreviewOrigin;
+  return publicPreviewOrigin;
+}
 // Shared previews (documentation 4.10) live on the public preview address.
 const shareContext = {
   data,
   secret,
   aiPort: Number(process.env.AISTUDIO_PORT),
-  publicOrigin: publicPreviewOrigin,
+  get publicOrigin() {
+    return publicPreviewOrigin;
+  },
 };
 const sessions = new Map<string, number>(),
   attempts = new Map<string, { count: number; at: number }>();
@@ -147,6 +159,7 @@ async function endSessions() {
 http
   .createServer(async (req, res) => {
     try {
+      await refreshPreviewOrigin();
       if (publicPreviewOrigin && req.headers.host === new URL(publicPreviewOrigin).host)
         return await servePublicPreview(req, res, {
           origin: publicPreviewOrigin,
@@ -193,7 +206,7 @@ http
       }
       const next = url.searchParams.get('next');
       const destination =
-        next && new RegExp('^/(content|site)(/|$)').test(next) && !next.includes('\\') ? next : '/content/';
+        next && new RegExp('^/(content|site|preview)(/|$)').test(next) && !next.includes('\\') ? next : '/content/';
       const token = valid(req);
       const accessMatch = url.pathname.match(/^\/preview\/access\/([a-f0-9]{64})(\/.*)?$/),
         access = accessMatch ? previewAccess.get(hashed(accessMatch[1])) : null,
@@ -214,6 +227,17 @@ http
           version: appVersion,
           site: async () => look.site,
           share: (input) => createShare(shareContext, input),
+          shares: async () =>
+            (await allShares(shareContext)).map((s) => ({
+              id: s.id,
+              kind: s.kind,
+              label: s.label,
+              created_by: s.createdBy,
+              created_at: s.createdAt,
+              expires: s.expires,
+              url: shareUrl(shareContext, s),
+            })),
+          revokeShare: (id) => revokeShare(shareContext, id),
           checkPassword: async (password, ip) => {
             const a = attempts.get(ip) || { count: 0, at: Date.now() };
             if (Date.now() - a.at > 600000) {
@@ -606,7 +630,17 @@ http
           back = input.get('returnTo');
           try {
             if (input.get('action') === 'preview') {
-              if (!publicPreviewOrigin) throw Object.assign(Error(t('shares_unavailable')), { status: 409 });
+              const address = (input.get('previewOrigin') || '').trim();
+              if (address) {
+                let host = '';
+                try {
+                  host = new URL(address).host;
+                } catch {}
+                if (host === new URL(origin).host)
+                  throw Object.assign(Error(t('preview_address_not_editor')), { status: 422 });
+              }
+              if (input.has('publicPreview') && !address && !installedPreviewOrigin)
+                throw Object.assign(Error(t('preview_address_required')), { status: 422 });
               await withSharedSettingsSave(sharedPath, async () => {
                 const current = await readJson(sharedPath);
                 if (input.get('revision') !== revision(current))
@@ -614,7 +648,12 @@ http
                 await updateSettings(
                   sharedPath,
                   validateShared(
-                    { name: current.name, theme: current.theme, publicPreview: input.has('publicPreview') },
+                    {
+                      name: current.name,
+                      theme: current.theme,
+                      publicPreview: input.has('publicPreview'),
+                      publicPreviewOrigin: address,
+                    },
                     { current },
                   ),
                   revision(current),
@@ -638,13 +677,16 @@ http
           error = error || e.message;
         }
         const current = await readJson(sharedPath);
+        await refreshPreviewOrigin();
         return page(res.statusCode || 200, 'addresses', {
           error,
           notice,
           confirmAll,
           revision: revision(current),
           publicPreview: current.publicPreview === true,
-          previewAvailable: !!publicPreviewOrigin,
+          previewAvailable: true,
+          previewOrigin: current.publicPreviewOrigin || '',
+          installedPreviewOrigin,
           // They come from instance.json at start.
           addresses: [
             { label: 'address_editor', value: origin, help: 'address_editor_help' },
@@ -983,10 +1025,14 @@ http
   })
   .listen(port, process.env.EDIT_HOST || '127.0.0.1');
 // With its own port the public preview answers there on any host name; the studios are never reachable on it.
-if (publicPreviewOrigin && process.env.SITETILLER_PUBLIC_PREVIEW_PORT)
+if (process.env.SITETILLER_PUBLIC_PREVIEW_PORT)
   http
     .createServer(async (req, res) => {
       try {
+        if (!(await refreshPreviewOrigin())) {
+          res.writeHead(404);
+          return res.end();
+        }
         await servePublicPreview(req, res, {
           origin: publicPreviewOrigin,
           data,

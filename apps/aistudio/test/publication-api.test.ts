@@ -98,8 +98,8 @@ test('PU-07: only verified publishing numbers a release, retries reuse the inten
     assert.ok(Buffer.from(await privateImage.arrayBuffer()).equals(Buffer.from(pixels, 'base64')));
     const preview = await (await fetch(origin + '/preview/')).text(),
       embedded = await (await fetch(origin + '/preview/?embedded=1')).text();
-    assert.ok(preview.includes('SiteTiller · TESTOVACÍ'));
-    assert.ok(!embedded.includes('SiteTiller · TESTOVACÍ'));
+    assert.ok(preview.includes('data-sitetiller-preview-banner'));
+    assert.ok(!embedded.includes('data-sitetiller-preview-banner'));
     const state = async () =>
       (await (await fetch(origin + '/api/state', { headers: { 'x-sitetiller-gateway': cookie } })).json()) as any;
     const wait = async () => {

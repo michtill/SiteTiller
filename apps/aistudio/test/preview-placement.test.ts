@@ -312,8 +312,9 @@ test('HI-04: bottom Delete uses exact latest predecessor and exact named snapsho
     await page.locator('[data-draft-id="' + draftId + '"]').click();
     await ready(page, 'saved', draftId, saved);
     const publicBefore = JSON.stringify(state.releases);
-    page.once('dialog', (dialog) => dialog.accept());
+    // The app's confirm dialog (packages/ui), not the browser's.
     await page.locator('#delete-preview').click();
+    await page.locator('dialog.ui-confirm .ui-confirm-ok').click();
     await page.waitForFunction((id) => !document.querySelector('[data-draft-id="' + id + '"]'), draftId);
     const remove = calls.findLast((c) => c.path === 'drafts/remove');
     assert.deepEqual(remove.body, { id: draftId, commit: saved, expectedHead: head });

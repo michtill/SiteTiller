@@ -478,17 +478,95 @@ label.token input {
   flex-basis: 100%;
   margin: 0;
 }
+/* Under a key field one row: what is saved, and Remove key at its end. */
+.key-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+}
+.key-row .key-remove {
+  flex-basis: 100%;
+}
+/* Remove a key: a quiet text button under its field; it asks first. */
+button.link-button {
+  width: auto;
+  margin: 6px 0 0;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: #a03939;
+  background: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+button.link-button:hover {
+  background: none;
+  color: #7d2a2a;
+}
+.key-remove {
+  margin-top: 10px;
+}
+.key-remove button {
+  width: auto;
+  margin: 0;
+}
 /* MCP has a short purpose at the top. */
 p.intro {
   margin-top: 0;
 }
-/* AI Studio models: the catalog status keeps one reserved line, so nothing moves when the lists arrive (0.5). */
+/* AI Studio models: the catalog status takes the place and size of the Save and load models button, so nothing
+   moves when the lists arrive (0.5); a mark before the text says loading, loaded (green), not loaded (red) or no keys. */
 .model-status {
-  min-height: 1.5em;
-  line-height: 1.5em;
-  margin: 0 0 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--muted, inherit);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  min-height: 44px;
+  margin: 22px 0 0;
+  padding: 0 14px;
+  font-size: 14px;
+  color: #5d6c64;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid #dbe2db;
+  border-radius: 8px;
+}
+.model-status[hidden] {
+  display: none;
+}
+.model-status::before {
+  content: '';
+  flex: none;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #2f9e55;
+}
+.model-status[data-state='none']::before {
+  background: transparent;
+  border: 2px solid #b5c0b8;
+}
+.model-status[data-state='issues']::before,
+.model-status[data-state='failed']::before {
+  background: #d23c32;
+}
+.model-status[data-state='loading']::before {
+  width: 14px;
+  height: 14px;
+  background: transparent;
+  border: 2px solid #cfd8d1;
+  border-top-color: var(--primary);
+  animation: model-status-spin 0.8s linear infinite;
+}
+@keyframes model-status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .model-status[data-state='loading']::before {
+    animation: none;
+  }
 }

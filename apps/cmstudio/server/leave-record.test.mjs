@@ -102,3 +102,85 @@ test('ED-03: leave edited record offers save/discard/cancel and failed save reta
     await rm(root, { recursive: true, force: true });
   }
 });
+test('UX-02: deleting a record asks with the app confirm dialog; Cancel keeps it, Confirm deletes it', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'confirm-record-'));
+  let child, browser;
+  try {
+    for (const dir of ['schema', 'data', 'media']) await mkdir(join(root, dir));
+    await writeFile(
+      join(root, 'schema/structure.json'),
+      JSON.stringify({
+        version: 1,
+        folders: {},
+        lists: {
+          items: {
+            label: 'Items',
+            key: 'id',
+            columns: {
+              id: { label: 'ID', type: 'text', required: true },
+              title: { label: 'Title', type: 'text', required: true },
+            },
+          },
+        },
+      }),
+    );
+    await writeFile(join(root, 'data/items.json'), '[{"id":"one","title":"One"},{"id":"two","title":"Two"}]');
+    const listener = createServer();
+    await new Promise((r) => listener.listen(0, '127.0.0.1', r));
+    const port = listener.address().port;
+    await new Promise((r) => listener.close(r));
+    const origin = 'http://127.0.0.1:' + port;
+    child = spawn(process.execPath, ['server/server.ts'], {
+      cwd: new URL('..', import.meta.url),
+      env: {
+        ...process.env,
+        PORT: String(port),
+        SITETILLER_INSTANCE_ROOT: root,
+        CMS_DIST: fileURLToPath(new URL('../dist', import.meta.url)),
+        SITETILLER_PRODUCTION_ROOT: join(root, '.production'),
+        SITETILLER_SHARED_SETTINGS_FILE: join(root, 'settings/shared.json'),
+      },
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    for (let i = 0; i < 80; i++) {
+      try {
+        if ((await fetch(origin + '/api/bootstrap')).ok) break;
+      } catch {}
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    browser = await chromium.launch({
+      ...(process.env.SITETILLER_BROWSER_EXECUTABLE
+        ? { executablePath: process.env.SITETILLER_BROWSER_EXECUTABLE }
+        : {}),
+      headless: true,
+    });
+    const page = await browser.newPage();
+    page.setDefaultTimeout(5000);
+    // A browser dialog would fail the test: the app asks with its own.
+    page.on('dialog', () => assert.fail('browser dialog'));
+    await page.goto(origin);
+    await page.locator('.record-select').nth(1).click();
+    await page.waitForFunction(() => document.querySelector('input[aria-label="ID"]')?.value === 'two');
+    const dialog = page.getByRole('dialog', { name: 'Potvrzení akce' });
+    await page.getByRole('button', { name: 'Smazat položku', exact: true }).click();
+    await dialog.getByRole('heading', { name: 'Potvrdit akci' }).waitFor();
+    await dialog.getByRole('button', { name: 'Zrušit', exact: true }).click();
+    assert.equal(await dialog.count(), 0);
+    assert.equal(JSON.parse(await readFile(join(root, 'data/items.json'), 'utf8')).length, 2);
+    await page.getByRole('button', { name: 'Smazat položku', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Potvrdit', exact: true }).click();
+    await page.waitForFunction(() => document.querySelectorAll('.record-select').length === 1);
+    assert.deepEqual(
+      JSON.parse(await readFile(join(root, 'data/items.json'), 'utf8')).map((r) => r.id),
+      ['one'],
+    );
+  } finally {
+    await browser?.close();
+    if (child) {
+      child.kill();
+      await new Promise((r) => (child.exitCode !== null ? r() : child.once('exit', r)));
+    }
+    await rm(root, { recursive: true, force: true });
+  }
+});

@@ -1,5 +1,6 @@
 import { t, localize, uiLocale } from './i18n.ts';
 import StudioSwitcher from '../../../packages/ui/studio-switcher.ts';
+import { confirmDialog } from '../../../packages/ui/confirm-dialog.js';
 import { appBase, appPath, structurePath, commonSettingsPath } from './app-base.ts';
 import { createApp, reactive, computed, onMounted, nextTick, watch, ref, defineAsyncComponent } from 'vue';
 // The Formatted content editor is a separate chunk, loaded only when a form has such a field.
@@ -7,6 +8,7 @@ const MarkdownEditor = defineAsyncComponent(() => import('./markdown-editor.ts')
 import DOMPurify from 'dompurify';
 import type { Schema, Row, Field } from '../server/store.ts';
 import './style.css';
+import '../../../packages/ui/confirm-dialog.css';
 import { rowLabel, groupFields, filterRows, rowSubtitle } from './schema-view.ts';
 import { reorder } from './reorder.ts';
 import Architect from './architect.ts';
@@ -68,7 +70,7 @@ const template = `
  <div class="media-grid" v-if="mediaView"><article v-for="path in visibleMedia"><img v-if="isImage(path)" :src="mediaUrl(path)" :alt="path" loading="lazy"><div class="file-icon" v-else>▤</div><strong>{{path.split('/').at(-1)}}</strong><small>{{path}}</small><a :href="mediaUrl(path)" target="_blank" rel="noopener">{{t('open_file')}}</a><button @click="copyPath(path)">{{t('copy_path')}}</button><button v-if="!viewPublished" class="danger" :disabled="busy" @click="removeMedia(path)">{{t('delete_file')}}</button></article></div><div class="empty" v-if="mediaView&&!visibleMedia.length">{{t('this_folder_is_empty_add_the_first')}}</div>
  <div class="overlay" v-if="picker" @click.self="picker=''"><section class="picker" role="dialog" aria-modal="true" :aria-label="t('select_file')"><div class="picker-head"><h2>{{pickerFolder?.label||t('select_file')}}</h2><button @click="picker=''">{{t('close')}}</button></div><div v-if="pickerFolder?.type==='img'" class="media-grid"><button v-for="path in pickerFiles" @click="pick(path)"><img :src="mediaUrl(path)" :alt="path" loading="lazy"><small>{{path.split('/').at(-1)}}</small></button></div><div v-else class="file-picker-list"><button v-for="path in pickerFiles" @click="pick(path)"><span aria-hidden="true">▤</span><strong>{{path.split('/').at(-1)}}</strong><small>{{path}}</small></button></div><p v-if="!pickerFiles.length" class="empty">{{t('there_are_no_files_in_this_folder')}}</p></section></div>
  <div class="overlay" v-if="linkDialog" @click.self="cancelLink"><section class="confirm-card" role="dialog" aria-modal="true" :aria-label="t('edit_link')" @keydown.esc.prevent="cancelLink"><h2>{{linkDialog.editing?t('edit_link'):t('insert_link')}}</h2><form @submit.prevent="saveLink"><div class="link-fields"><label for="link-url">{{t('link_url')}}</label><input id="link-url" v-model="linkDialog.url" required placeholder="https://…"><label for="link-text">{{t('link_text')}}</label><input id="link-text" v-model="linkDialog.text" required><p class="link-error" v-if="linkError" role="alert">{{linkError}}</p></div><div class="form-footer"><button type="button" @click="cancelLink">{{t('cancel')}}</button><button type="submit" class="primary">{{t('apply_link')}}</button></div></form></section></div>
- <div class="overlay" v-if="leaveOpen"><section class="confirm-card" role="dialog" aria-modal="true" :aria-label="t('unsaved_changes')"><h2>{{t('save_changes_2')}}</h2><p>{{t('this_record_has_unsaved_changes_save_them')}}</p><div class="form-footer"><button @click="chooseLeave('cancel')">{{t('cancel_2')}}</button><button @click="chooseLeave('discard')">{{t('discard_edits')}}</button><button class="primary" @click="chooseLeave('save')">{{t('save_step')}}</button></div></section></div><div class="overlay" v-if="confirmation"><section class="confirm-card" role="dialog" aria-modal="true" :aria-label="t('confirm_action')"><h2>{{t('confirm_action_2')}}</h2><p>{{confirmation}}</p><div class="form-footer"><button @click="confirmChoose(false)">{{t('cancel')}}</button><button class="primary" @click="confirmChoose(true)">{{t('confirm')}}</button></div></section></div>
+ <div class="overlay" v-if="leaveOpen"><section class="confirm-card" role="dialog" aria-modal="true" :aria-label="t('unsaved_changes')"><h2>{{t('save_changes_2')}}</h2><p>{{t('this_record_has_unsaved_changes_save_them')}}</p><div class="form-footer"><button @click="chooseLeave('cancel')">{{t('cancel_2')}}</button><button @click="chooseLeave('discard')">{{t('discard_edits')}}</button><button class="primary" @click="chooseLeave('save')">{{t('save_step')}}</button></div></section></div>
  </main></div><div class="overlay" v-if="actionDialog"><section class="confirm-card" role="dialog" aria-modal="true" :aria-label="actionDialog.kind==='publish'?t('publish_changes'):t('discard_changes')"><h2>{{actionDialog.kind==='publish'?t('publish_changes'):t('discard_changes')}}</h2><p v-if="actionDialog.kind==='publish'">{{t('publish_all_saved_content_structure_and_file')}}</p><p v-else>{{t('discard_all_unpublished_changes_working_content_structure')}}</p><p v-if="actionDialog.kind==='discard'&&dirty">{{t('unsaved_edits_in_the_open_form_will')}}</p><p v-if="actionDialog.loading" role="status">{{t('loading_current_state')}}</p><p v-if="actionDialog.error" role="alert">{{actionDialog.error}}</p><p v-if="actionDialog.websiteForeign">{{t('publish_anyway_removes_their_changes_from_the_website')}}</p><div class="form-footer"><button @click="actionDialog=null" :disabled="actionDialog.working">{{t('cancel')}}</button><button v-if="actionDialog.websiteForeign" class="primary" @click="confirmPublicationAction(true)" :disabled="actionDialog.working">{{t('publish_anyway')}}</button><button v-else class="primary" @click="confirmPublicationAction()" :disabled="actionDialog.loading||actionDialog.working||!!actionDialog.error||!actionDialog.expectedRevision">{{actionDialog.working?t('working_2'):actionDialog.kind==='publish'?t('publish_changes'):t('discard_changes')}}</button></div></section></div>`;
 createApp({
   template,
@@ -202,17 +204,20 @@ createApp({
       selection?.removeAllRanges();
       selection?.addRange(range);
     }
-    let confirmationResolve: ((value: boolean) => void) | null = null;
-    function ask(message: string) {
+    // The app's one confirm dialog (packages/ui); state.confirmation says a question is open.
+    async function ask(message: string) {
       state.confirmation = localize(message);
-      return new Promise<boolean>((resolve) => {
-        confirmationResolve = resolve;
-      });
-    }
-    function confirmChoose(value: boolean) {
-      state.confirmation = '';
-      confirmationResolve?.(value);
-      confirmationResolve = null;
+      try {
+        return await confirmDialog({
+          title: t('confirm_action_2'),
+          message: state.confirmation,
+          confirm: t('confirm'),
+          cancel: t('cancel'),
+          label: t('confirm_action'),
+        });
+      } finally {
+        state.confirmation = '';
+      }
     }
     const architectureEditor = ref<{ save: () => Promise<boolean>; canLeave: () => Promise<boolean> } | null>(null);
     const definition = computed(() => state.schema?.lists[state.collection]);
@@ -917,7 +922,6 @@ createApp({
       openStructure,
       returnToContent,
       structureSaved,
-      confirmChoose,
       ...Object.fromEntries(
         Object.keys(linkState).map((k) => [
           k,

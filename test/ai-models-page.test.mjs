@@ -10,6 +10,8 @@ const props = {
   alerts: [],
   networkMode: 'providers',
   keys: { openai: true, anthropic: false },
+  rejectedKeys: {},
+  confirmKey: '',
   roles: ['primary', 'ui', 'verify', 'escalation'].map((id) => ({
     id,
     label: 'Role ' + id,

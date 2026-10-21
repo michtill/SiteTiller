@@ -1,5 +1,6 @@
 import { createApp, watch } from 'vue';
 import App from './app.ts';
+import '../../../packages/ui/confirm-dialog.css';
 import { t, locale } from './i18n.ts';
 import { s, start, notice, openSettingsDialog, onOpenSettings } from './studio.ts';
 import { usePreviewModule } from './studio.ts';

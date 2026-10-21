@@ -98,7 +98,10 @@ test(
         headers,
         body: JSON.stringify({ ...input, keys: { openai: 'bad-fixture-key' } }),
       });
-      assert.equal(invalid.status, 400);
+      // A key the provider refuses is not saved, even when no team model uses it; the saved one stays.
+      assert.equal(invalid.status, 200);
+      const invalidBody = await invalid.json();
+      assert.match(invalidBody.rejectedKeys.openai, /klíč nebyl přijat \(HTTP 401\)/);
       assert.equal(await readFile(join(stack.root, '.sitetiller/config.json'), 'utf8'), configText);
     } finally {
       await stack.close();
@@ -112,7 +115,7 @@ async function signIn(page, stack) {
   await page.locator('button:not(.show-password)').click();
   await page.waitForURL('**/content/');
 }
-test('AI-33: AI models save keys encrypted, never show them again and keep them when the fields stay empty', { timeout: 240000 }, async () => {
+test('AI-33: AI models save keys encrypted, never show them again, refuse a key the provider rejects, keep them when the fields stay empty and remove one after the app confirm dialog', { timeout: 240000 }, async () => {
   const stack = await isolatedStack({
     networkMode: 'providers',
     controllerImports: ['test/fixtures/provider-catalog-mock.mjs'],
@@ -140,10 +143,33 @@ test('AI-33: AI models save keys encrypted, never show them again and keep them 
     assert.doesNotMatch(text, /fixture-openai-key|fixture-anthropic-key/);
     const state = await (await page.request.get(stack.origin + '/site/api/state')).json();
     assert.ok(state.providers.every((p) => p.hasKey));
+    // A refused key is not saved: the reason is under its field and the status is red.
+    await page.locator('input[name=key_openai]').fill('bad-fixture-key');
+    await load.click();
+    await page.getByText('Klíč se neuložil: klíč nebyl přijat (HTTP 401).', { exact: true }).waitFor();
+    assert.equal(await page.locator('#model-catalog').getAttribute('data-state'), 'failed');
+    assert.equal(await page.locator('#key-note-anthropic').textContent(), 'Klíč je uložený šifrovaně.');
+    assert.equal(await readFile(join(stack.root, '.sitetiller/config.json'), 'utf8'), text);
     // Saving with empty key fields keeps the saved keys.
     await page.getByRole('button', { name: 'Uložit', exact: true }).click();
     await page.getByText('Uloženo', { exact: true }).waitFor();
     assert.ok((await (await page.request.get(stack.origin + '/site/api/state')).json()).providers.every((p) => p.hasKey));
+    // Remove key asks first, then removes the key even though the team uses it; without keys the status says so.
+    for (const provider of ['openai', 'anthropic']) {
+      // The app's confirm dialog: Cancel keeps the key, Confirm removes it.
+      await page.locator('button[value=remove_' + provider + ']').click();
+      const dialog = page.getByRole('dialog', { name: 'Potvrdit akci' });
+      await dialog.getByText(/Opravdu odebrat klíč/).waitFor();
+      await dialog.getByRole('button', { name: 'Zrušit' }).click();
+      assert.equal(await dialog.count(), 0);
+      assert.ok((await (await page.request.get(stack.origin + '/site/api/state')).json()).providers.find((p) => p.provider === provider).hasKey);
+      await page.locator('button[value=remove_' + provider + ']').click();
+      await dialog.getByRole('button', { name: 'Potvrdit' }).click();
+      await page.getByText('Klíč je odebraný.', { exact: true }).waitFor();
+      assert.equal(await page.locator('#key-note-' + provider).textContent(), 'Klíč zatím není uložený.');
+    }
+    assert.ok((await (await page.request.get(stack.origin + '/site/api/state')).json()).providers.every((p) => !p.hasKey));
+    assert.match(await page.locator('#model-catalog').textContent(), /nejsou zadané žádné API klíče/);
   } finally {
     await browser?.close();
     await stack.close();
@@ -217,9 +243,12 @@ test('UX-01: the AI Studio models page keeps every field in place while the mode
         ),
       );
     const before = await places();
-    assert.match(await page.locator('#model-catalog').textContent(), /Načítám seznam modelů/);
+    // Without keys the status line says so in the place of the Save and load models button.
+    assert.match(await page.locator('#model-catalog').textContent(), /nejsou zadané žádné API klíče/);
+    const arrived = page.waitForResponse('**/settings/aiapi/catalog');
     release();
-    await page.locator('#model-catalog').filter({ hasNotText: 'Načítám' }).waitFor();
+    await arrived;
+    await page.waitForTimeout(100);
     assert.deepEqual(await places(), before);
   } finally {
     await browser?.close();

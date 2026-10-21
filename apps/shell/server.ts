@@ -851,8 +851,12 @@ http
             };
           });
           const imageOptions = (catalog?.models || [])
-            .filter((m: any) => m.provider === 'openai' && /^gpt-image-/.test(m.id))
-            .map((m: any) => ({ value: m.id, label: m.name }));
+            .filter(
+              (m: any) =>
+                (m.provider === 'openai' && /^gpt-image-/.test(m.id)) ||
+                (m.provider === 'gemini' && /^gemini-[a-zA-Z0-9.-]*image/.test(m.id)),
+            )
+            .map((m: any) => ({ value: m.id, label: provider(m.provider) + ' · ' + m.name }));
           const images = [
             ['precise', t('images_precise_editing')],
             ['fast', t('images_fast_generation')],
@@ -950,7 +954,9 @@ http
               await ai('settings', {
                 ...entered,
                 autoTeam,
-                ...(autoTeam ? { roles: (await ai('state')).roles } : {}),
+                ...(autoTeam
+                  ? await ai('state').then((state: any) => ({ roles: state.roles, imageModels: state.imageModels }))
+                  : {}),
               });
               entered = null;
               notice = t('saved');

@@ -46,7 +46,7 @@
  "attached_image": "Přiložený obrázek",
  "auto_team": "Tým automaticky podle doporučení",
  "auto_team_from": "Podle doporučení z {date} ({source}).",
- "auto_team_help": "Každou roli obsadí doporučený model, ke kterému máte klíč. Když model zmizí, vezme se další.",
+ "auto_team_help": "Každou roli a oba obrazové nástroje obsadí doporučený model, ke kterému máte klíč. Když model zmizí, vezme se další.",
  "auto_team_source_bundled": "přibalené k verzi aplikace",
  "auto_team_source_online": "staženo z GitHubu",
  "automated_checks_passed": "Automatické kontroly prošly.",

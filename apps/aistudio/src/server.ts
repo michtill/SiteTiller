@@ -1,9 +1,12 @@
 import { providerIds, detectProvider } from '../../../packages/providers/index.mjs';
 import {
   recommendedUrl,
+  recommendedImagesUrl,
   recommendedLimit,
   parseRecommendation,
+  parseImageRecommendation,
   recommendedTeam,
+  recommendedImageTools,
 } from '../../../packages/models/index.mjs';
 import { Problem } from './problem.ts';
 import { appVersion } from './app-version.ts';
@@ -167,43 +170,64 @@ function providerKeys() {
 }
 // Recommended models (documentation 4.6): the file shipped with the release, and with the option on the current file
 // from GitHub at most every 6 hours; the newer valid one by date wins.
-const bundledRecommendation = parseRecommendation(
-  await readFile(new URL('../../../packages/models/recommended.json', import.meta.url), 'utf8'),
-);
-if (!bundledRecommendation) throw Error('The recommended models file shipped with the release is invalid');
+const recommendationKinds = {
+  text: {
+    url: recommendedUrl,
+    file: 'recommended-online.json',
+    parse: parseRecommendation,
+    bundled: parseRecommendation(
+      await readFile(new URL('../../../packages/models/recommended.json', import.meta.url), 'utf8'),
+    ),
+  },
+  images: {
+    url: recommendedImagesUrl,
+    file: 'recommended-images-online.json',
+    parse: parseImageRecommendation,
+    bundled: parseImageRecommendation(
+      await readFile(new URL('../../../packages/models/recommended-images.json', import.meta.url), 'utf8'),
+    ),
+  },
+};
+if (!recommendationKinds.text.bundled || !recommendationKinds.images.bundled)
+  throw Error('A recommended models file shipped with the release is invalid');
 let recommendationSource: { date: string; source: 'bundled' | 'online' } = {
-  date: bundledRecommendation.date,
+  date: recommendationKinds.text.bundled.date,
   source: 'bundled',
 };
-async function currentRecommendation() {
+async function currentRecommendation(kind: 'text' | 'images' = 'text') {
+  const { url, file, parse, bundled } = recommendationKinds[kind];
   let online: any = null;
   try {
-    online = JSON.parse(await readFile(join(data, 'recommended-online.json'), 'utf8'));
+    online = JSON.parse(await readFile(join(data, file), 'utf8'));
   } catch {}
   if (
     (process.env.SITETILLER_NETWORK_MODE || 'offline') === 'providers' &&
     (!online || Date.now() - Date.parse(online.fetchedAt) > 6 * 3600000)
   ) {
     try {
-      const response = await fetch(recommendedUrl, { signal: AbortSignal.timeout(10000) });
+      const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
       const text = response.ok ? await response.text() : '';
       online = { fetchedAt: new Date().toISOString(), text: text.length <= recommendedLimit ? text : '' };
     } catch {
       online = { fetchedAt: new Date().toISOString(), text: online?.text || '' };
     }
-    await save('recommended-online.json', online);
+    await save(file, online);
   }
-  const fetched = online ? parseRecommendation(online.text) : null;
-  const value = fetched && fetched.date > bundledRecommendation.date ? fetched : bundledRecommendation;
-  recommendationSource = { date: value.date, source: value === fetched ? 'online' : 'bundled' };
+  const fetched = online ? parse(online.text) : null;
+  const value = fetched && fetched.date > bundled.date ? fetched : bundled;
+  if (kind === 'text') recommendationSource = { date: value.date, source: value === fetched ? 'online' : 'bundled' };
   return value;
 }
-// With "Team automatically by the recommendation" on, the team follows the recommendation and the catalog.
+// With "Team automatically by the recommendation" on, the team and the image tools follow the recommendations and the
+// catalog.
 async function applyAutoTeam(models: any[]) {
   if (!config.autoTeam) return;
-  const team = recommendedTeam(await currentRecommendation(), models, providerKeys(), config.roles);
-  if (JSON.stringify(team) === JSON.stringify(config.roles)) return;
+  const keys = providerKeys(),
+    team = recommendedTeam(await currentRecommendation(), models, keys, config.roles),
+    images = recommendedImageTools(await currentRecommendation('images'), models, keys, config.imageModels);
+  if (JSON.stringify([team, images]) === JSON.stringify([config.roles, config.imageModels])) return;
   config.roles = team;
+  config.imageModels = images;
   await save('config.json', config);
 }
 function activeSlots(): Slot[] {
@@ -789,6 +813,13 @@ const server = http.createServer(async (req, res) => {
             team = autoTeam
               ? recommendedTeam(await currentRecommendation(), list.models, keys, config.roles)
               : input.roles;
+          if (autoTeam)
+            input.imageModels = recommendedImageTools(
+              await currentRecommendation('images'),
+              list.models,
+              keys,
+              config.imageModels,
+            );
           const resolved = resolvePrimary(team, list.models),
             issues = unavailable(resolved, list, ['primary']);
           if (issues.length) return response(res, 400, { error: issues.join('\n') });

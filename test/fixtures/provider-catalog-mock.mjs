@@ -1,6 +1,6 @@
 import { initialTeam, initialImages } from '../../apps/aistudio/src/team.ts';
 import { allowedNetworkURL } from '../../scripts/network-policy.mjs';
-import { recommendedUrl } from '../../packages/models/index.mjs';
+import { recommendedUrl, recommendedImagesUrl } from '../../packages/models/index.mjs';
 // Invented provider keys in the real shapes (documentation 2.4: the provider is told by the shape).
 export const fixtureKeys = {
   openai: 'sk-proj-fixtureOpenaiKey0000000000',
@@ -37,6 +37,8 @@ export const onlineRecommendation = {
 };
 globalThis.fetch = (input, options) => {
   const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
+  // The image recommendation is not on this GitHub: the shipped file applies. Tests never reach the real GitHub.
+  if (url.href === recommendedImagesUrl) return Promise.resolve(new Response('Not Found', { status: 404 }));
   if (url.href === recommendedUrl) {
     if (!allowedNetworkURL(process.env.SITETILLER_NETWORK_MODE, url)) return original(input, options);
     return Promise.resolve(new Response(JSON.stringify(onlineRecommendation)));

@@ -55,3 +55,48 @@ export function recommendedTeam(recommendation, models, keys, current) {
   }
   return team;
 }
+// The image tools have their own file (documentation 4.6): a change of a recommendation's shape is a new file, so
+// instances that read the older file keep working.
+export const recommendedImagesUrl =
+  'https://raw.githubusercontent.com/michtill/SiteTiller/main/packages/models/recommended-images.json';
+const imagePatterns = { openai: /^gpt-image-[a-zA-Z0-9.-]+$/, gemini: /^gemini-[a-zA-Z0-9.-]*image[a-zA-Z0-9.-]*$/ };
+export function validImageRecommendation(value) {
+  if (!exactKeys(value, ['version', 'date', 'images']) || value.version !== 1) return false;
+  if (typeof value.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value.date) || isNaN(Date.parse(value.date)))
+    return false;
+  if (!exactKeys(value.images, ['precise', 'fast'])) return false;
+  return ['precise', 'fast'].every(
+    (tool) =>
+      Array.isArray(value.images[tool]) &&
+      value.images[tool].length >= 1 &&
+      value.images[tool].length <= 20 &&
+      value.images[tool].every(
+        (item) =>
+          exactKeys(item, ['provider', 'model']) &&
+          Object.hasOwn(imagePatterns, item.provider) &&
+          typeof item.model === 'string' &&
+          imagePatterns[item.provider].test(item.model),
+      ),
+  );
+}
+export function parseImageRecommendation(text) {
+  if (typeof text !== 'string' || text.length > recommendedLimit) return null;
+  try {
+    const value = JSON.parse(text);
+    return validImageRecommendation(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+// Each image tool: the first recommended model the user has a key for and the provider's catalog lists; otherwise
+// the tool stays as it was.
+export function recommendedImageTools(recommendation, models, keys, current) {
+  const tools = { ...current };
+  for (const tool of ['precise', 'fast']) {
+    const pick = recommendation.images[tool].find(
+      (item) => keys[item.provider] && models.some((m) => m.provider === item.provider && m.id === item.model),
+    );
+    if (pick) tools[tool] = pick.model;
+  }
+  return tools;
+}

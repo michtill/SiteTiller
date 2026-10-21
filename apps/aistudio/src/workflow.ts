@@ -27,7 +27,7 @@ import { safeSitePath, type Slot, type Provider } from './core.ts';
 import { clientFor, initialTeam, initialImages, type Team, type Role, type ImageChoices } from './team.ts';
 import { callModel } from './providers.ts';
 import { Project } from './project.ts';
-import { editImage, generateImage, websiteImages, capabilityImage } from './image-editor.ts';
+import { editImage, generateImage, websiteImages, capabilityImage, imageProvider } from './image-editor.ts';
 import { raster, binaryAsset } from './images.ts';
 import { projectManifest, initialContext, selectContext } from './manifest.ts';
 import { staticChecks, browserChecks } from './checks.ts';
@@ -226,15 +226,16 @@ export async function workflow(
   for (const image of images.filter((i) => i.use === 'website'))
     files['site/assets/' + image.id] = '[Binary image asset]';
   const imageChoices = options.imageModels || initialImages();
-  const imageAvailable = (capability: keyof ImageChoices) =>
-    !!keys.openai &&
-    options.model !== null &&
-    (options.model
-      ? !options.availableModels ||
-        options.availableModels.some((m) => m.provider === 'openai' && m.id === options.model)
-      : imageChoices[capability] !== 'none' &&
-        (!options.availableModels ||
-          options.availableModels.some((m) => m.provider === 'openai' && m.id === imageChoices[capability])));
+  const imageAvailable = (capability: keyof ImageChoices) => {
+    const model = options.model || imageChoices[capability],
+      provider = model ? imageProvider(model) || 'openai' : null;
+    return (
+      options.model !== null &&
+      !!provider &&
+      !!keys[provider] &&
+      (!options.availableModels || options.availableModels.some((m) => m.provider === provider && m.id === model))
+    );
+  };
   for (let round = 0; round < 12; round++) {
     for (const image of images.filter((i) => i.automaticUse)) files['site/assets/' + image.id] = '[Binary image asset]';
     assertAvailable(team, role, options);
@@ -759,7 +760,10 @@ export async function workflow(
           options.model === null
             ? null
             : options.model || capabilityImage(capability, imageChoices, options.availableModels);
-        if (!keys.openai || !model) throw Error('Obrázky potřebují dostupný obrazový model a OpenAI API klíč.');
+        // A model that is not Gemini's goes to OpenAI, as before.
+        const provider = model ? imageProvider(model) || 'openai' : null;
+        if (!model || !provider || !keys[provider])
+          throw Error('Obrázky potřebují dostupný obrazový model a klíč jeho poskytovatele.');
         const format =
           image.format ||
           (image.target?.endsWith('.png') ? 'png' : /\.jpe?g$/.test(image.target || '') ? 'jpeg' : 'webp');
@@ -777,7 +781,7 @@ export async function workflow(
           if (format === 'jpeg' ? !['jpg', 'jpeg'].includes(ext) : format !== ext)
             throw Error('Název obrázku neodpovídá formátu.');
         }
-        return { ...image, model, format };
+        return { ...image, model, format, provider };
       });
       if (new Set(tasks.filter((t) => t.target).map((t) => t.target)).size !== tasks.filter((t) => t.target).length)
         throw Error('Cílové cesty obrázků se opakují.');
@@ -787,7 +791,7 @@ export async function workflow(
           status: 'running',
           message: 'Připravuji obrázek.',
           model: image.model,
-          provider: 'openai',
+          provider: image.provider,
         });
         const uploaded = images.find((i) => i.use === 'website' && 'site/assets/' + i.id === image.source);
         const source = image.source
@@ -797,15 +801,21 @@ export async function workflow(
             }
           : null;
         const edited = source
-          ? await (options.call || editImage)(keys.openai, image.model, source, image.prompt, undefined, {
+          ? await (options.call || editImage)(keys[image.provider], image.model, source, image.prompt, undefined, {
               format: image.format,
               background: image.background,
             })
-          : await (options.generate || generateImage)(keys.openai, image.model, image.prompt, undefined, {
+          : await (options.generate || generateImage)(keys[image.provider], image.model, image.prompt, undefined, {
               format: image.format,
               background: image.background,
             });
-        const path = image.target || 'site/assets/' + edited.id;
+        // A Gemini image keeps its own format: a requested target name follows the real format (documentation 4.7).
+        const real = edited.id.split('.').at(-1),
+          path = image.target
+            ? /\.(jpe?g)$/.test(image.target) && real === 'jpg'
+              ? image.target
+              : image.target.replace(/\.[a-z]+$/, '.' + real)
+            : 'site/assets/' + edited.id;
         if (files[path]) throw Error('Obrázek nevytvořil samostatnou novou verzi.');
         await rememberImage(imageCacheDirectory, edited, { path, prompt: image.prompt });
         generated.push({ ...edited, id: path.slice('site/assets/'.length), path, use: 'website' });
@@ -816,6 +826,8 @@ export async function workflow(
           format: edited.mime,
           prompt: image.prompt,
           background: image.background || 'auto',
+          // A Gemini image that could not be converted keeps its format; the agent is told (documentation 4.7).
+          ...(edited.note ? { note: edited.note } : {}),
         });
         if (source && !vision.some((i) => i.path === image.source)) vision.push({ ...source, path: image.source });
         vision.push({ ...edited, path });
@@ -825,7 +837,7 @@ export async function workflow(
           status: 'completed',
           message: 'Obrázek je připraven.',
           model: image.model,
-          provider: 'openai',
+          provider: image.provider,
           usage: edited.usage,
         });
       }

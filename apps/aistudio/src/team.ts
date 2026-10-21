@@ -58,7 +58,9 @@ export function validImages(value: any): value is ImageChoices {
   return (
     !!value &&
     ['fast', 'precise'].every(
-      (key) => typeof value[key] === 'string' && /^(none|gpt-image-[a-zA-Z0-9.-]+)$/.test(value[key]),
+      (key) =>
+        typeof value[key] === 'string' &&
+        /^(none|gpt-image-[a-zA-Z0-9.-]+|gemini-[a-zA-Z0-9.-]*image[a-zA-Z0-9.-]*)$/.test(value[key]),
     )
   );
 }

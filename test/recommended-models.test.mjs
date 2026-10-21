@@ -5,6 +5,9 @@ import { join } from 'node:path';
 import {
   recommendedUrl,
   validRecommendation,
+  validImageRecommendation,
+  recommendedImageTools,
+  recommendedImagesUrl,
   parseRecommendation,
   recommendedTeam,
 } from '../packages/models/index.mjs';
@@ -14,6 +17,9 @@ import { isolatedStack } from './support/stack.mjs';
 import { launchBrowser } from './support/browser.mjs';
 // Recommended models (documentation 4.6).
 const bundled = JSON.parse(await readFile(new URL('../packages/models/recommended.json', import.meta.url), 'utf8'));
+const bundledImages = JSON.parse(
+  await readFile(new URL('../packages/models/recommended-images.json', import.meta.url), 'utf8'),
+);
 test('AI-35: the recommended models file is data only; anything outside its shape refuses the whole file', () => {
   assert.equal(validRecommendation(bundled), true);
   const broken = [
@@ -69,8 +75,40 @@ test('AI-35: each role gets the first recommended model with a key and in the ca
     { provider: 'gemini', model: 'gemini-2.5-pro', reasoningEffort: 'auto' },
   );
 });
+test('AI-35: the image tools have their own recommendation file with its own strict shape', () => {
+  assert.equal(validImageRecommendation(bundledImages), true);
+  for (const value of [
+    { ...bundledImages, roles: {} },
+    { ...bundledImages, images: { ...bundledImages.images, other: [] } },
+    {
+      ...bundledImages,
+      images: { ...bundledImages.images, fast: [{ provider: 'gemini', model: 'gemini-3.8-flash' }] },
+    },
+    {
+      ...bundledImages,
+      images: { ...bundledImages.images, fast: [{ provider: 'openai', model: 'gemini-3-pro-image' }] },
+    },
+  ])
+    assert.equal(validImageRecommendation(value), false);
+  const models = [
+    { provider: 'gemini', id: 'gemini-3-pro-image' },
+    { provider: 'openai', id: 'gpt-image-2.5-flare' },
+  ];
+  // No OpenAI key: Gemini for the precise tool; the fast tool has OpenAI first but no key and no Gemini fast model: stays.
+  assert.deepEqual(
+    recommendedImageTools(
+      bundledImages,
+      models,
+      { openai: '', anthropic: '', gemini: 'k' },
+      { precise: 'none', fast: 'none' },
+    ),
+    { precise: 'gemini-3-pro-image', fast: 'none' },
+  );
+});
 test('AI-35: only the one GitHub address of the file, and only in the providers mode', () => {
   assert.equal(allowedNetworkURL('providers', recommendedUrl), true);
+  assert.equal(allowedNetworkURL('providers', recommendedImagesUrl), true);
+  assert.equal(allowedNetworkURL('offline', recommendedImagesUrl), false);
   assert.equal(allowedNetworkURL('offline', recommendedUrl), false);
   for (const url of [
     recommendedUrl.replace('/main/', '/other/'),
@@ -121,6 +159,9 @@ test(
       assert.deepEqual(state.recommendation, { date: '2099-01-01', source: 'online' });
       assert.deepEqual(state.roles.primary, { provider: 'openai', model: 'gpt-6.1-sol', reasoningEffort: 'auto' });
       assert.deepEqual(state.roles.ui, { provider: 'anthropic', model: 'claude-sonnet-5-5', reasoningEffort: 'auto' });
+      // The image tools follow the shipped image recommendation (none on GitHub here); their selects are read only.
+      assert.deepEqual(state.imageModels, { precise: 'gpt-image-2.5-sunburst', fast: 'gpt-image-2.5-flare' });
+      assert.equal(await page.locator('select[name=image_fast]').isDisabled(), true);
       await page.getByText('Podle doporučení z 2099-01-01 (staženo z GitHubu).', { exact: true }).waitFor();
       // A Gemini key: the Web Lead becomes Gemini at the next catalog load.
       await page.locator('input[name=key]').fill(fixtureKeys.gemini);

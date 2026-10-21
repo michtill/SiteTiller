@@ -46,7 +46,7 @@
  "attached_image": "Attached image",
  "auto_team": "Team automatically by the recommendation",
  "auto_team_from": "By the recommendation of {date} ({source}).",
- "auto_team_help": "Each role gets the recommended model you have a key for. When a model disappears, the next one is used.",
+ "auto_team_help": "Each role and both image tools get the recommended model you have a key for. When a model disappears, the next one is used.",
  "auto_team_source_bundled": "shipped with the application version",
  "auto_team_source_online": "downloaded from GitHub",
  "automated_checks_passed": "Automated checks passed.",

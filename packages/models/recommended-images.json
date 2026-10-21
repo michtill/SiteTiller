@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "date": "2026-10-21",
+  "images": {
+    "precise": [
+      {
+        "provider": "openai",
+        "model": "gpt-image-2.5-sunburst"
+      },
+      {
+        "provider": "gemini",
+        "model": "gemini-3-pro-image"
+      }
+    ],
+    "fast": [
+      {
+        "provider": "openai",
+        "model": "gpt-image-2.5-flare"
+      },
+      {
+        "provider": "gemini",
+        "model": "gemini-3.1-flash-image"
+      }
+    ]
+  }
+}

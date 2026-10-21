@@ -1,5 +1,5 @@
 import { providers } from '../packages/providers/index.mjs';
-import { recommendedUrl } from '../packages/models/index.mjs';
+import { recommendedUrl, recommendedImagesUrl } from '../packages/models/index.mjs';
 export const networkModes = ['offline', 'providers'];
 export function normalizeNetworkMode(value) {
   const mode = value ?? 'offline';
@@ -13,7 +13,7 @@ export function allowedNetworkURL(mode, input) {
   // The Publisher verifies the hosted website at its own public address (SITETILLER_WWW_URL), nothing else.
   if (process.env.SITETILLER_WWW_URL && url.origin === new URL(process.env.SITETILLER_WWW_URL).origin) return true;
   // The recommended models file, read from one fixed address (documentation 4.6); nothing leaves the instance.
-  if (mode === 'providers' && url.href === recommendedUrl) return true;
+  if (mode === 'providers' && [recommendedUrl, recommendedImagesUrl].includes(url.href)) return true;
   return (
     mode === 'providers' &&
     url.protocol === 'https:' &&

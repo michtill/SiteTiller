@@ -2,6 +2,14 @@
 
 Versions follow [semantic versioning](https://semver.org). Each release is tagged `v<version>`.
 
+## 1.0.4
+
+- AI models: one AI team group with tabs Recommended team / Own team; a tab switches at once in place, the team in use has a green dot and a line under the tabs; Update checks the newest recommendation; the own team comes back as it was.
+- Recommendations are read from the separate repository [SiteTiller-advice](https://github.com/michtill/SiteTiller-advice) (`models/v1.json`, `images/v1.json`), so a release never overwrites them; a new shape gets a new file.
+- The Verifier is recommended from another provider than the Web Lead first.
+- Model options read "provider · model"; Google's models show as "Google · Gemini …" (no Gemini twice).
+- The API key field is no password field: the browser no longer offers to save the key.
+
 ## 1.0.3
 
 - Google Gemini auth keys (`AQ.…`, created by Google AI Studio since 2026) are recognised next to the standard `AIza…` keys; both are checked with Gemini's model list and sent in the `x-goog-api-key` header.

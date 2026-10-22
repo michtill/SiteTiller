@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "date": "2026-10-21",
+  "date": "2026-10-22",
   "images": {
     "precise": [
       {
@@ -16,6 +16,10 @@
       {
         "provider": "openai",
         "model": "gpt-image-2.5-flare"
+      },
+      {
+        "provider": "gemini",
+        "model": "gemini-nano-banana-2.1"
       },
       {
         "provider": "gemini",

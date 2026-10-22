@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { renderPage } from '../apps/shell/pages.ts';
 import { launchBrowser } from './support/browser.mjs';
 const option = (value, label) => ({ value, label });
-// An invented catalog: the page lists four team roles and two image tools in three groups.
+// An invented catalog: the page lists four team roles and two image tools in one team group.
 const props = {
   error: '',
   notice: '',
@@ -12,7 +12,7 @@ const props = {
   keys: [{ id: 'openai', name: 'OpenAI' }],
   keyError: '',
   autoTeam: false,
-  recommendation: { date: '2026-10-21', source: 'bundled' },
+  teamStatus: 'Používáte vlastní tým.',
   confirmKey: '',
   roles: ['primary', 'ui', 'verify', 'escalation'].map((id) => ({
     id,
@@ -30,7 +30,7 @@ const props = {
   returnTo: '/site/',
   mailWarning: false,
 };
-test('AI-33: the AI models screen has the settings band, three groups, labels above the fields and model with effort side by side', async () => {
+test('AI-33: the AI models screen has the settings band, the keys and one team group with two tabs, labels above the fields and model with effort side by side', async () => {
   const html = await renderPage('aiapi', props);
   const browser = await launchBrowser();
   try {
@@ -38,9 +38,12 @@ test('AI-33: the AI models screen has the settings band, three groups, labels ab
     await page.setContent(html);
     assert.deepEqual(await page.locator('legend').allTextContents(), [
       'API klíče',
-      'Modely pro tým',
-      'Obrazové nástroje',
+      'Tým AI',
     ]);
+    // The own team is in use: its tab is pressed and the line under the tabs says it; Save is there.
+    assert.deepEqual(await page.locator('.team-tabs button[aria-pressed=true]').allTextContents(), ['Vlastní tým']);
+    assert.equal(await page.locator('.team-status span').textContent(), 'Používáte vlastní tým.');
+    assert.equal(await page.getByRole('button', { name: 'Uložit', exact: true }).isVisible(), true);
     assert.equal(await page.locator('.settings-nav a[aria-current="page"]').textContent(), 'Modely AI studia');
     assert.equal(await page.locator('select[name^="role_"]').count(), 4);
     assert.equal(await page.locator('select[name^="image_"]').count(), 2);

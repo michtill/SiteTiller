@@ -22,3 +22,21 @@ export function detectProvider(value) {
   if (/^AIza[0-9A-Za-z_-]{35}$/.test(key) || /^AQ\.[0-9A-Za-z._-]{30,}$/.test(key)) return { provider: 'gemini' };
   return { problem: 'unknown' };
 }
+// What a model produces (documentation 4.6). Google's model list gives no output type (both text and image models
+// list generateContent), so a Gemini model is told by its id and, as a second hint, by its description: image models
+// are named "…image…" or "nano-banana…"; speech, audio, video, transcription, embedding and similar models are
+// neither text nor image models. A model that is not clearly a text model is never offered for a text role.
+const geminiNotText =
+  /(image|nano-banana|embedding|tts|live|aqa|audio|robotics|computer-use|transcribe|omni|veo|lyria|imagen|translate)/i;
+const notTextDescription =
+  /\b(image generation|generates? images?|text-to-speech|speech generation|video generation|generates? videos?|embeddings?|transcription)\b/i;
+export function geminiTextModel(id, description = '') {
+  return /^gemini-/.test(id) && !geminiNotText.test(id) && !notTextDescription.test(String(description || ''));
+}
+// The image tools: OpenAI gpt-image-* or a Google Gemini image model.
+export function imageModelProvider(id) {
+  const model = String(id || '');
+  if (/^gpt-image-[a-zA-Z0-9.-]+$/.test(model)) return 'openai';
+  if (/^gemini-[a-zA-Z0-9.-]+$/.test(model) && /(image|nano-banana)/i.test(model)) return 'gemini';
+  return null;
+}

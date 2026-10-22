@@ -1,13 +1,12 @@
 {
   "version": 1,
-  "date": "2026-10-22",
+  "date": "2026-10-24",
   "roles": {
     "primary": [
-      { "provider": "openai", "model": "gpt-6.1-sol" },
       { "provider": "anthropic", "model": "claude-opus-5-5" },
+      { "provider": "openai", "model": "gpt-6.1-sol" },
       { "provider": "gemini", "model": "gemini-4-argon" },
-      { "provider": "gemini", "model": "gemini-3.8-flash" },
-      { "provider": "gemini", "model": "gemini-3.1-pro-preview" }
+      { "provider": "gemini", "model": "gemini-3.8-flash" }
     ],
     "ui": [
       { "provider": "anthropic", "model": "claude-sonnet-5-5" },
@@ -16,9 +15,9 @@
       { "provider": "gemini", "model": "gemini-4-argon" }
     ],
     "verify": [
-      { "provider": "anthropic", "model": "claude-haiku-5-5" },
       { "provider": "openai", "model": "gpt-6-luna" },
-      { "provider": "gemini", "model": "gemini-3.6-flash" },
+      { "provider": "anthropic", "model": "claude-haiku-5-5" },
+      { "provider": "gemini", "model": "gemini-3.8-flash" },
       { "provider": "gemini", "model": "gemini-3.5-flash-lite" }
     ],
     "escalation": [

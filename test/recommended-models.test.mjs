@@ -77,6 +77,14 @@ test('AI-35: each role gets the first recommended model with a key and in the ca
 });
 test('AI-35: the image tools have their own recommendation file with its own strict shape', () => {
   assert.equal(validImageRecommendation(bundledImages), true);
+  // Google's Nano Banana models have no "image" in their id and are image models too.
+  assert.equal(
+    validImageRecommendation({
+      ...bundledImages,
+      images: { ...bundledImages.images, fast: [{ provider: 'gemini', model: 'gemini-nano-banana-2.1' }] },
+    }),
+    true,
+  );
   for (const value of [
     { ...bundledImages, roles: {} },
     { ...bundledImages, images: { ...bundledImages.images, other: [] } },
@@ -113,12 +121,15 @@ test('AI-35: only the one GitHub address of the file, and only in the providers 
   for (const url of [
     recommendedUrl.replace('/main/', '/other/'),
     recommendedUrl + '?x=1',
-    'https://raw.githubusercontent.com/michtill/SiteTiller/main/package.json',
+    'https://raw.githubusercontent.com/michtill/SiteTiller-advice/main/README.md',
+    // The application's own repository is not read any more: a release would overwrite the file there.
+    'https://raw.githubusercontent.com/michtill/SiteTiller/main/packages/models/recommended.json',
+    recommendedUrl.replace('/v1.json', '/v2.json'),
   ])
     assert.equal(allowedNetworkURL('providers', url), false, url);
 });
 test(
-  'AI-35: Team automatically by the recommendation follows the newer GitHub file and the keys; the choices are read only with the date and source',
+  'AI-35: the Recommended team tab follows the newer GitHub file and the keys; the own team comes back as it was; the team in use is marked',
   { timeout: 240000 },
   async () => {
     const stack = await isolatedStack({
@@ -144,14 +155,29 @@ test(
         await page.getByRole('button', { name: 'Přidat klíč', exact: true }).click();
         await page.getByText('Klíč ' + name + ' je uložený.', { exact: true }).waitFor();
       }
-      // Off by default.
-      const auto = page.locator('input[name=autoTeam]');
-      assert.equal(await auto.isChecked(), false);
-      assert.equal(await page.locator('select[name=role_primary]').isDisabled(), false);
-      await auto.check();
-      assert.equal(await page.locator('select[name=role_primary]').isDisabled(), true);
+      // The own team by default; it is saved with a choice of the user's own.
+      const recommended = page.getByRole('button', { name: 'Doporučený tým', exact: true }),
+        own = page.getByRole('button', { name: 'Vlastní tým', exact: true });
+      assert.equal(await own.getAttribute('aria-pressed'), 'true');
+      await page.getByText('Používáte vlastní tým.', { exact: true }).waitFor();
+      await page.getByText('Seznam modelů je načtený.', { exact: true }).waitFor();
+      await page.locator('select[name=image_fast]').selectOption('none');
       await page.getByRole('button', { name: 'Uložit', exact: true }).click();
       await page.getByText('Uloženo', { exact: true }).waitFor();
+      const ownTeam = await (await page.request.get(stack.origin + '/site/api/state')).json();
+      // One click on the tab switches and saves in place: no new page, the scroll position stays; the choices are
+      // read only and Save is gone.
+      await page.evaluate(() => {
+        window.samePage = true;
+        window.scrollTo(0, 200);
+      });
+      const scrolled = await page.evaluate(() => window.scrollY);
+      await recommended.click();
+      assert.equal(await recommended.getAttribute('aria-pressed'), 'true');
+      await page.getByText('Doporučení GitHub 2099-01-01', { exact: true }).waitFor();
+      assert.deepEqual(await page.evaluate(() => [window.samePage, window.scrollY]), [true, scrolled]);
+      assert.equal(await page.locator('select[name=role_primary]').isDisabled(), true);
+      assert.equal(await page.getByRole('button', { name: 'Uložit', exact: true }).isVisible(), false);
       let state = await (await page.request.get(stack.origin + '/site/api/state')).json();
       assert.equal(state.autoTeam, true);
       // The GitHub file is newer than the shipped one, so it wins; Gemini has no key and gpt-6-sol is not in the
@@ -162,7 +188,6 @@ test(
       // The image tools follow the shipped image recommendation (none on GitHub here); their selects are read only.
       assert.deepEqual(state.imageModels, { precise: 'gpt-image-2.5-sunburst', fast: 'gpt-image-2.5-flare' });
       assert.equal(await page.locator('select[name=image_fast]').isDisabled(), true);
-      await page.getByText('Podle doporučení z 2099-01-01 (staženo z GitHubu).', { exact: true }).waitFor();
       // A Gemini key: the Web Lead becomes Gemini at the next catalog load.
       await page.locator('input[name=key]').fill(fixtureKeys.gemini);
       await page.getByRole('button', { name: 'Přidat klíč', exact: true }).click();
@@ -171,13 +196,30 @@ test(
       state = await (await page.request.get(stack.origin + '/site/api/state')).json();
       assert.deepEqual(state.roles.primary, { provider: 'gemini', model: 'gemini-2.5-pro', reasoningEffort: 'auto' });
       assert.equal(await page.locator('select[name=role_primary]').inputValue(), 'gemini|gemini-2.5-pro');
-      // Off again: the team stays as it is and is editable.
-      await auto.uncheck();
-      await page.getByRole('button', { name: 'Uložit', exact: true }).click();
-      await page.getByText('Uloženo', { exact: true }).waitFor();
+      // Update checks GitHub at once and sets the team by it.
+      await page.getByRole('button', { name: 'Aktualizovat', exact: true }).click();
+      await page.locator('.team-status:not([data-busy])').waitFor();
+      assert.equal(
+        await page.locator('.team-status span').textContent(),
+        'Doporučení GitHub 2099-01-01',
+      );
+      assert.deepEqual((await (await page.request.get(stack.origin + '/site/api/state')).json()).roles, state.roles);
+      // The OpenAI key goes: the own team's Web Lead (OpenAI) has no key now.
+      await page.request.post(stack.origin + '/settings/aiapi', {
+        headers: { Origin: stack.origin },
+        form: { action: 'remove_openai_yes', returnTo: '/site/' },
+      });
+      // Back to the own team: the switch succeeds anyway (that is where the Web Lead is fixed); it returns as it was,
+      // editable, and the missing key is said once under Save.
+      await own.click();
+      await page.getByText('Používáte vlastní tým.', { exact: true }).waitFor();
       state = await (await page.request.get(stack.origin + '/site/api/state')).json();
       assert.equal(state.autoTeam, false);
-      assert.equal(state.roles.primary.provider, 'gemini');
+      assert.deepEqual([state.roles, state.imageModels], [ownTeam.roles, ownTeam.imageModels]);
+      assert.equal(await page.locator('select[name=role_primary]').isDisabled(), false);
+      const alert = await page.locator('#model-alerts').textContent();
+      assert.match(alert, /Web Lead/);
+      assert.equal(alert.split('Web Lead').length, 2, alert);
     } finally {
       await browser?.close();
       await stack.close();
@@ -212,5 +254,34 @@ test('AI-35: offline nothing is downloaded and the shipped recommendation applie
     await assert.rejects(access(join(stack.root, '.sitetiller/recommended-online.json')));
   } finally {
     await stack.close();
+  }
+});
+test('AI-35: a release bundles the published recommendations by script; an invalid or older file writes nothing', async () => {
+  const { bundleAdvice } = await import('../scripts/bundle-advice.mjs');
+  const { mkdtemp, mkdir, writeFile: write, readFile: read, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { pathToFileURL } = await import('node:url');
+  const base = await mkdtemp(join(tmpdir(), 'bundle-advice-'));
+  try {
+    await mkdir(join(base, 'packages/models'), { recursive: true });
+    const bundledText = JSON.stringify(bundled) + '\n';
+    await write(join(base, 'packages/models/recommended.json'), bundledText);
+    await write(join(base, 'packages/models/recommended-images.json'), JSON.stringify(bundledImages) + '\n');
+    const root = pathToFileURL(base + '/');
+    const newer = JSON.stringify({ ...bundled, date: '2099-01-02' }, null, 2) + '\n';
+    const serve = (texts) => async (url) => new Response(texts[url === recommendedUrl ? 0 : 1]);
+    // Check only: says what differs and writes nothing.
+    const checked = await bundleAdvice({ check: true, root, fetcher: serve([newer, JSON.stringify(bundledImages) + '\n']) });
+    assert.deepEqual(checked.map((r) => r.same), [false, true]);
+    assert.equal(await read(join(base, 'packages/models/recommended.json'), 'utf8'), bundledText);
+    // Invalid or not newer: an error, nothing written.
+    for (const text of ['{"version":1}', JSON.stringify({ ...bundled, roles: { ...bundled.roles, primary: [] } }), JSON.stringify(bundled)])
+      await assert.rejects(bundleAdvice({ root, fetcher: serve([text, JSON.stringify(bundledImages) + '\n']) }));
+    assert.equal(await read(join(base, 'packages/models/recommended.json'), 'utf8'), bundledText);
+    // A newer valid file is copied byte for byte.
+    await bundleAdvice({ root, fetcher: serve([newer, JSON.stringify(bundledImages) + '\n']) });
+    assert.equal(await read(join(base, 'packages/models/recommended.json'), 'utf8'), newer);
+  } finally {
+    await rm(base, { recursive: true, force: true });
   }
 });

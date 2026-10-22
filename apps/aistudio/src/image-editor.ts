@@ -4,14 +4,11 @@ import { diagnosticFetch } from './diagnostics.ts';
 import { Project } from './project.ts';
 import { withRules } from './instructions.ts';
 import { initialImages, type ImageChoices } from './team.ts';
+import { imageModelProvider } from '../../../packages/providers/index.mjs';
 
-// The image tools use OpenAI (gpt-image-*) or Google Gemini (gemini-*-image) models (documentation 4.6).
-export function imageProvider(model: string) {
-  return /^gpt-image-[a-zA-Z0-9.-]+$/.test(model)
-    ? 'openai'
-    : /^gemini-[a-zA-Z0-9.-]*image[a-zA-Z0-9.-]*$/.test(model)
-      ? 'gemini'
-      : null;
+// The image tools use OpenAI (gpt-image-*) or Google Gemini image models (documentation 4.6).
+export function imageProvider(model: string): 'openai' | 'gemini' | null {
+  return imageModelProvider(model);
 }
 // Gemini answers with an image in its own format (usually PNG); it is converted to the requested format in Chromium.
 // When that fails the image keeps Gemini's format and the result says so (documentation 4.7).
@@ -147,7 +144,7 @@ export function imageModel(models: { provider: string; id: string }[]) {
     ['gpt-image-2.5-sunburst', 'gpt-image-2.5-flare', 'gpt-image-2', 'gpt-image-1.5', 'gpt-image-1'].find((id) =>
       models.some((m) => m.provider === 'openai' && m.id === id),
     ) ||
-    ['gemini-3-pro-image', 'gemini-3.1-flash-image'].find((id) =>
+    ['gemini-3-pro-image', 'gemini-nano-banana-2.1', 'gemini-3.1-flash-image'].find((id) =>
       models.some((m) => m.provider === 'gemini' && m.id === id),
     ) ||
     null

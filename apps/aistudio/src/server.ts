@@ -194,7 +194,7 @@ let recommendationSource: { date: string; source: 'bundled' | 'online' } = {
   date: recommendationKinds.text.bundled.date,
   source: 'bundled',
 };
-async function currentRecommendation(kind: 'text' | 'images' = 'text') {
+async function currentRecommendation(kind: 'text' | 'images' = 'text', refresh = false) {
   const { url, file, parse, bundled } = recommendationKinds[kind];
   let online: any = null;
   try {
@@ -202,7 +202,7 @@ async function currentRecommendation(kind: 'text' | 'images' = 'text') {
   } catch {}
   if (
     (process.env.SITETILLER_NETWORK_MODE || 'offline') === 'providers' &&
-    (!online || Date.now() - Date.parse(online.fetchedAt) > 6 * 3600000)
+    (refresh || !online || Date.now() - Date.parse(online.fetchedAt) > 6 * 3600000)
   ) {
     try {
       const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
@@ -776,12 +776,21 @@ const server = http.createServer(async (req, res) => {
         if (busy) throw new Problem(409, 'Počkej na dokončení úlohy.');
         const input = await body(req);
         if (input.siteUrl !== undefined) throw Error('Adresa webu je adresa publikovaného webu z instalace.');
+        if (input.autoTeam !== undefined && typeof input.autoTeam !== 'boolean')
+          throw new Problem(422, 'Neplatná volba týmu.');
+        if (input.refresh !== undefined && typeof input.refresh !== 'boolean')
+          throw new Problem(422, 'Neplatná volba týmu.');
+        // Back to the own team (documentation 2.4): it returns as it was before the recommended one was used, and the
+        // switch always succeeds (an unavailable Web Lead is a warning there: the own team is where it is fixed).
+        const toOwnTeam = input.autoTeam === false && !!config.autoTeam;
+        if (toOwnTeam && config.customTeam) {
+          input.roles = config.customTeam.roles;
+          input.imageModels = config.customTeam.imageModels;
+        }
         if (input.imageModels && typeof input.imageModels === 'object')
           input.imageModels = { precise: input.imageModels.precise, fast: input.imageModels.fast };
         if (!validTeam(input.roles) || !validImages(input.imageModels))
           throw new Problem(422, 'Vyber model pro každou capability.');
-        if (input.autoTeam !== undefined && typeof input.autoTeam !== 'boolean')
-          throw new Problem(422, 'Neplatná volba týmu.');
         const saved = providerKeys(),
           keys = { ...saved },
           providers = structuredClone(config.providers),
@@ -811,19 +820,21 @@ const server = http.createServer(async (req, res) => {
           if (Object.keys(rejectedKeys).length) list = await catalog(keys);
           const autoTeam = input.autoTeam ?? !!config.autoTeam,
             team = autoTeam
-              ? recommendedTeam(await currentRecommendation(), list.models, keys, config.roles)
+              ? recommendedTeam(await currentRecommendation('text', !!input.refresh), list.models, keys, config.roles)
               : input.roles;
           if (autoTeam)
             input.imageModels = recommendedImageTools(
-              await currentRecommendation('images'),
+              await currentRecommendation('images', !!input.refresh),
               list.models,
               keys,
               config.imageModels,
             );
           const resolved = resolvePrimary(team, list.models),
             issues = unavailable(resolved, list, ['primary']);
-          if (issues.length) return response(res, 400, { error: issues.join('\n') });
+          if (issues.length && !toOwnTeam) return response(res, 400, { error: issues.join('\n') });
           config.providers = providers;
+          if (autoTeam && !config.autoTeam)
+            config.customTeam = { roles: config.roles, imageModels: config.imageModels };
           config.roles = team;
           config.autoTeam = autoTeam;
           config.imageModels = input.imageModels;
@@ -833,6 +844,7 @@ const server = http.createServer(async (req, res) => {
             rejectedKeys,
             catalog: list,
             optionalIssues: [
+              ...issues,
               ...unavailable(resolved, list, ['ui', 'verify', 'escalation']),
               ...Object.values(input.imageModels).flatMap((model: any) => imageIssues(model, list.models)),
             ],

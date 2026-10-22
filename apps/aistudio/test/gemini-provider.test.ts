@@ -70,3 +70,26 @@ test('AI-34: an answer blocked by Google is an exact error without any of its co
         !error.message.includes('secret answer'),
     );
 });
+test('AI-34: a refused call says who refused it and what the status means, never the provider body', async () => {
+  const { translateMessage } = await import('../../../packages/i18n/index.mjs');
+  const refused = async (status: number) => {
+    try {
+      await callModel(slot, 'Return JSON', { request: 'hello' }, async () =>
+        Response.json({ error: { message: 'secret echo ' + key } }, { status }),
+      );
+    } catch (e: any) {
+      return e.message;
+    }
+    throw Error('not refused');
+  };
+  const limit = await refused(429);
+  assert.equal(
+    limit,
+    'Google Gemini odmítl volání modelu gemini-3-pro-preview: překročený limit nebo vyčerpaná kvóta (HTTP 429). Zkuste to za chvíli, nebo zvolte jiný model či vyšší tarif u poskytovatele.',
+  );
+  assert.match(translateMessage(limit, 'en'), /^Google Gemini refused the call to gemini-3-pro-preview: rate limit/);
+  assert.match(await refused(403), /^Google Gemini odmítl klíč nebo k modelu gemini-3-pro-preview nemá přístup \(HTTP 403\)/);
+  assert.match(await refused(404), /model gemini-3-pro-preview nezná \(HTTP 404\)/);
+  assert.match(await refused(503), /má potíže na své straně \(HTTP 503\)/);
+  for (const status of [429, 403, 404, 503]) assert.doesNotMatch(await refused(status), /secret echo|AIza/);
+});

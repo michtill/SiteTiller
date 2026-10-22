@@ -1,15 +1,11 @@
 import { roleNames, type Team, type Role } from './team.ts';
 import type { Provider } from './core.ts';
-import { providerIds, providerName } from '../../../packages/providers/index.mjs';
+import { providerIds, providerName, geminiTextModel } from '../../../packages/providers/index.mjs';
 export type ListedModel = { provider: Provider; id: string; name: string; usable: boolean };
-export function usableModel(provider: Provider, id: string, methods?: string[]) {
+export function usableModel(provider: Provider, id: string, methods?: string[], description?: string) {
   if (provider === 'anthropic') return id.startsWith('claude-');
   if (provider === 'gemini')
-    return (
-      id.startsWith('gemini-') &&
-      (!methods || methods.includes('generateContent')) &&
-      !/(embedding|tts|live|image|aqa|audio|robotics|computer-use)/i.test(id)
-    );
+    return (!methods || methods.includes('generateContent')) && geminiTextModel(id, description);
   return (
     /^(gpt-|chatgpt-|o[1-9](?:-|$)|ft:(?:gpt-|o[1-9]))/.test(id) &&
     !/(audio|realtime|transcrib|tts|image|embedding|moderation|search|instruct)/i.test(id)
@@ -72,7 +68,7 @@ export async function catalog(keys: Record<Provider, string>, fetcher = fetch) {
                 id,
                 // Preview models say so (documentation 4.6).
                 name: /preview|exp/i.test(id) && !/preview/i.test(name) ? name + ' (preview)' : name,
-                usable: usableModel(provider, id, item.supportedGenerationMethods),
+                usable: usableModel(provider, id, item.supportedGenerationMethods, item.description),
               });
             }
             if (!body.nextPageToken) return { provider, models, error: null, errorKind: null, httpStatus: null };

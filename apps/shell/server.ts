@@ -1,4 +1,4 @@
-import { providerIds, providerName, detectProvider } from '../../packages/providers/index.mjs';
+import { providerIds, providerName, detectProvider, imageModelProvider } from '../../packages/providers/index.mjs';
 import { withSharedSettingsSave, sharedLanguage } from '../../packages/settings/shared-ui.mjs';
 import { renderPage, settingsError } from './pages.ts';
 import { translate } from '../../packages/i18n/index.mjs';
@@ -817,7 +817,8 @@ http
         };
         // The team roles and image tools with their options: from the catalog, or only the saved choice before it.
         const modelView = (state: any, catalog: any, entered: any) => {
-          const provider = (id: string) => providerName(id),
+          // Options read "provider · model": Google's models are named Gemini themselves, so the provider is Google.
+          const provider = (id: string) => (id === 'gemini' ? 'Google' : providerName(id)),
             usable = (catalog?.models || []).filter((m: any) => m.usable),
             // Without the catalog yet, the saved choice is the only option and is not marked as unconfirmed.
             withSaved = (options: any[], value: string, label: string) =>
@@ -853,8 +854,7 @@ http
           const imageOptions = (catalog?.models || [])
             .filter(
               (m: any) =>
-                (m.provider === 'openai' && /^gpt-image-/.test(m.id)) ||
-                (m.provider === 'gemini' && /^gemini-[a-zA-Z0-9.-]*image/.test(m.id)),
+                imageModelProvider(m.id) === m.provider,
             )
             .map((m: any) => ({ value: m.id, label: provider(m.provider) + ' · ' + m.name }));
           const images = [
@@ -878,6 +878,13 @@ http
             ),
           };
         };
+        const teamStatus = (state: any) =>
+          state.autoTeam
+            ? t('team_using_recommended', {
+                date: state.recommendation?.date || '',
+                source: t('auto_team_source_' + (state.recommendation?.source || 'bundled')),
+              })
+            : t('team_using_custom');
         if (url.pathname === '/settings/aiapi/catalog') {
           res.setHeader('Content-Type', 'application/json; charset=utf-8');
           try {
@@ -949,18 +956,37 @@ http
               imageModels: { precise: input.get('image_precise') || 'none', fast: input.get('image_fast') || 'none' },
             };
             try {
-              // Team automatically by the recommendation: the team comes from the recommendation (documentation 4.6).
-              const autoTeam = input.has('autoTeam');
-              await ai('settings', {
+              // Recommended team / Own team (documentation 2.4): a tab switches and saves at once, Update checks
+              // GitHub; both take the team from the state (the recommended team's selects are read only).
+              const team = input.get('team') || '',
+                autoTeam = team === 'recommended' || team === 'refresh';
+              const result = await ai('settings', {
                 ...entered,
                 autoTeam,
-                ...(autoTeam
+                ...(team === 'refresh' ? { refresh: true } : {}),
+                ...(team
                   ? await ai('state').then((state: any) => ({ roles: state.roles, imageModels: state.imageModels }))
                   : {}),
               });
               entered = null;
-              notice = t('saved');
+              notice = team === 'refresh' ? t('team_refreshed') : team ? '' : t('saved');
+              // The tabs switch in place (documentation 2.4): the page's script gets the team, not a new page.
+              if (team && (req.headers.accept || '').includes('application/json')) {
+                const state = await ai('state');
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                return res.end(
+                  JSON.stringify({
+                    ...modelView(state, { ...result.catalog, optionalIssues: result.optionalIssues }, null),
+                    autoTeam: !!state.autoTeam,
+                    status: teamStatus(state),
+                  }),
+                );
+              }
             } catch (e: any) {
+              if (input.get('team') && (req.headers.accept || '').includes('application/json')) {
+                res.writeHead(422, { 'Content-Type': 'application/json; charset=utf-8' });
+                return res.end(JSON.stringify({ error: e.message }));
+              }
               error = e.message;
               res.statusCode = 422;
             }
@@ -985,7 +1011,7 @@ http
           keyError,
           confirmKey,
           autoTeam: !!state.autoTeam,
-          recommendation: state.recommendation || { date: '', source: 'bundled' },
+          teamStatus: teamStatus(state),
           roles,
           images,
           returnTo: settingsReturnTo(back),

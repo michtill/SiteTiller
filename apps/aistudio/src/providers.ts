@@ -1,6 +1,22 @@
 import { parseJSON, type Slot } from './core.ts';
 import { diagnosticFetch } from './diagnostics.ts';
 import { throwIfStopped } from './run-control.ts';
+import { providerName } from '../../../packages/providers/index.mjs';
+import { translate } from '../../../packages/i18n/index.mjs';
+// A refused call says who refused it and what the status means; the provider's body is never shown.
+export function providerHttpError(slot: { provider: string; model: string }, status: number) {
+  const key =
+    status === 429
+      ? 'provider_http_429'
+      : status === 401 || status === 403
+        ? 'provider_http_auth'
+        : status === 404
+          ? 'provider_http_404'
+          : status >= 500
+            ? 'provider_http_5xx'
+            : 'provider_http_error';
+  return translate(key, 'cs', { provider: providerName(slot.provider), model: slot.model, status });
+}
 
 export async function callModel(
   slot: Slot & { model: string; reasoningEffort?: string; textOnlyFinal?: boolean },
@@ -94,8 +110,7 @@ export async function callModel(
             }),
           });
   // Never forward provider response bodies: they may echo confidential request data.
-  if (!response.ok)
-    throw new Error(`Poskytovatel ${slot.provider} vrátil HTTP ${response.status}. Ověř klíč, model a kredit.`);
+  if (!response.ok) throw new Error(providerHttpError(slot, response.status));
   const body: any = await response.json();
   const candidate = slot.provider === 'gemini' ? body.candidates?.[0] : null;
   // A Gemini answer blocked by Google is an exact error without any of its content.

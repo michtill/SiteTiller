@@ -1,8 +1,10 @@
-import { providerIds } from '../providers/index.mjs';
-// Recommended models (documentation 4.6): a release ships recommended.json; with "Team automatically by the
-// recommendation" on, the AI Studio may also read the current file from this one fixed address (6.2).
+import { providerIds, imageModelProvider } from '../providers/index.mjs';
+// Recommended models (documentation 4.6): a release ships recommended.json; with the recommended team the AI Studio
+// may also read the current file from this one fixed address (6.2). The advice lives in its own repository, one folder
+// per topic and one file per version of its shape (models/v1.json, later v2…), so a release of the application never
+// overwrites it and older instances keep reading their file.
 export const recommendedUrl =
-  'https://raw.githubusercontent.com/michtill/SiteTiller/main/packages/models/recommended.json';
+  'https://raw.githubusercontent.com/michtill/SiteTiller-advice/main/models/v1.json';
 export const recommendedLimit = 64 * 1024;
 const roles = ['primary', 'ui', 'verify', 'escalation'];
 const efforts = ['auto', 'low', 'medium', 'high'];
@@ -58,8 +60,7 @@ export function recommendedTeam(recommendation, models, keys, current) {
 // The image tools have their own file (documentation 4.6): a change of a recommendation's shape is a new file, so
 // instances that read the older file keep working.
 export const recommendedImagesUrl =
-  'https://raw.githubusercontent.com/michtill/SiteTiller/main/packages/models/recommended-images.json';
-const imagePatterns = { openai: /^gpt-image-[a-zA-Z0-9.-]+$/, gemini: /^gemini-[a-zA-Z0-9.-]*image[a-zA-Z0-9.-]*$/ };
+  'https://raw.githubusercontent.com/michtill/SiteTiller-advice/main/images/v1.json';
 export function validImageRecommendation(value) {
   if (!exactKeys(value, ['version', 'date', 'images']) || value.version !== 1) return false;
   if (typeof value.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value.date) || isNaN(Date.parse(value.date)))
@@ -73,9 +74,8 @@ export function validImageRecommendation(value) {
       value.images[tool].every(
         (item) =>
           exactKeys(item, ['provider', 'model']) &&
-          Object.hasOwn(imagePatterns, item.provider) &&
           typeof item.model === 'string' &&
-          imagePatterns[item.provider].test(item.model),
+          imageModelProvider(item.model) === item.provider,
       ),
   );
 }

@@ -611,3 +611,77 @@ p.intro {
     animation: none;
   }
 }
+/* AI models: Recommended team / Own team. A tab switches at once; the team in use has a green dot and the line
+   under the tabs says it in words (documentation 2.4). */
+.team-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 4px 0 0;
+  border-bottom: 1px solid #dbe2db;
+}
+.team-tabs button {
+  display: inline-flex;
+  width: auto;
+  font-size: 15px;
+  font-weight: 400;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 -1px;
+  padding: 10px 16px;
+  color: #5d6c64;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+}
+.team-tabs button[aria-pressed='true'] {
+  color: inherit;
+  font-weight: 650;
+  background: rgba(255, 255, 255, 0.7);
+  border-color: #dbe2db;
+  border-bottom-color: transparent;
+  cursor: default;
+}
+.team-tabs button[aria-pressed='true']::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #2f9e55;
+}
+.team-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin: 12px 0 4px;
+  color: #5d6c64;
+}
+.team-status button {
+  width: auto;
+  margin: 0;
+  padding: 8px 16px;
+}
+.team-tabs button:hover {
+  color: inherit;
+  background: rgba(255, 255, 255, 0.5);
+}
+/* An API key field hides its characters without being a password field (documentation 2.4). */
+input.secret:not(.shown) {
+  -webkit-text-security: disc;
+}
+/* While the team is being set, a spinner before the line under the tabs. */
+.team-status[data-busy] span::before {
+  content: '';
+  display: inline-block;
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  margin-right: 8px;
+  vertical-align: -2px;
+  border: 2px solid #cfd8d1;
+  border-top-color: #2f9e55;
+  border-radius: 50%;
+  animation: model-status-spin 0.8s linear infinite;
+}

@@ -1,5 +1,5 @@
 import type { Slot, Provider } from './core.ts';
-import { providerIds } from '../../../packages/providers/index.mjs';
+import { providerIds, imageModelProvider } from '../../../packages/providers/index.mjs';
 export const roleNames = {
   primary: 'Web Lead',
   ui: 'UI / Code Specialist',
@@ -60,7 +60,7 @@ export function validImages(value: any): value is ImageChoices {
     ['fast', 'precise'].every(
       (key) =>
         typeof value[key] === 'string' &&
-        /^(none|gpt-image-[a-zA-Z0-9.-]+|gemini-[a-zA-Z0-9.-]*image[a-zA-Z0-9.-]*)$/.test(value[key]),
+        (value[key] === 'none' || !!imageModelProvider(value[key])),
     )
   );
 }

@@ -228,14 +228,22 @@ test(
         'Google Gemini',
       ]);
       assert.equal(await page.locator('input[name=key]').inputValue(), '');
+      // The key is not a sign-in password: no password field, so the browser does not offer to save it; the
+      // characters are hidden until the eye shows them.
+      const field = page.locator('input[name=key]');
+      assert.deepEqual(await field.evaluate((i) => [i.type, i.autocomplete, getComputedStyle(i).webkitTextSecurity]), ['text', 'off', 'disc']);
+      await page.locator('.key-add .show-password').click();
+      assert.equal(await field.evaluate((i) => getComputedStyle(i).webkitTextSecurity), 'none');
+      await page.locator('.key-add .show-password').click();
+      assert.equal(await page.locator('input[type=password]').count(), 0);
       assert.doesNotMatch(await page.content(), keyPattern);
       const text = await readFile(join(stack.root, '.sitetiller/config.json'), 'utf8');
       assert.doesNotMatch(text, keyPattern);
-      // Gemini models are offered for the team roles.
+      // Gemini models are offered for the team roles as provider · model, without Gemini twice.
       await page.getByText('Seznam modelů je načtený.', { exact: true }).waitFor();
       assert.ok(
         (await page.locator('select[name=role_primary] option').allTextContents()).includes(
-          'Google Gemini · Gemini 2.5 Pro',
+          'Google · Gemini 2.5 Pro',
         ),
       );
       // Unknown and admin keys are refused with the reason under the field; nothing is saved.

@@ -121,3 +121,17 @@ test('AI-36: Gemini edits an image with the original as input; a transparent bac
     /klíč Google Gemini/,
   );
 });
+test('AI-36: a Gemini image model is told by its id (…image… or nano-banana…), never offered as a text model', async () => {
+  const { geminiTextModel } = await import('../../../packages/providers/index.mjs');
+  const { usableModel } = await import('../src/catalog.ts');
+  assert.equal(imageProvider('gemini-nano-banana-2.1'), 'gemini');
+  assert.equal(validImages({ fast: 'gemini-nano-banana-2.1', precise: 'none' }), true);
+  for (const id of ['gemini-nano-banana-2.1', 'gemini-3.1-flash-image', 'gemini-3.5-transcribe', 'gemini-omni-1.1-flash', 'gemini-3.8-flash-tts', 'gemini-3.8-live'])
+    assert.equal(usableModel('gemini', id, ['generateContent']), false, id);
+  for (const id of ['gemini-4-argon', 'gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-flash-latest'])
+    assert.equal(usableModel('gemini', id, ['generateContent']), true, id);
+  // An unknown new model whose description says it makes images or speech is not a text model either.
+  assert.equal(geminiTextModel('gemini-5-something', 'High-efficiency image generation and editing model'), false);
+  assert.equal(geminiTextModel('gemini-5-other', 'Text-to-speech model'), false);
+  assert.equal(geminiTextModel('gemini-5-other', 'Multimodal model that understands text, images, audio and video'), true);
+});

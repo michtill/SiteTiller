@@ -17,6 +17,8 @@ export function detectProvider(value) {
   if (/^sk-ant-[A-Za-z0-9_-]{20,}$/.test(key)) return { provider: 'anthropic' };
   if (/^sk-admin-/.test(key)) return { problem: 'admin' };
   if (/^sk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{20,}$/.test(key)) return { provider: 'openai' };
-  if (/^AIza[0-9A-Za-z_-]{35}$/.test(key)) return { provider: 'gemini' };
+  // Gemini: the standard key "AIza…" and, since 2026, the auth key "AQ.…" that AI Studio creates; both go in the
+  // x-goog-api-key header.
+  if (/^AIza[0-9A-Za-z_-]{35}$/.test(key) || /^AQ\.[0-9A-Za-z._-]{30,}$/.test(key)) return { provider: 'gemini' };
   return { problem: 'unknown' };
 }

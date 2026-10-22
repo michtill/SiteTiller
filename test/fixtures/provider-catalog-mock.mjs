@@ -6,6 +6,7 @@ export const fixtureKeys = {
   openai: 'sk-proj-fixtureOpenaiKey0000000000',
   anthropic: 'sk-ant-fixtureAnthropicKey000000000',
   gemini: 'AIzaFixtureGeminiKey0000000000000000000',
+  geminiAuth: 'AQ.AbFixtureGeminiAuthKey0000000000000000000',
 };
 const original = globalThis.fetch;
 const models = [
@@ -50,7 +51,7 @@ globalThis.fetch = (input, options) => {
       if (url.pathname !== '/v1beta/models' || (options?.method || 'GET') !== 'GET')
         throw Error('Fixture forbids paid/provider generation calls');
       if (url.searchParams.has('key')) throw Error('The Gemini key must not be in the address');
-      if (headers.get('x-goog-api-key') !== fixtureKeys.gemini)
+      if (![fixtureKeys.gemini, fixtureKeys.geminiAuth].includes(headers.get('x-goog-api-key')))
         return Promise.resolve(Response.json({ error: { status: 'PERMISSION_DENIED' } }, { status: 403 }));
       return Promise.resolve(Response.json({ models: geminiModels }));
     }

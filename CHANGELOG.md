@@ -2,6 +2,16 @@
 
 Versions follow [semantic versioning](https://semver.org). Each release is tagged `v<version>`.
 
+## 1.0.3
+
+- Google Gemini auth keys (`AQ.…`, created by Google AI Studio since 2026) are recognised next to the standard `AIza…` keys; both are checked with Gemini's model list and sent in the `x-goog-api-key` header.
+
+## 1.0.2
+
+- Google Gemini image models in the image tools (precise edits, fast generation); results are converted to the requested format (WebP/JPEG), otherwise the PNG stays with an exact note; a transparent background is available with OpenAI only.
+- Separate recommendation for the image tools (`packages/models/recommended-images.json`); automatic team set-up follows it too. A change of a recommendation's format gets a new file, so older instances keep reading theirs.
+- Recommended model IDs checked against the providers' public pages.
+
 ## 1.0.1
 
 - Google Gemini as a third AI provider for all four text roles of the AI Studio team.

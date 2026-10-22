@@ -33,8 +33,10 @@ test('AI-33: the provider is told by the key shape only; unknown and admin keys 
   assert.deepEqual(detectProvider('sk-' + 'a'.repeat(48)), { provider: 'openai' });
   assert.deepEqual(detectProvider('sk-svcacct-' + 'b'.repeat(40)), { provider: 'openai' });
   assert.deepEqual(detectProvider(fixtureKeys.gemini), { provider: 'gemini' });
+  // Gemini's newer auth key from AI Studio.
+  assert.deepEqual(detectProvider(fixtureKeys.geminiAuth), { provider: 'gemini' });
   assert.deepEqual(detectProvider('sk-admin-' + 'c'.repeat(40)), { problem: 'admin' });
-  for (const value of ['', 'hello', 'AIza-too-short', 'xai-' + 'd'.repeat(40), 'sk-short'])
+  for (const value of ['', 'hello', 'AIza-too-short', 'AQ.short', 'AQ ' + 'e'.repeat(40), 'xai-' + 'd'.repeat(40), 'sk-short'])
     assert.deepEqual(detectProvider(value), { problem: 'unknown' }, value);
 });
 test('AI-33: catalog errors distinguish offline/network/auth/access/quota/rate without leaking bodies', async () => {
@@ -149,6 +151,8 @@ test(
           body: JSON.stringify({ provider, key }),
         });
       assert.equal((await add('gemini', fixtureKeys.gemini)).status, 200);
+      // The auth key "AQ.…" is checked the same way, with the key in the x-goog-api-key header.
+      assert.equal((await add('gemini', fixtureKeys.geminiAuth)).status, 200);
       const refused = await add('gemini', 'AIza' + 'X'.repeat(35));
       assert.equal(refused.status, 422);
       assert.match((await refused.json()).error, /Klíč se neuložil: chybí přístup k API nebo modelům \(HTTP 403\)/);

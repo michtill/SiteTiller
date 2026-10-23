@@ -7,12 +7,20 @@ let stack, cookie, token, form;
 const page = (text) =>
   `<!doctype html><html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${text}</title></head><body><main><h1>${text}</h1></main></body></html>`;
 const signedIn = (path) => fetch(stack.origin + path, { headers: { Cookie: cookie } }).then((r) => r.json());
+// Over the per-minute call limit the server answers 429 (documentation 2.8); like an assistant, the tests wait and
+// try again.
 async function call(name, args = {}) {
-  const r = await fetch(stack.origin + '/mcp', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
-  });
+  let r;
+  for (let attempt = 0; attempt < 15; attempt++) {
+    r = await fetch(stack.origin + '/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
+    });
+    if (r.status !== 429) break;
+    await r.arrayBuffer();
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
   const result = (await r.json()).result;
   return { error: result.isError ? result.content[0].text : '', value: result.structuredContent };
 }

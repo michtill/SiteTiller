@@ -2,6 +2,10 @@
 
 Versions follow [semantic versioning](https://semver.org). Each release is tagged `v<version>`.
 
+## 1.0.6
+
+- Same application as 1.0.5. The MCP tests wait and try again when the server answers 429 (the per-minute call limit), which made the CI of 1.0.5 fail.
+
 ## 1.0.5
 
 - More AI teams: recommended teams from named recommendation sets (e.g. Performance, Eco) and any number of named own teams; a default team; every team is valid. Settings → AI Studio models shows a tab per team in place, with Make default, Update, New team (a copy), rename, Save and Delete (not the default team). An older team becomes the own team "Vlastní tým".

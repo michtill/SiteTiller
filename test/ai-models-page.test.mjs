@@ -11,8 +11,12 @@ const props = {
   networkMode: 'providers',
   keys: [{ id: 'openai', name: 'OpenAI' }],
   keyError: '',
-  autoTeam: false,
-  teamStatus: 'Používáte vlastní tým.',
+  teams: [
+    { id: 'performance', name: 'Výkonný tým', isDefault: false },
+    { id: 'custom-1', name: 'Vlastní tým', isDefault: true },
+  ],
+  shown: { id: 'custom-1', kind: 'custom', name: 'Vlastní tým', description: '', isDefault: true, source: '' },
+  teamNotice: '',
   confirmKey: '',
   roles: ['primary', 'ui', 'verify', 'escalation'].map((id) => ({
     id,
@@ -30,7 +34,7 @@ const props = {
   returnTo: '/site/',
   mailWarning: false,
 };
-test('AI-33: the AI models screen has the settings band, the keys and one team group with two tabs, labels above the fields and model with effort side by side', async () => {
+test('AI-33: the AI models screen has the settings band, the keys and one team group with a tab for every team, labels above the fields and model with effort side by side', async () => {
   const html = await renderPage('aiapi', props);
   const browser = await launchBrowser();
   try {
@@ -40,9 +44,13 @@ test('AI-33: the AI models screen has the settings band, the keys and one team g
       'API klíče',
       'Tým AI',
     ]);
-    // The own team is in use: its tab is pressed and the line under the tabs says it; Save is there.
-    assert.deepEqual(await page.locator('.team-tabs button[aria-pressed=true]').allTextContents(), ['Vlastní tým']);
-    assert.equal(await page.locator('.team-status span').textContent(), 'Používáte vlastní tým.');
+    // The shown custom team is the default one: its tab is current with the default mark, the line says it, it can
+    // be renamed and saved but not deleted.
+    assert.deepEqual(await page.locator('.team-tabs a[aria-current=page]').allTextContents(), ['Vlastní tým']);
+    assert.deepEqual(await page.locator('.team-tabs a[data-default]').allTextContents(), ['Vlastní tým']);
+    assert.equal(await page.locator('.team-status span').textContent(), 'Výchozí tým');
+    assert.equal(await page.locator('input[name=teamName]').inputValue(), 'Vlastní tým');
+    assert.equal(await page.locator('#team-delete').isVisible(), false);
     assert.equal(await page.getByRole('button', { name: 'Uložit', exact: true }).isVisible(), true);
     assert.equal(await page.locator('.settings-nav a[aria-current="page"]').textContent(), 'Modely AI studia');
     assert.equal(await page.locator('select[name^="role_"]').count(), 4);

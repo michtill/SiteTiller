@@ -131,6 +131,8 @@ test('MC-01: MCP is off by default (404); switched on it reads and edits the dra
     'write_site_files',
     'write_content',
     'write_structure',
+    'list_structure_templates',
+    'apply_structure_templates',
     'upload_content_file',
     'return_to_step',
     'delete_last_step',

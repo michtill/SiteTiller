@@ -17,6 +17,10 @@ export function t(key: string, params: Record<string, unknown> = {}, language = 
   return translate(key, language, params);
 }
 // Service messages (Czech or older English text) in the interface language; other text stays verbatim.
+export function teamName(team: any, language = locale) {
+  if (!team) return '';
+  return typeof team.name === 'string' ? team.name : team.name?.[language] || team.name?.en || team.id || '';
+}
 export function tm(value: unknown, language = locale) {
   return translateMessage(value, language);
 }

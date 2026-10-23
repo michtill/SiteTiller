@@ -120,6 +120,21 @@ test(
     });
     const media = JSON.stringify((await signedIn('/content/api/bootstrap')).media);
     assert.match(media, /od-asistenta\.txt/);
+    // The structure templates of the Content editor: listed with their collections, a free one created in one write
+    // to the unpublished edits, the same one again refused with the reason.
+    const offer = await ok('list_structure_templates'),
+      free = offer.templates.find((item) => item.available);
+    assert.ok(free && free.collections.length);
+    const created = await ok('apply_structure_templates', { ids: [free.id], schema_revision: offer.schema_revision });
+    const lists = (await signedIn('/content/api/bootstrap')).schema.lists;
+    for (const code of free.collections) assert.ok(Object.hasOwn(lists, code), code);
+    assert.equal(created.unpublished, true);
+    const again = await ok('list_structure_templates');
+    assert.equal(again.templates.find((item) => item.id === free.id).available, false);
+    assert.notEqual(
+      (await call('apply_structure_templates', { ids: [free.id], schema_revision: again.schema_revision })).error,
+      '',
+    );
   },
 );
 

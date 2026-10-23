@@ -1,0 +1,210 @@
+{
+  "version": 2,
+  "revision": 2,
+  "date": "2026-10-22",
+  "default": "performance",
+  "sets": {
+    "performance": {
+      "name": {
+        "cs": "Výkonný tým",
+        "en": "Performance team"
+      },
+      "description": {
+        "cs": "Nejlepší modely na stavbu webů podle žebříčku WebDev Arena, za vyšší cenu.",
+        "en": "The best models for building websites according to the WebDev Arena leaderboard, at a higher price."
+      },
+      "roles": {
+        "primary": [
+          {
+            "provider": "anthropic",
+            "model": "claude-opus-5-5"
+          },
+          {
+            "provider": "openai",
+            "model": "gpt-6.1-sol"
+          },
+          {
+            "provider": "gemini",
+            "model": "gemini-4-argon"
+          },
+          {
+            "provider": "gemini",
+            "model": "gemini-3.8-flash"
+          }
+        ],
+        "ui": [
+          {
+            "provider": "anthropic",
+            "model": "claude-sonnet-5-5"
+          },
+          {
+            "provider": "openai",
+            "model": "gpt-6.1-sol"
+          },
+          {
+            "provider": "gemini",
+            "model": "gemini-3.8-flash"
+          },
+          {
+            "provider": "gemini",
+            "model": "gemini-4-argon"
+          }
+        ],
+        "verify": [
+          {
+            "provider": "openai",
+            "model": "gpt-6-luna"
+          },
+          {
+            "provider": "anthropic",
+            "model": "claude-haiku-5-5"
+          },
+          {
+            "provider": "gemini",
+            "model": "gemini-3.8-flash"
+          },
+          {
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite"
+          }
+        ],
+        "escalation": [
+          {
+            "provider": "openai",
+            "model": "gpt-6-astra",
+            "effort": "high"
+          },
+          {
+            "provider": "anthropic",
+            "model": "claude-fable-5-1",
+            "effort": "high"
+          },
+          {
+            "provider": "gemini",
+            "model": "gemini-4-argon",
+            "effort": "high"
+          }
+        ]
+      },
+      "images": {
+        "precise": [
+          {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst"
+          },
+          {
+            "provider": "gemini",
+            "model": "gemini-3-pro-image"
+          }
+        ],
+        "fast": [
+          {
+            "provider": "openai",
+            "model": "gpt-image-2.5-flare"
+          },
+          {
+            "provider": "gemini",
+            "model": "gemini-nano-banana-2.1"
+          },
+          {
+            "provider": "gemini",
+            "model": "gemini-3.1-flash-image"
+          }
+        ]
+      }
+    },
+    "eco": {
+      "name": {
+        "cs": "Eko tým",
+        "en": "Eco team"
+      },
+      "description": {
+        "cs": "Levnější modely s dobrými výsledky, vhodné pro běžné úpravy webu.",
+        "en": "Cheaper models with good results, suited to everyday website changes."
+      },
+      "roles": {
+        "primary": [
+          {
+            "provider": "anthropic",
+            "model": "claude-sonnet-5-5"
+          },
+          {
+            "provider": "openai",
+            "model": "gpt-6.1-sol"
+          },
+          {
+            "provider": "gemini",
+            "model": "gemini-3.8-flash"
+          }
+        ],
+        "ui": [
+          {
+            "provider": "anthropic",
+            "model": "claude-haiku-5-5"
+          },
+          {
+            "provider": "gemini",
+            "model": "gemini-3.8-flash"
+          },
+          {
+            "provider": "openai",
+            "model": "gpt-6-luna"
+          }
+        ],
+        "verify": [
+          {
+            "provider": "openai",
+            "model": "gpt-6-luna"
+          },
+          {
+            "provider": "anthropic",
+            "model": "claude-haiku-5-5"
+          },
+          {
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite"
+          }
+        ],
+        "escalation": [
+          {
+            "provider": "anthropic",
+            "model": "claude-opus-5-5",
+            "effort": "high"
+          },
+          {
+            "provider": "openai",
+            "model": "gpt-6.1-sol",
+            "effort": "high"
+          },
+          {
+            "provider": "gemini",
+            "model": "gemini-4-argon",
+            "effort": "high"
+          }
+        ]
+      },
+      "images": {
+        "precise": [
+          {
+            "provider": "gemini",
+            "model": "gemini-nano-banana-2.1"
+          },
+          {
+            "provider": "openai",
+            "model": "gpt-image-2.5-flare"
+          }
+        ],
+        "fast": [
+          {
+            "provider": "gemini",
+            "model": "gemini-nano-banana-2.1"
+          },
+          {
+            "provider": "openai",
+            "model": "gpt-image-2.5-flare"
+          }
+        ]
+      }
+    }
+  }
+}

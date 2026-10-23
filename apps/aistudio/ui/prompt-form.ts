@@ -1,11 +1,12 @@
 import { computed, ref, reactive, watch, nextTick, onMounted, onUnmounted } from 'vue';
-import { t } from './i18n.ts';
+import { t, teamName } from './i18n.ts';
 import { s, APP_BASE, api, notice, refresh, viewedCommit, selectedSavedDraftId, renderPreview } from './studio.ts';
-// The request composer: text, attached images and documents, the workflow (checks) and the content the
-// draft is designed against. Workflow choices last until the page is reloaded.
+// The request composer: text, attached images and documents, the team with the two checks, and the content the
+// draft is designed against. The choices last until the page is reloaded.
 const template = `<form id="prompt-form" :inert="!s.ready||undefined" @submit.prevent="submit"><label class="sr-only" for="prompt"><span>{{t('requested_website_change')}}</span></label><textarea id="prompt" v-model="s.prompt" :placeholder="t('prompt_placeholder')" maxlength="6000" rows="4" required @keydown="enter" @paste="paste"></textarea><input id="image-files" ref="files" type="file" accept="image/png,image/jpeg,image/webp,.pdf,.txt,.doc,.docx,.xls,.xlsx,.odt,.ods,.ppt,.pptx" multiple hidden @change="chosen"><div id="attachments"><div v-for="item in s.attachments" :key="item.id" class="attachment-preview" :class="{'attachment-document':!isImage(item)}"><span v-if="!isImage(item)" class="attachment-file-name">{{item.name}}</span><img v-if="isImage(item)" :src="APP_BASE+'/api/images/'+item.id" :alt="item.name||t('attached_image')"><img v-else hidden><button type="button" class="remove-attachment" :aria-label="t('remove_image')+item.name" @click="remove(item)">×</button></div></div>
 <div class="prompt-actions"><button type="button" id="add-images" :aria-label="t('add_image')" :title="t('add_image_you_can_also_paste_from_the_clipboard')" :disabled="!s.ready||s.current?.busy||s.uploading" @click="files?.click()">+</button>
-<details id="request-options" ref="options" class="request-options" @keydown.esc="closeOptions"><summary :aria-label="t('request_processing')"><span id="request-options-label">{{t(workflowLabel)}}</span><span aria-hidden="true">⌄</span></summary><div class="request-options-menu"><h3>{{t('request_processing')}}</h3><button type="button" id="simple-change" @click="simple"><strong>{{t('simple_change')}}</strong><small>{{t('simple_change_help')}}</small></button><label><input id="request-technical" type="checkbox" v-model="checks.technical"><span>{{t('technical_check_toggle')}}</span></label><label><input id="request-verification" type="checkbox" v-model="checks.verification"><span>{{t('verification_toggle')}}</span></label><small class="request-options-note">{{t('current_opening_only')}}</small></div></details>
+
+<details id="team-choice" ref="teamMenu" class="request-options team-options" @keydown.esc="closeTeams"><summary :aria-label="t('team_ai')"><span id="team-choice-label">{{teamName(chosenTeam)}}</span><span aria-hidden="true">⌄</span></summary><div class="request-options-menu"><h3>{{t('team_ai')}}</h3><button v-for="team in teams" :key="team.id" type="button" :data-team="team.id" :aria-pressed="String(team.id===chosenTeam?.id)" :disabled="s.submitting||s.current?.busy" @click="chooseTeam(team.id)"><strong>{{teamName(team)}}</strong><small>{{team.roles?.primary?.model}}</small></button><label><input id="request-technical" type="checkbox" v-model="checks.technical"><span>{{t('technical_check_toggle')}}</span></label><label><input id="request-verification" type="checkbox" v-model="checks.verification"><span>{{t('verification_toggle')}}</span></label><small class="request-options-note">{{t('team_choice_note')}}</small></div></details>
 <details id="cms-preview-choice" ref="contentMenu" class="request-options content-options" :class="{'is-unpublished':s.cmsPreviewMode==='unpublished'}" :hidden="!contentChoice||undefined" @toggle="contentToggled"><summary :aria-label="t('content_for_draft')" aria-controls="content-source-popover"><span>{{s.cmsPreviewMode==='published'?t('published_content'):t('unpublished_content')}}</span><span aria-hidden="true">⌄</span></summary></details>
 <Teleport to="body"><div id="content-source-popover" ref="popover" class="request-options-menu content-source-popover" popover="manual" hidden><h3>{{t('content_for_draft')}}</h3><button v-for="source in ['published','unpublished']" :key="source" type="button" :data-content-source="source" :disabled="!sources[source]||s.submitting||s.current?.busy" :aria-pressed="String(source===s.cmsPreviewMode)" @click="chooseSource(source)"><strong>{{source==='published'?t('published_short'):t('unpublished_short')}}</strong><small>{{source==='published'?t('content_published_help'):t('content_unpublished_help')}}</small></button><small>{{t('content_shared_help')}}</small><select id="cms-preview-source" hidden v-model="s.cmsPreviewMode"><option value="published" :disabled="!sources.published">{{t('published_short')}}</option><option value="unpublished" :disabled="!sources.unpublished">{{t('unpublished_short')}}</option></select></div></Teleport>
 <div class="submit-controls"><button v-if="running" id="stop-run" type="button" class="primary stop-run" :aria-label="t('stop_request')" :title="t('stop_request')" :disabled="stopping" @click="stop"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg></button><button v-else id="run" type="submit" class="primary" :aria-label="s.current?.busy?t('task_running'):t('send_request')" :title="t('send_request')" :disabled="!s.ready||s.current?.busy||s.submitting||s.uploading"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20V4m-6 6 6-6 6 6" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div></div>
@@ -14,26 +15,29 @@ export default {
   template,
   setup() {
     const files = ref<HTMLInputElement | null>(null),
-      options = ref<HTMLDetailsElement | null>(null),
       contentMenu = ref<HTMLDetailsElement | null>(null),
       popover = ref<HTMLElement | null>(null);
     const checks = reactive({ technical: true, verification: true });
-    const workflowLabel = computed(() =>
-      checks.technical && checks.verification
-        ? 'standard_workflow'
-        : !checks.technical && !checks.verification
-          ? 'simple_change'
-          : 'custom_workflow',
-    );
-    function simple() {
-      checks.technical = false;
-      checks.verification = false;
-      if (options.value) options.value.open = false;
+    // The team of the next requests (documentation 4.2): the default team until another one is chosen; the choice
+    // lasts until the page is reloaded.
+    const teamMenu = ref<HTMLDetailsElement | null>(null),
+      teamChoice = ref(''),
+      teams = computed(() => s.current?.teams || []),
+      chosenTeam = computed(
+        () =>
+          teams.value.find((team: any) => team.id === teamChoice.value) ||
+          teams.value.find((team: any) => team.id === s.current?.defaultTeam) ||
+          teams.value[0] ||
+          null,
+      );
+    function chooseTeam(id: string) {
+      teamChoice.value = id;
+      if (teamMenu.value) teamMenu.value.open = false;
     }
-    function closeOptions() {
-      if (options.value) {
-        options.value.open = false;
-        options.value.querySelector('summary')?.focus();
+    function closeTeams() {
+      if (teamMenu.value) {
+        teamMenu.value.open = false;
+        teamMenu.value.querySelector('summary')?.focus();
       }
     }
     const sources = computed(() => s.current?.cmsPreviewSources || {});
@@ -94,7 +98,7 @@ export default {
     }
     const outside = (event: Event) => {
       const target = event.target as Node;
-      if (options.value?.open && !options.value.contains(target)) options.value.open = false;
+      if (teamMenu.value?.open && !teamMenu.value.contains(target)) teamMenu.value.open = false;
       if (contentMenu.value?.open && !contentMenu.value.contains(target) && !popover.value?.contains(target))
         closeContent();
     };
@@ -106,6 +110,8 @@ export default {
     };
     const blur = () => {
       if (contentMenu.value?.open && document.activeElement?.tagName === 'IFRAME') closeContent();
+      // A click into the preview (an iframe) closes the team choice too.
+      if (teamMenu.value?.open && document.activeElement?.tagName === 'IFRAME') teamMenu.value.open = false;
     };
     let observer: ResizeObserver | null = null;
     onMounted(() => {
@@ -204,6 +210,7 @@ export default {
         await api('run', {
           prompt,
           checks: { technical: checks.technical, verification: checks.verification },
+          ...(chosenTeam.value ? { team: chosenTeam.value.id } : {}),
           ...(s.current.cmsPreviewSources?.[s.cmsPreviewMode] ? { cmsSource: s.cmsPreviewMode } : {}),
           attachments: s.attachments.map(({ id }) => ({ id, use: 'auto' })),
         });
@@ -221,13 +228,15 @@ export default {
       s,
       APP_BASE,
       files,
-      options,
       contentMenu,
       popover,
       checks,
-      workflowLabel,
-      simple,
-      closeOptions,
+      teamMenu,
+      teams,
+      chosenTeam,
+      chooseTeam,
+      closeTeams,
+      teamName,
       sources,
       contentChoice,
       previewWarning,

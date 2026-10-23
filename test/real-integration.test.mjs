@@ -40,7 +40,9 @@ test(
       assert.doesNotMatch(await page.locator('body').textContent(), /LEGACY MUST NOT WIN/);
       await page.locator('input[name=password]').fill(stack.password);
       await page.locator('button:not(.show-password)').click();
-      await page.waitForURL('**/content/');
+      // Signed in, the home page; the Content editor from its card.
+      await page.waitForURL((url) => url.pathname === '/');
+      await page.goto(new URL('/content/', page.url()).href);
       studio = await studioFrame(page, 'content');
       await studio.getByRole('textbox', { name: 'Nadpis', exact: true }).waitFor();
       assert.equal(await studio.evaluate(() => document.baseURI), origin + '/content/');

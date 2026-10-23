@@ -235,7 +235,9 @@ test(
         await page.goto(origin + '/login');
         await page.locator('input[name=password]').fill('fixture-password-new');
         await page.locator('button:not(.show-password)').first().click();
-        await page.waitForURL('**/content/');
+        // Signed in, the home page; the Content editor from its card.
+        await page.waitForURL((url) => url.pathname === '/');
+        await page.goto(new URL('/content/', page.url()).href);
         studio = await studioFrame(page, 'content');
         // Offline there are no usable models; answering with none keeps AI Studio from leading to AI models.
         await page.route('**/site/api/models', (route) =>

@@ -194,7 +194,7 @@ async function signIn(page, stack) {
   await page.goto(stack.origin + '/login');
   await page.locator('input[name=password]').fill(stack.password);
   await page.locator('button:not(.show-password)').click();
-  await page.waitForURL('**/content/');
+  await page.waitForURL((url) => url.pathname === '/');
 }
 async function addKey(page, value) {
   await page.locator('input[name=key]').fill(value);
@@ -362,21 +362,21 @@ test(
       // The lists arrive only when the test lets them, so the place of the fields can be measured before and after.
       let release;
       const held = new Promise((resolve) => (release = resolve));
-      await page.route('**/settings/aiapi/catalog', async (route) => {
+      await page.route('**/settings/aiapi/catalog?*', async (route) => {
         await held;
         await route.continue();
       });
       await page.goto(stack.origin + '/settings/aiapi');
       const places = () =>
         page.evaluate(() =>
-          ['select[name=role_primary]', 'select[name=image_fast]', 'button:not([value])'].map(
+          ['select[name=role_primary]', 'select[name=image_fast]', '#team-save'].map(
             (selector) => document.querySelector(selector).getBoundingClientRect().top,
           ),
         );
       const before = await places();
       // Without keys the status line says so in the place of the Save and load models button.
       assert.match(await page.locator('#model-catalog').textContent(), /nejsou zadané žádné API klíče/);
-      const arrived = page.waitForResponse('**/settings/aiapi/catalog');
+      const arrived = page.waitForResponse('**/settings/aiapi/catalog?*');
       release();
       await arrived;
       await page.waitForTimeout(100);

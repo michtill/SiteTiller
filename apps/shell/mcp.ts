@@ -620,6 +620,8 @@ const tools: {
           publish: ctx.settings.publish,
         },
         checks: ctx.settings.checks,
+        // The structure templates of the Content editor (documentation 3.9): list_structure_templates.
+        structure_templates: 'Ready collections (contacts, website elements, images, pages) can be created with apply_structure_templates.',
       };
     },
   },
@@ -756,6 +758,39 @@ const tools: {
         expectedRevision: args.content_revision,
         changes,
         dryRun: false,
+      });
+      return {
+        schema_revision: result.schemaRevision,
+        content_revision: result.contentRevision || null,
+        collections: Object.keys(result.lists || {}),
+        unpublished: true,
+      };
+    },
+  },
+  {
+    name: 'list_structure_templates',
+    level: 'read',
+    description:
+      'The structure templates of the Content editor: ready collections with their fields (e.g. contacts, website elements, images, pages). Each says which collections it creates and whether it is available (its codes are still free). Prefer a template to inventing the same collections.',
+    inputSchema: object({}),
+    async run(_args, ctx) {
+      const [offer, bootstrap] = await Promise.all([cms(ctx, '/api/structure-templates'), cms(ctx, '/api/bootstrap')]);
+      return { templates: offer.templates, schema_revision: bootstrap.schemaRevision };
+    },
+  },
+  {
+    name: 'apply_structure_templates',
+    level: 'edit',
+    description:
+      'Creates the chosen structure templates in one structure write, like Create in the Content editor. Pass their ids from list_structure_templates and schema_revision. Goes to the unpublished edits; a template whose code is already used is refused with the reason, nothing existing is replaced.',
+    inputSchema: object(
+      { ids: { type: 'array', items: { type: 'string' } }, schema_revision: { type: 'string' } },
+      ['ids', 'schema_revision'],
+    ),
+    async run(args, ctx) {
+      const result = await cms(ctx, '/api/structure-templates', {
+        ids: args.ids,
+        schemaRevision: args.schema_revision,
       });
       return {
         schema_revision: result.schemaRevision,

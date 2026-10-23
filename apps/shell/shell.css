@@ -103,8 +103,14 @@ body {
   flex-direction: column;
   gap: 6px;
 }
+/* The website name in the side band: plain text, not the small capitals of other labels. */
 .shell-band .eyebrow {
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--sidebar-muted);
+  overflow-wrap: anywhere;
 }
 .shell-site {
   font-size: 21px;
@@ -611,30 +617,38 @@ p.intro {
     animation: none;
   }
 }
-/* AI models: Recommended team / Own team. A tab switches at once; the team in use has a green dot and the line
-   under the tabs says it in words (documentation 2.4). */
+/* AI models: a tab for every team and + New team; a tab only shows its team, the default team has a green dot and
+   the line under the tabs says it (documentation 2.4). */
 .team-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   margin: 4px 0 0;
   border-bottom: 1px solid #dbe2db;
 }
+.team-tabs a,
 .team-tabs button {
   display: inline-flex;
   width: auto;
-  font-size: 15px;
-  font-weight: 400;
   align-items: center;
   gap: 8px;
   margin: 0 0 -1px;
   padding: 10px 16px;
+  font-size: 15px;
+  font-weight: 400;
   color: #5d6c64;
+  text-decoration: none;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 8px 8px 0 0;
   cursor: pointer;
 }
-.team-tabs button[aria-pressed='true'] {
+.team-tabs a:hover,
+.team-tabs button:hover {
+  color: inherit;
+  background: rgba(255, 255, 255, 0.5);
+}
+.team-tabs a[aria-current='page'] {
   color: inherit;
   font-weight: 650;
   background: rgba(255, 255, 255, 0.7);
@@ -642,14 +656,19 @@ p.intro {
   border-bottom-color: transparent;
   cursor: default;
 }
-.team-tabs button[aria-pressed='true']::before {
+.team-tabs a[data-default]::before {
   content: '';
   width: 10px;
   height: 10px;
   border-radius: 50%;
   background: #2f9e55;
 }
-.team-status {
+.team-tabs .team-new {
+  margin-left: auto;
+  color: var(--primary);
+}
+.team-status,
+.team-source {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -658,14 +677,29 @@ p.intro {
   margin: 12px 0 4px;
   color: #5d6c64;
 }
-.team-status button {
+.team-status[hidden],
+.team-source[hidden],
+.team-description[hidden],
+.team-notice[hidden],
+.team-name[hidden],
+.team-actions[hidden] {
+  display: none;
+}
+.team-status button,
+.team-source button {
   width: auto;
   margin: 0;
   padding: 8px 16px;
 }
-.team-tabs button:hover {
-  color: inherit;
-  background: rgba(255, 255, 255, 0.5);
+.team-description {
+  margin: 4px 0;
+}
+.team-actions {
+  display: flex;
+  gap: 12px;
+}
+.team-actions #team-delete {
+  width: auto;
 }
 /* An API key field hides its characters without being a password field (documentation 2.4). */
 input.secret:not(.shown) {

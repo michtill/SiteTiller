@@ -1,5 +1,5 @@
 import { computed, ref, onBeforeUpdate, onUpdated } from 'vue';
-import { t, tm } from './i18n.ts';
+import { t, tm, teamName } from './i18n.ts';
 import { compactProgress, discussionBundles, displayMessage, releaseNumber, realityOffered } from './presentation.ts';
 import { s, APP_BASE, displayedPresentationCommit } from './studio.ts';
 import TimelineBlock from './timeline-block.ts';
@@ -157,6 +157,8 @@ function view(group: any) {
     kind: group.kind,
     commit: group.commit,
     prompt: group.prompt,
+    // The team that made the step (documentation 4.2).
+    team: teamName(group.request?.team),
     title: group.title,
     images,
     isPublication,

@@ -66,7 +66,7 @@ test(
       await page.goto(stack.origin + '/login');
       await page.locator('input[name=password]').fill(stack.password);
       await page.locator('button:not(.show-password)').click();
-      await page.waitForURL('**/content/');
+      await page.waitForURL((url) => url.pathname === '/');
       await page.goto(link + 'styl.html');
       await page.waitForFunction(() => getComputedStyle(document.querySelector('h1')).color === 'rgb(255, 0, 0)');
     } finally {

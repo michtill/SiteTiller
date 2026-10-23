@@ -27,6 +27,7 @@ import {
 } from './mcp.ts';
 import { appVersion } from '../aistudio/src/app-version.ts';
 import { createShare, sharesFor, allShares, revokeShare, shareUrl } from './shares.ts';
+import { statusPath, statusToken, serveStatus, noteActivity } from './instance-status.ts';
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -149,6 +150,16 @@ async function readForm(req: http.IncomingMessage) {
   }
   return new URLSearchParams(text);
 }
+const instanceStatusToken = await statusToken(settingsDirectory);
+// Whether the AI Studio runs a job, a publication or a save (its busy state), for the instance status.
+async function aiBusy() {
+  const response = await fetch('http://127.0.0.1:' + process.env.AISTUDIO_PORT + '/api/state', {
+    headers: { 'x-sitetiller-gateway': secret, origin: 'http://127.0.0.1:' + process.env.AISTUDIO_PORT },
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!response.ok) throw Error('AI Studio');
+  return !!(await response.json()).busy;
+}
 // Signs out everywhere: a new password ends every session and preview access.
 async function endSessions() {
   await endConnections(data);
@@ -160,6 +171,9 @@ async function endSessions() {
 http
   .createServer(async (req, res) => {
     try {
+      if ((req.url || '').split('?')[0] === statusPath)
+        return await serveStatus(req, res, instanceStatusToken, aiBusy);
+      noteActivity();
       await refreshPreviewOrigin();
       if (publicPreviewOrigin && req.headers.host === new URL(publicPreviewOrigin).host)
         return await servePublicPreview(req, res, {
@@ -186,8 +200,9 @@ http
           // Settings screens mark E-mails in the side band until sending e-mail is set up (documentation 2.8).
           const settingsScreen = ['settings', 'mail', 'aiapi', 'mcp', 'addresses', 'password'].includes(name);
           res.end(
+            // After a save the page shows the saved name and look at once (documentation 2.4).
             await renderPage(name, settingsScreen ? { ...props, mailWarning: !(await resetAvailable()) } : props, {
-              ...look,
+              ...(req.method === 'POST' ? await shared() : look),
               ...override,
             }),
           );
@@ -206,8 +221,9 @@ http
         return res.end();
       }
       const next = url.searchParams.get('next');
+      // Without next the sign-in leads to the home page with both studios (documentation 2.2).
       const destination =
-        next && new RegExp('^/(content|site|preview)(/|$)').test(next) && !next.includes('\\') ? next : '/content/';
+        next && new RegExp('^/(content|site|preview)(/|$)').test(next) && !next.includes('\\') ? next : '/';
       const token = valid(req);
       const accessMatch = url.pathname.match(/^\/preview\/access\/([a-f0-9]{64})(\/.*)?$/),
         access = accessMatch ? previewAccess.get(hashed(accessMatch[1])) : null,
@@ -453,7 +469,7 @@ http
             '; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800' +
             (origin.startsWith('https:') ? '; Secure' : ''),
         );
-        return redirect('/content/');
+        return redirect('/');
       }
       // A saved draft's preview is sandboxed, so the browser sends no sign-in cookie with the files the page loads
       // (styles, scripts, images). Those files come with the draft's own short-lived key, which the preview checks;
@@ -794,7 +810,11 @@ http
       }
 
       // AI models (documentation 2.10): the AI Studio's keys, team models and image tools, edited here.
-      if (url.pathname === '/settings/aiapi' || url.pathname === '/settings/aiapi/catalog') {
+      if (
+        url.pathname === '/settings/aiapi' ||
+        url.pathname === '/settings/aiapi/catalog' ||
+        url.pathname === '/settings/aiapi/team'
+      ) {
         let error = '',
           keyError = '',
           confirmKey = '',
@@ -816,7 +836,7 @@ http
           return result;
         };
         // The team roles and image tools with their options: from the catalog, or only the saved choice before it.
-        const modelView = (state: any, catalog: any, entered: any) => {
+        const modelView = (team: any, catalog: any, entered: any) => {
           // Options read "provider · model": Google's models are named Gemini themselves, so the provider is Google.
           const provider = (id: string) => (id === 'gemini' ? 'Google' : providerName(id)),
             usable = (catalog?.models || []).filter((m: any) => m.usable),
@@ -825,8 +845,8 @@ http
               value && value !== 'none' && !options.some((o) => o.value === value)
                 ? [...options, { value, label: label + (catalog ? t('availability_unconfirmed') : '') }]
                 : options,
-            chosen = entered?.roles || state.roles || {},
-            imageChoice = entered?.imageModels || state.imageModels || {};
+            chosen = entered?.roles || team?.roles || {},
+            imageChoice = entered?.imageModels || team?.imageModels || {};
           const roleLabels: Record<string, string> = {
             primary: t('web_lead_primary_agent'),
             ui: t('ui_code_specialist_larger_implementations'),
@@ -878,25 +898,70 @@ http
             ),
           };
         };
-        const teamStatus = (state: any) =>
-          state.autoTeam
-            ? t('team_using_recommended', {
-                date: state.recommendation?.date || '',
-                source: t('auto_team_source_' + (state.recommendation?.source || 'bundled')),
+        // AI teams (documentation 2.4): every team has a tab; the shown one comes from ?team=, the default one otherwise.
+        const teamName = (team: any) =>
+          typeof team.name === 'string' ? team.name : team.name?.[language] || team.name?.en || team.id;
+        const shownTeam = (state: any, id: string | null) =>
+          (state.teams || []).find((team: any) => team.id === id) ||
+          (state.teams || []).find((team: any) => team.id === state.defaultTeam) ||
+          null;
+        const teamView = (state: any, team: any) => ({
+          teams: (state.teams || []).map((item: any) => ({
+            id: item.id,
+            name: teamName(item),
+            isDefault: item.id === state.defaultTeam,
+          })),
+          shown: team
+            ? {
+                id: team.id,
+                kind: team.kind,
+                name: teamName(team),
+                description: team.description?.[language] || team.description?.en || '',
+                isDefault: team.id === state.defaultTeam,
+                source:
+                  team.kind === 'recommended'
+                    ? t('team_using_recommended', {
+                        date: state.recommendation?.date || '',
+                        source: t('auto_team_source_' + (state.recommendation?.source || 'bundled')),
+                      })
+                    : '',
+              }
+            : null,
+          teamNotice: state.teamNotice
+            ? t('team_set_missing', {
+                set:
+                  typeof state.teamNotice.missing === 'string'
+                    ? state.teamNotice.missing
+                    : state.teamNotice.missing?.[language] || state.teamNotice.missing?.en || '',
+                team: teamName(shownTeam(state, state.defaultTeam) || { name: '' }),
               })
-            : t('team_using_custom');
+            : '',
+        });
+        const json = (status: number, value: unknown) => {
+          res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+          return res.end(JSON.stringify(value));
+        };
         if (url.pathname === '/settings/aiapi/catalog') {
-          res.setHeader('Content-Type', 'application/json; charset=utf-8');
           try {
-            // The models first: with Team automatically by the recommendation they may change the team.
+            // The models first: they may change the recommended teams.
             const models = await ai('models', { keys: {} }),
-              view = modelView(await ai('state'), models, null);
-            return res.end(JSON.stringify(view));
+              state = await ai('state');
+            return json(200, modelView(shownTeam(state, url.searchParams.get('team')), models, null));
           } catch (e: any) {
-            res.statusCode = 502;
-            return res.end(JSON.stringify({ error: e.message }));
+            return json(502, { error: e.message });
           }
         }
+        // A tab shown in place: the team's choices without a new catalog (the page keeps the options it loaded).
+        if (url.pathname === '/settings/aiapi/team') {
+          try {
+            const state = await ai('state'),
+              team = shownTeam(state, url.searchParams.get('id'));
+            return json(200, { ...teamView(state, team), ...modelView(team, null, null) });
+          } catch (e: any) {
+            return json(502, { error: e.message });
+          }
+        }
+        let postedTeam: string | null = null;
         let entered: any = null;
         if (req.method === 'POST') {
           const input = await readForm(req);
@@ -937,56 +1002,60 @@ http
               res.statusCode = 422;
             }
           else {
-            const roles = Object.fromEntries(
-              ['primary', 'ui', 'verify', 'escalation'].map((role) => {
-                const value = input.get('role_' + role) || '',
-                  separator = value.indexOf('|');
-                return [
-                  role,
-                  {
-                    provider: value.slice(0, separator),
-                    model: value.slice(separator + 1),
-                    reasoningEffort: input.get('effort_' + role) || 'auto',
-                  },
-                ];
-              }),
-            );
-            entered = {
-              roles,
-              imageModels: { precise: input.get('image_precise') || 'none', fast: input.get('image_fast') || 'none' },
-            };
+            const action = input.get('teamAction') || 'save',
+              teamId = input.get('teamId') || undefined,
+              inPlace = ['default', 'refresh'].includes(action) && (req.headers.accept || '').includes('application/json');
+            postedTeam = teamId || null;
+            if (action === 'save') {
+              const roles = Object.fromEntries(
+                ['primary', 'ui', 'verify', 'escalation'].map((role) => {
+                  const value = input.get('role_' + role) || '',
+                    separator = value.indexOf('|');
+                  return [
+                    role,
+                    {
+                      provider: value.slice(0, separator),
+                      model: value.slice(separator + 1),
+                      reasoningEffort: input.get('effort_' + role) || 'auto',
+                    },
+                  ];
+                }),
+              );
+              entered = {
+                roles,
+                imageModels: { precise: input.get('image_precise') || 'none', fast: input.get('image_fast') || 'none' },
+              };
+            }
             try {
-              // Recommended team / Own team (documentation 2.4): a tab switches and saves at once, Update checks
-              // GitHub; both take the team from the state (the recommended team's selects are read only).
-              const team = input.get('team') || '',
-                autoTeam = team === 'recommended' || team === 'refresh';
               const result = await ai('settings', {
-                ...entered,
-                autoTeam,
-                ...(team === 'refresh' ? { refresh: true } : {}),
-                ...(team
-                  ? await ai('state').then((state: any) => ({ roles: state.roles, imageModels: state.imageModels }))
-                  : {}),
+                action,
+                teamId,
+                ...(action === 'save' ? { ...entered, name: input.get('teamName') ?? undefined } : {}),
               });
               entered = null;
-              notice = team === 'refresh' ? t('team_refreshed') : team ? '' : t('saved');
-              // The tabs switch in place (documentation 2.4): the page's script gets the team, not a new page.
-              if (team && (req.headers.accept || '').includes('application/json')) {
-                const state = await ai('state');
-                res.setHeader('Content-Type', 'application/json; charset=utf-8');
-                return res.end(
-                  JSON.stringify({
-                    ...modelView(state, { ...result.catalog, optionalIssues: result.optionalIssues }, null),
-                    autoTeam: !!state.autoTeam,
-                    status: teamStatus(state),
-                  }),
-                );
+              // A new team is shown at once; after a delete the default team is shown.
+              if (action === 'create' || action === 'delete') {
+                res.writeHead(303, {
+                  Location:
+                    '/settings/aiapi?team=' +
+                    encodeURIComponent(result.teamId) +
+                    '&returnTo=' +
+                    encodeURIComponent(settingsReturnTo(back)),
+                });
+                return res.end();
+              }
+              notice = action === 'refresh' ? t('team_refreshed') : action === 'save' ? t('saved') : '';
+              // Make default and Update work in place (documentation 2.4): the page's script gets the team as JSON.
+              if (inPlace) {
+                const state = await ai('state'),
+                  team = shownTeam(state, teamId || null);
+                return json(200, {
+                  ...teamView(state, team),
+                  ...modelView(team, { ...result.catalog, optionalIssues: result.optionalIssues }, null),
+                });
               }
             } catch (e: any) {
-              if (input.get('team') && (req.headers.accept || '').includes('application/json')) {
-                res.writeHead(422, { 'Content-Type': 'application/json; charset=utf-8' });
-                return res.end(JSON.stringify({ error: e.message }));
-              }
+              if (inPlace) return json(422, { error: e.message });
               error = e.message;
               res.statusCode = 422;
             }
@@ -998,7 +1067,8 @@ http
         } catch (e: any) {
           error = error || e.message;
         }
-        const { roles, images } = modelView(state, null, entered);
+        const shown = shownTeam(state, postedTeam || url.searchParams.get('team')),
+          { roles, images } = modelView(shown, null, entered);
         const keys = (state.providers || [])
           .filter((p: any) => p.hasKey)
           .map((p: any) => ({ id: p.provider, name: providerName(p.provider) }));
@@ -1010,8 +1080,7 @@ http
           keys,
           keyError,
           confirmKey,
-          autoTeam: !!state.autoTeam,
-          teamStatus: teamStatus(state),
+          ...teamView(state, shown),
           roles,
           images,
           returnTo: settingsReturnTo(back),
@@ -1136,6 +1205,7 @@ if (process.env.SITETILLER_PUBLIC_PREVIEW_PORT)
   http
     .createServer(async (req, res) => {
       try {
+        noteActivity();
         if (!(await refreshPreviewOrigin())) {
           res.writeHead(404);
           return res.end();

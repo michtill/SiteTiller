@@ -154,3 +154,35 @@ test('SH-03: real shared settings use CM authority/CAS, return destination, shar
     await stack.close();
   }
 });
+test('SH-03: after Save the side band shows the new website name at once, in plain letters', { timeout: 120000 }, async () => {
+  const stack = await isolatedStack();
+  try {
+    const login = await fetch(stack.origin + '/login', {
+        method: 'POST',
+        headers: { Origin: stack.origin },
+        body: new URLSearchParams({ password: stack.password }),
+        redirect: 'manual',
+      }),
+      headers = { Cookie: login.headers.get('set-cookie').split(';')[0], Origin: stack.origin };
+    const form = await (await fetch(stack.origin + '/settings', { headers })).text();
+    const saved = await (
+      await fetch(stack.origin + '/settings', {
+        method: 'POST',
+        headers,
+        body: new URLSearchParams({
+          revision: form.match(/name="revision" value="([^"]+)"/)[1],
+          returnTo: '/site/',
+          name: 'Nový název webu',
+          theme: 'green',
+          language: 'cs',
+          contentDefault: 'draft',
+        }),
+      })
+    ).text();
+    assert.match(saved, /<div class="eyebrow"><span class="shell-dot" aria-hidden="true"><\/span>Nový název webu<\/div>/);
+    const css = await (await fetch(stack.origin + '/__shell/shell.css', { headers })).text().catch(() => '');
+    if (css) assert.match(css, /\.shell-band \.eyebrow \{[^}]*text-transform: none/);
+  } finally {
+    await stack.close();
+  }
+});

@@ -2,6 +2,16 @@
 
 Versions follow [semantic versioning](https://semver.org). Each release is tagged `v<version>`.
 
+## 1.0.5
+
+- More AI teams: recommended teams from named recommendation sets (e.g. Performance, Eco) and any number of named own teams; a default team; every team is valid. Settings → AI Studio models shows a tab per team in place, with Make default, Update, New team (a copy), rename, Save and Delete (not the default team). An older team becomes the own team "Vlastní tým".
+- The team is chosen for each request in the AI Studio, in one choice with the two checks (technical check, verification); it is frozen for the whole request and the step shows which team made it.
+- Recommendation sets are read from SiteTiller-advice `models/v2.json`; the newer file is told by its revision number, the date is the real day of publication.
+- After sign-in without a target the home page with both studios is shown.
+- MCP: the structure templates of the Content editor (`list_structure_templates`, `apply_structure_templates`).
+- Settings: a new website name shows in the side band at once after Save, in plain letters.
+- Instance status for a waker in front of a stopped instance: `GET /__sitetiller/status` with the token from `settings/status.token`.
+
 ## 1.0.4
 
 - AI models: one AI team group with tabs Recommended team / Own team; a tab switches at once in place, the team in use has a green dot and a line under the tabs; Update checks the newest recommendation; the own team comes back as it was.

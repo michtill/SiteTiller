@@ -2278,7 +2278,7 @@ aside {
   }
 }
 
-#request-options {
+#team-choice {
   margin-right: 0;
 }
 .content-options {
@@ -3508,4 +3508,11 @@ aside .studio-header::after {
   display: flex;
   gap: 6px;
   white-space: nowrap;
+}
+/* The team that made a step (documentation 4.2). */
+.step-team {
+  display: block;
+  margin: 4px 0 0;
+  color: var(--muted, #8a948f);
+  font-size: 12px;
 }

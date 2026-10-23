@@ -83,6 +83,7 @@ export function templateOffer(schema: Schema, language: string) {
   return templates(language).map((template) => ({
     id: template.id,
     label: translate('tpl_offer_' + template.id, language),
+    collections: Object.keys(template.lists),
     available: !Object.keys(template.lists).some((name) => Object.hasOwn(schema.lists, name)),
   }));
 }

@@ -1,13 +1,13 @@
 import { providerIds, detectProvider } from '../../../packages/providers/index.mjs';
+import { recommendedSetsUrl, recommendedLimit, parseRecommendationSets } from '../../../packages/models/index.mjs';
 import {
-  recommendedUrl,
-  recommendedImagesUrl,
-  recommendedLimit,
-  parseRecommendation,
-  parseImageRecommendation,
-  recommendedTeam,
-  recommendedImageTools,
-} from '../../../packages/models/index.mjs';
+  migrateTeams,
+  teamOf,
+  teamList,
+  applyRecommended,
+  createTeam,
+  validTeamName,
+} from './teams.ts';
 import { Problem } from './problem.ts';
 import { appVersion } from './app-version.ts';
 import { readResponseLanguage } from './final-answer.ts';
@@ -168,34 +168,19 @@ function providerKeys() {
     ]),
   ) as Record<Provider, string>;
 }
-// Recommended models (documentation 4.6): the file shipped with the release, and with the option on the current file
-// from GitHub at most every 6 hours; the newer valid one by date wins.
-const recommendationKinds = {
-  text: {
-    url: recommendedUrl,
-    file: 'recommended-online.json',
-    parse: parseRecommendation,
-    bundled: parseRecommendation(
-      await readFile(new URL('../../../packages/models/recommended.json', import.meta.url), 'utf8'),
-    ),
-  },
-  images: {
-    url: recommendedImagesUrl,
-    file: 'recommended-images-online.json',
-    parse: parseImageRecommendation,
-    bundled: parseImageRecommendation(
-      await readFile(new URL('../../../packages/models/recommended-images.json', import.meta.url), 'utf8'),
-    ),
-  },
-};
-if (!recommendationKinds.text.bundled || !recommendationKinds.images.bundled)
-  throw Error('A recommended models file shipped with the release is invalid');
-let recommendationSource: { date: string; source: 'bundled' | 'online' } = {
-  date: recommendationKinds.text.bundled.date,
+// Recommendation sets (documentation 4.6): the file shipped with the release and, in the providers mode, the current
+// file from GitHub at most every 6 hours (at once after Update); the valid one with the higher revision wins.
+const bundledRecommendation = parseRecommendationSets(
+  await readFile(new URL('../../../packages/models/recommended-sets.json', import.meta.url), 'utf8'),
+);
+if (!bundledRecommendation) throw Error('The recommendation sets file shipped with the release is invalid');
+let recommendationSource: { date: string; revision: number; source: 'bundled' | 'online' } = {
+  date: bundledRecommendation.date,
+  revision: bundledRecommendation.revision,
   source: 'bundled',
 };
-async function currentRecommendation(kind: 'text' | 'images' = 'text', refresh = false) {
-  const { url, file, parse, bundled } = recommendationKinds[kind];
+async function currentRecommendation(refresh = false) {
+  const file = 'recommended-sets-online.json';
   let online: any = null;
   try {
     online = JSON.parse(await readFile(join(data, file), 'utf8'));
@@ -205,7 +190,7 @@ async function currentRecommendation(kind: 'text' | 'images' = 'text', refresh =
     (refresh || !online || Date.now() - Date.parse(online.fetchedAt) > 6 * 3600000)
   ) {
     try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      const response = await fetch(recommendedSetsUrl, { signal: AbortSignal.timeout(10000) });
       const text = response.ok ? await response.text() : '';
       online = { fetchedAt: new Date().toISOString(), text: text.length <= recommendedLimit ? text : '' };
     } catch {
@@ -213,22 +198,21 @@ async function currentRecommendation(kind: 'text' | 'images' = 'text', refresh =
     }
     await save(file, online);
   }
-  const fetched = online ? parse(online.text) : null;
-  const value = fetched && fetched.date > bundled.date ? fetched : bundled;
-  if (kind === 'text') recommendationSource = { date: value.date, source: value === fetched ? 'online' : 'bundled' };
+  const fetched = online ? parseRecommendationSets(online.text) : null;
+  // The higher revision wins (documentation 4.6).
+  const value = fetched && fetched.revision > bundledRecommendation.revision ? fetched : bundledRecommendation;
+  recommendationSource = {
+    date: value.date,
+    revision: value.revision,
+    source: value === fetched ? 'online' : 'bundled',
+  };
   return value;
 }
-// With "Team automatically by the recommendation" on, the team and the image tools follow the recommendations and the
-// catalog.
-async function applyAutoTeam(models: any[]) {
-  if (!config.autoTeam) return;
-  const keys = providerKeys(),
-    team = recommendedTeam(await currentRecommendation(), models, keys, config.roles),
-    images = recommendedImageTools(await currentRecommendation('images'), models, keys, config.imageModels);
-  if (JSON.stringify([team, images]) === JSON.stringify([config.roles, config.imageModels])) return;
-  config.roles = team;
-  config.imageModels = images;
-  await save('config.json', config);
+if (migrateTeams(config, bundledRecommendation)) await save('config.json', config);
+// The recommended teams follow their sets, the keys and the catalog; the default team is mirrored in config.roles.
+async function applyTeams(models: any[], refresh = false) {
+  if (applyRecommended(config, await currentRecommendation(refresh), models, providerKeys()))
+    await save('config.json', config);
 }
 function activeSlots(): Slot[] {
   const keys = providerKeys();
@@ -374,7 +358,11 @@ async function state() {
     imageModels: config.imageModels,
     providers: Object.entries(providerKeys()).map(([provider, key]) => ({ provider, hasKey: !!key })),
     roles: config.roles,
-    autoTeam: !!config.autoTeam,
+    // AI teams (documentation 2.4): every team with its id, kind, name and models; the default one and a notice when
+    // its recommendation set disappeared.
+    teams: teamList(config, await currentRecommendation()),
+    defaultTeam: config.defaultTeam,
+    teamNotice: config.teamNotice || null,
     recommendation: recommendationSource,
     requests: config.requests,
     job,
@@ -730,7 +718,7 @@ const server = http.createServer(async (req, res) => {
           }
         }
         const list = await catalog(keys);
-        await applyAutoTeam(list.models);
+        await applyTeams(list.models);
         const resolved = resolvePrimary(config.roles, list.models);
         return response(res, 200, {
           ...list,
@@ -760,6 +748,8 @@ const server = http.createServer(async (req, res) => {
           throw new Problem(422, 'Klíč se neuložil: ' + (checked as any).detail + '.');
         config.providers = { ...config.providers, [provider]: { key: seal(value, key) } };
         await save('config.json', config);
+        // The recommended teams follow the keys at once (documentation 2.4).
+        await applyTeams((await catalog(providerKeys())).models);
         return response(res, 200, { ok: true, provider, warning: checked.error || null });
       }
       // Remove a key (Settings → AI Studio models, documentation 2.4): it is deleted even when the team then has no
@@ -770,27 +760,46 @@ const server = http.createServer(async (req, res) => {
         if (!providerIds.includes(input.provider)) throw new Problem(422, 'Neznámý poskytovatel.');
         config.providers = { ...config.providers, [input.provider]: { key: '' } };
         await save('config.json', config);
+        // The recommended teams follow the keys at once (documentation 2.4).
+        await applyTeams((await catalog(providerKeys())).models);
         return response(res, 200, { ok: true });
       }
+      // AI teams (documentation 2.4): save a custom team, make a team the default one, create a custom team as a copy of
+      // a shown one, delete a custom team, or update the recommendation. Without an action the default team is saved.
       if (path === '/api/settings' && req.method === 'POST') {
         if (busy) throw new Problem(409, 'Počkej na dokončení úlohy.');
         const input = await body(req);
         if (input.siteUrl !== undefined) throw Error('Adresa webu je adresa publikovaného webu z instalace.');
-        if (input.autoTeam !== undefined && typeof input.autoTeam !== 'boolean')
+        const action = input.action ?? 'save';
+        if (!['save', 'default', 'create', 'delete', 'refresh'].includes(action))
           throw new Problem(422, 'Neplatná volba týmu.');
-        if (input.refresh !== undefined && typeof input.refresh !== 'boolean')
-          throw new Problem(422, 'Neplatná volba týmu.');
-        // Back to the own team (documentation 2.4): it returns as it was before the recommended one was used, and the
-        // switch always succeeds (an unavailable Web Lead is a warning there: the own team is where it is fixed).
-        const toOwnTeam = input.autoTeam === false && !!config.autoTeam;
-        if (toOwnTeam && config.customTeam) {
-          input.roles = config.customTeam.roles;
-          input.imageModels = config.customTeam.imageModels;
+        if (input.teamId !== undefined && typeof input.teamId !== 'string') throw new Problem(422, 'Tým neexistuje.');
+        const teamId = input.teamId ?? config.defaultTeam,
+          recommendation = await currentRecommendation(action === 'refresh'),
+          shown = teamOf(config, recommendation, teamId);
+        if (!shown) throw new Problem(422, 'Tým neexistuje.');
+        if (action === 'create') {
+          const team = createTeam(config, shown);
+          await save('config.json', config);
+          return response(res, 200, { ok: true, teamId: team.id });
         }
-        if (input.imageModels && typeof input.imageModels === 'object')
-          input.imageModels = { precise: input.imageModels.precise, fast: input.imageModels.fast };
-        if (!validTeam(input.roles) || !validImages(input.imageModels))
-          throw new Problem(422, 'Vyber model pro každou capability.');
+        if (action === 'delete') {
+          if (shown.kind !== 'custom') throw new Problem(422, 'Doporučený tým smazat nejde.');
+          if (teamId === config.defaultTeam)
+            throw new Problem(422, 'Výchozí tým smazat nejde. Nejdřív nastavte jiný tým jako výchozí.');
+          config.teams = config.teams.filter((team: any) => team.id !== teamId);
+          await save('config.json', config);
+          return response(res, 200, { ok: true, teamId: config.defaultTeam });
+        }
+        if (action === 'save') {
+          if (shown.kind !== 'custom') throw new Problem(422, 'Doporučený tým se nastavuje podle doporučení.');
+          if (input.name !== undefined && !validTeamName(input.name))
+            throw new Problem(422, 'Název týmu musí mít 1 až 40 znaků.');
+          if (input.imageModels && typeof input.imageModels === 'object')
+            input.imageModels = { precise: input.imageModels.precise, fast: input.imageModels.fast };
+          if (!validTeam(input.roles) || !validImages(input.imageModels))
+            throw new Problem(422, 'Vyber model pro každou capability.');
+        }
         const saved = providerKeys(),
           keys = { ...saved },
           providers = structuredClone(config.providers),
@@ -818,35 +827,37 @@ const server = http.createServer(async (req, res) => {
               providers[p.provider] = config.providers[p.provider];
             }
           if (Object.keys(rejectedKeys).length) list = await catalog(keys);
-          const autoTeam = input.autoTeam ?? !!config.autoTeam,
-            team = autoTeam
-              ? recommendedTeam(await currentRecommendation('text', !!input.refresh), list.models, keys, config.roles)
-              : input.roles;
-          if (autoTeam)
-            input.imageModels = recommendedImageTools(
-              await currentRecommendation('images', !!input.refresh),
-              list.models,
-              keys,
-              config.imageModels,
-            );
-          const resolved = resolvePrimary(team, list.models),
+          // Saving the default team checks its Web Lead; any other team, and making a team the default one, only
+          // warns: the team is where an unavailable model is fixed.
+          const roles = action === 'save' ? input.roles : shown.roles,
+            resolved = resolvePrimary(roles, list.models),
             issues = unavailable(resolved, list, ['primary']);
-          if (issues.length && !toOwnTeam) return response(res, 400, { error: issues.join('\n') });
+          if (action === 'save' && teamId === config.defaultTeam && issues.length)
+            return response(res, 400, { error: issues.join('\n') });
+          if (action === 'save') {
+            const team = config.teams.find((t: any) => t.id === teamId);
+            Object.assign(team, {
+              roles: input.roles,
+              imageModels: input.imageModels,
+              ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+            });
+          }
+          if (action === 'default') {
+            config.defaultTeam = teamId;
+            delete config.teamNotice;
+          }
           config.providers = providers;
-          if (autoTeam && !config.autoTeam)
-            config.customTeam = { roles: config.roles, imageModels: config.imageModels };
-          config.roles = team;
-          config.autoTeam = autoTeam;
-          config.imageModels = input.imageModels;
+          applyRecommended(config, recommendation, list.models, keys);
           await save('config.json', config);
+          const team = teamOf(config, recommendation, teamId)!;
           return response(res, 200, {
             ok: true,
+            teamId,
             rejectedKeys,
             catalog: list,
             optionalIssues: [
-              ...issues,
-              ...unavailable(resolved, list, ['ui', 'verify', 'escalation']),
-              ...Object.values(input.imageModels).flatMap((model: any) => imageIssues(model, list.models)),
+              ...unavailable(resolvePrimary(team.roles, list.models), list, ['primary', 'ui', 'verify', 'escalation']),
+              ...Object.values(team.imageModels).flatMap((model: any) => imageIssues(model, list.models)),
             ],
           });
         } finally {
@@ -900,9 +911,13 @@ const server = http.createServer(async (req, res) => {
         if (attachments.reduce((n: number, i: any) => n + i.size, 0) > 12 * 1024 * 1024)
           throw new Problem(422, 'Přílohy dohromady musí mít nejvýše 12 MB.');
         const images = await imageInputs(attachments);
+        if (input.team !== undefined && typeof input.team !== 'string') throw new Problem(422, 'Tým neexistuje.');
         const list = await catalog(providerKeys());
-        await applyAutoTeam(list.models);
-        const resolvedTeam = resolvePrimary(config.roles, list.models),
+        await applyTeams(list.models);
+        // The chosen team (documentation 4.2), the default one otherwise; it is frozen for the whole request.
+        const team = teamOf(config, await currentRecommendation(), input.team ?? config.defaultTeam);
+        if (!team) throw new Problem(422, 'Tým neexistuje.');
+        const resolvedTeam = resolvePrimary(team.roles, list.models),
           issues = unavailable(resolvedTeam, list, ['primary']);
         if (issues.length) throw new Error(issues.join('\n'));
         if (busy) throw new Problem(409, 'Jiná úloha právě běží.');
@@ -920,7 +935,8 @@ const server = http.createServer(async (req, res) => {
           checks,
           cmsSource,
           attachments,
-          models: structuredClone(config.roles),
+          models: structuredClone(team.roles),
+          team: { id: team.id, kind: team.kind, name: team.name },
           status: 'running',
           baseCommit,
           createdAt: new Date().toISOString(),
@@ -963,7 +979,7 @@ const server = http.createServer(async (req, res) => {
                       conversation: recentConversation(priorRequests, baseCommit),
                       history: (query) => searchConversation(priorRequests, query, baseCommit),
                       publication: () => ({ publishedCommit: config.publishedCommit || null }),
-                      imageModels: config.imageModels,
+                      imageModels: team.imageModels,
                       availableModels: list.models,
                     },
                   ),

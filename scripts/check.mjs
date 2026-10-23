@@ -48,10 +48,10 @@ if (missing.length) {
   process.exitCode = 1;
 }
 console.log('Scenario IDs checked in ' + tests + ' tests.');
-// A recommendation file changes only with a later date (documentation 4.6): instances take a downloaded file only
-// when it is newer, so a change under the same date would never reach them. Checked against the file's last
+// A recommendation file changes only with a higher revision (documentation 4.6): instances take a downloaded file
+// only when its revision is higher, so a change under the same revision would never reach them. Checked against the file's last
 // committed versions (an uncommitted change against the last commit, the last commit against the one before).
-for (const file of ['packages/models/recommended.json', 'packages/models/recommended-images.json']) {
+for (const file of ['packages/models/recommended-sets.json']) {
   const git = (...args) => spawnSync('git', args, { windowsHide: true, encoding: 'utf8' });
   const commits = git('log', '-n', '2', '--format=%H', '--', file).stdout.split('\n').filter(Boolean),
     versions = [await readFile(file, 'utf8'), ...commits.map((c) => git('show', c + ':' + file).stdout)].filter(
@@ -59,11 +59,11 @@ for (const file of ['packages/models/recommended.json', 'packages/models/recomme
     );
   for (let i = 0; i + 1 < Math.min(versions.length, 3); i++) {
     const [newer, older] = [versions[i], versions[i + 1]].map((text) => JSON.parse(text)),
-      content = (value) => JSON.stringify({ ...value, date: '' });
-    if (content(newer) !== content(older) && !(newer.date > older.date)) {
-      console.error(file + ': the content changed but the date ' + newer.date + ' is not later than ' + older.date + '.');
+      content = (value) => JSON.stringify({ ...value, date: '', revision: 0 });
+    if (content(newer) !== content(older) && !((newer.revision || 0) > (older.revision || 0))) {
+      console.error(file + ': the content changed but the revision ' + newer.revision + ' is not higher than ' + older.revision + '.');
       process.exitCode = 1;
     }
   }
 }
-console.log('Recommendation dates checked.');
+console.log('Recommendation revisions checked.');

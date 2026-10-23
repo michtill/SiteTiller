@@ -50,7 +50,7 @@ test('SH-13: forgot password sends a one-time 30-minute link to the administrato
       redirect: 'manual',
     });
     assert.equal(r.status, 303);
-    assert.equal(r.headers.get('location'), '/content/');
+    assert.equal(r.headers.get('location'), '/');
     const fresh = r.headers.get('set-cookie').split(';')[0];
     // The user is signed in, every earlier session is signed out and the link is used up.
     assert.equal((await fetch(stack.origin + '/', { headers: { Cookie: fresh }, redirect: 'manual' })).status, 200);

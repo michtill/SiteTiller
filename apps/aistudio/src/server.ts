@@ -1977,4 +1977,7 @@ const server = http.createServer(async (req, res) => {
     });
   }
 });
-server.listen(PORT, HOST, () => console.log(`SiteTiller listening on ${HOST}:${PORT}`));
+// Under the Shell's supervisor on a hidden port; the origin stays the public port (documentation 2.6).
+server.listen(Number(process.env.SITETILLER_LISTEN_PORT || PORT), HOST, () =>
+  console.log(`SiteTiller listening on ${HOST}:${PORT}`),
+);

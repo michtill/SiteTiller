@@ -1,4 +1,4 @@
-# One SiteTiller instance (all six services) in one container: scripts/serve.mjs runs them, the instance data is
+# One SiteTiller instance in one container: scripts/serve.mjs runs the Shell, which supervises the other services; the instance data is
 # the volume /instance. Build from the repository root: docker build -f deploy/instance.Dockerfile -t sitetiller:<tag> .
 FROM node:24-bookworm-slim AS build
 RUN corepack enable

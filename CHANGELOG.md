@@ -2,6 +2,12 @@
 
 Versions follow [semantic versioning](https://semver.org). Each release is tagged `v<version>`.
 
+## 1.0.7
+
+- Unused parts sleep and free their memory: the Shell supervises the instance, holds the ports of the other services and starts each with its first request (browser, MCP or another service); after the idle time it stops them for real. A working AI Studio, a service with an open connection and the Website of an internal presentation never sleep. Settings → Interface → Operation: after 5, 15 (default), 30 or 60 minutes, or never. A sleeping studio shows Waking up and loads again.
+- The container launcher becomes the Shell itself (one process less); the Playground starts only the Shell.
+- The status point for an outside waker (1.0.5) is removed.
+
 ## 1.0.6
 
 - Same application as 1.0.5. The MCP tests wait and try again when the server answers 429 (the per-minute call limit), which made the CI of 1.0.5 fail.

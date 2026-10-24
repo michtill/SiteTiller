@@ -165,6 +165,8 @@ test('SH-03: after Save the side band shows the new website name at once, in pla
       }),
       headers = { Cookie: login.headers.get('set-cookie').split(';')[0], Origin: stack.origin };
     const form = await (await fetch(stack.origin + '/settings', { headers })).text();
+    // Operation: unused parts sleep after 15 minutes by default (documentation 2.4).
+    assert.match(form, /<option value="15" selected>Po 15 minutách<\/option>/);
     const saved = await (
       await fetch(stack.origin + '/settings', {
         method: 'POST',
@@ -176,9 +178,12 @@ test('SH-03: after Save the side band shows the new website name at once, in pla
           theme: 'green',
           language: 'cs',
           contentDefault: 'draft',
+          sleepMinutes: '0',
         }),
       })
     ).text();
+    assert.equal(JSON.parse(await readFile(join(stack.root, 'settings/shared.json'), 'utf8')).sleepMinutes, 0);
+    assert.match(saved, /<option value="0" selected>Nikdy<\/option>/);
     assert.match(saved, /<div class="eyebrow"><span class="shell-dot" aria-hidden="true"><\/span>Nový název webu<\/div>/);
     const css = await (await fetch(stack.origin + '/__shell/shell.css', { headers })).text().catch(() => '');
     if (css) assert.match(css, /\.shell-band \.eyebrow \{[^}]*text-transform: none/);

@@ -1,6 +1,6 @@
-// Runs all six services of one instance in the foreground (the server container). Logs go to standard output with
-// the service name; when any service stops, the others stop too and the container restarts them together.
-import { spawn } from 'node:child_process';
+// Runs one instance in the server container (documentation 2.6): this process becomes the Shell, which supervises the
+// other services, starts them when they are needed and lets the unused ones sleep. Logs go to standard output with the
+// service name. When the Shell stops, the services stop with it and the container restarts.
 import { runAsInstanceOwner, withSshPasswdEntry } from './instance-user.mjs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -13,40 +13,10 @@ if (instance.kind !== 'sitetiller-instance' || resolve(instance.root) !== root)
   throw Error('Not a SiteTiller instance: ' + root);
 // The services run as the owner of the instance (see instance-user.mjs).
 await runAsInstanceOwner(root);
-const env = await withSshPasswdEntry(await instanceEnvironment(repo, root, instance)),
-  children = new Map();
-let stopping = false,
-  exitCode = 1;
-function stop(code) {
-  if (stopping) return;
-  stopping = true;
-  exitCode = code;
-  for (const child of children.values()) child.kill('SIGTERM');
-  setTimeout(() => process.exit(code), 5000).unref();
-  if (!children.size) process.exit(code);
-}
-for (const [name, entry] of services) {
-  const child = spawn(
-    process.execPath,
-    ['--import', pathToFileURL(join(repo, 'scripts/network-policy.mjs')).href, join(repo, entry)],
-    { cwd: repo, env: serviceEnvironment(env, instance, name), stdio: ['ignore', 'pipe', 'pipe'] },
-  );
-  children.set(name, child);
-  for (const stream of [child.stdout, child.stderr])
-    stream.on('data', (chunk) => {
-      for (const line of String(chunk).split('\n')) if (line) process.stdout.write('[' + name + '] ' + line + '\n');
-    });
-  child.on('exit', (code, signal) => {
-    children.delete(name);
-    process.stdout.write('[' + name + '] exited ' + (signal || code) + '\n');
-    if (!children.size && stopping) process.exit(exitCode);
-    stop(1);
-  });
-}
-for (const signal of ['SIGTERM', 'SIGINT'])
-  process.on(signal, () => {
-    stop(0);
-  });
+const env = await withSshPasswdEntry(await instanceEnvironment(repo, root, instance));
+Object.assign(process.env, serviceEnvironment(env, instance, 'shell'), { SITETILLER_SUPERVISE: '1' });
 console.log(
   'SiteTiller instance ' + root + ': ' + services.map(([name]) => name + ':' + instance.ports[name]).join(', '),
 );
+await import(pathToFileURL(join(repo, 'scripts/network-policy.mjs')).href);
+await import(pathToFileURL(join(repo, 'apps/shell/server.ts')).href);

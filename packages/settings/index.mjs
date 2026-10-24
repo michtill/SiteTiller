@@ -61,6 +61,12 @@ export function validateShared(value, { current = {} } = {}) {
       throw Object.assign(Error('Neplatný režim editace obsahu.'), { status: 422 });
     result.contentDefault = value.contentDefault;
   }
+  // Unused services sleep after these minutes, 0 = never (documentation 2.4, 2.6).
+  if (Object.hasOwn(value, 'sleepMinutes')) {
+    if (![0, 5, 15, 30, 60].includes(value.sleepMinutes))
+      throw Object.assign(Error('Neplatná doba uspání.'), { status: 422 });
+    result.sleepMinutes = value.sleepMinutes;
+  }
   // The public draft preview (Shell, on the instance's public preview address).
   if (Object.hasOwn(value, 'publicPreview')) {
     if (typeof value.publicPreview !== 'boolean')

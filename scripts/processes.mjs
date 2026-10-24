@@ -34,7 +34,27 @@ export async function windowsProcesses(pids) {
   });
   return JSON.parse(stdout.trim() || '[]');
 }
+// Elsewhere (Linux, the CI) the recorded command line is checked in /proc and the process stopped with SIGTERM; the
+// Shell then stops the services it supervises (documentation 2.6).
+async function stopVerifiedUnixProcess(record) {
+  const { readFile } = await import('node:fs/promises');
+  const command = await readFile('/proc/' + record.pid + '/cmdline', 'utf8').catch(() => null);
+  if (command === null) return;
+  if (!command.replaceAll(String.fromCharCode(0), ' ').includes(record.entry)) throw Error('PID owner changed; refusing to stop ' + record.pid);
+  const alive = () => {
+    try {
+      process.kill(record.pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  process.kill(record.pid, 'SIGTERM');
+  for (let i = 0; i < 200 && alive(); i++) await new Promise((r) => setTimeout(r, 50));
+  if (alive()) process.kill(record.pid, 'SIGKILL');
+}
 export async function stopVerifiedWindowsProcess(record) {
+  if (process.platform !== 'win32') return stopVerifiedUnixProcess(record);
   const rows = await windowsProcesses([record.pid]),
     actual = rows.find((row) => row.pid === record.pid);
   if (!actual) return;

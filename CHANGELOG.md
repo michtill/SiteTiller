@@ -2,6 +2,10 @@
 
 Versions follow [semantic versioning](https://semver.org). Each release is tagged `v<version>`.
 
+## 1.0.8
+
+- Same application as 1.0.7. Stopping the Playground works outside Windows too (the recorded process is checked in /proc and stopped with SIGTERM), which made the CI of 1.0.7 fail.
+
 ## 1.0.7
 
 - Unused parts sleep and free their memory: the Shell supervises the instance, holds the ports of the other services and starts each with its first request (browser, MCP or another service); after the idle time it stops them for real. A working AI Studio, a service with an open connection and the Website of an internal presentation never sleep. Settings → Interface → Operation: after 5, 15 (default), 30 or 60 minutes, or never. A sleeping studio shows Waking up and loads again.

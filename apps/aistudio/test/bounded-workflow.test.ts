@@ -380,3 +380,51 @@ test('AI-16: empty existing architecture is supplied and observed before replace
     assert.ok(result.commit);
     assert.equal((await project.files())['site/architecture.txt'], 'site/index.html owns the initial page.');
   }));
+test('AI-16: a new website without acceptance criteria is asked for them again with the candidate kept; three misses end with a reason', () =>
+  fixture(async (project, root) => {
+    await project.write({ 'site/index.html': '<!doctype html><html><head><title>Old</title></head><body>Old</body></html>' });
+    await project.commit('Baseline');
+    const page =
+      '<!doctype html><html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Example Band</title></head><body><h1>Example Band</h1></body></html>';
+    const asked = [];
+    let rounds = 0;
+    const result = await workflow(
+      project,
+      slots,
+      'Create a minimal website',
+      join(root, 'drafts'),
+      () => {},
+      async (_c, _i, input) => {
+        if (input.testResults) return { value: { status: 'PASS', requiredFixes: [], criteria: [] } };
+        asked.push(input.feedback?.requiredFixes || []);
+        if (++rounds === 1)
+          return {
+            value: { action: 'implement', scope: 'create', resolvedRequest: 'Create a minimal website', files: [{ path: 'site/index.html', content: page }] },
+          };
+        return { value: { action: 'implement', files: [], acceptance: criteria } };
+      },
+      undefined,
+      [],
+      { check, mode: 'create' },
+    );
+    assert.match(String(asked[1]), /acceptance is missing/);
+    assert.ok(result.commit);
+    assert.equal((await project.files())['site/index.html'], page);
+    // A Web Lead that never writes them: the request ends with a reason the user can act on.
+    await assert.rejects(
+      workflow(
+        project,
+        slots,
+        'Create a minimal website',
+        join(root, 'drafts2'),
+        () => {},
+        async () => ({
+          value: { action: 'implement', scope: 'create', resolvedRequest: 'Create a minimal website', files: [{ path: 'site/index.html', content: page }] },
+        }),
+        undefined,
+        [],
+        { check, mode: 'create' },
+      ),
+      /Hlavní model nesepsal, co má nový web splňovat/,
+    );
+  }));

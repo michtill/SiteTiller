@@ -209,6 +209,7 @@ export async function workflow(
     lastCheckImages: any[] = [];
   let delegations = 0,
     scenarioRepairs = 0,
+    acceptanceRepairs = 0,
     pathRepairs = 0,
     answerRepairs = 0,
     blockedRecoveries = 0;
@@ -1020,8 +1021,21 @@ export async function workflow(
         continue;
       }
     }
-    if (enabledChecks.verification && scope !== 'edit' && !plan.acceptance.length)
-      throw Error('Nový web nebo předělávka potřebuje akceptační kritéria.');
+    // A new website or a redesign is verified against what it must meet (acceptance). A Web Lead that left it out is
+    // asked for it again with the candidate kept; only then the request ends, with a reason the user can act on.
+    if (enabledChecks.verification && scope !== 'edit' && !plan.acceptance.length) {
+      if (++acceptanceRepairs > 2)
+        throw Error(
+          'Hlavní model nesepsal, co má nový web splňovat (akceptační kritéria). Zkuste to znovu, nebo zvolte silnější tým.',
+        );
+      feedback = {
+        requiredFixes: ['acceptance is missing: a new website or a redesign needs concrete acceptance criteria.'],
+        instruction:
+          'The candidate files are already preserved. Return implement with files:[] and the acceptance array (items {id, category: required|preference, description, basis}) describing what the finished website must meet; do not rewrite files.',
+      };
+      emit({ stage: 'build', status: 'running', message: 'Doplňuji, co má web splňovat.' });
+      continue;
+    }
     let contentError: string | undefined,
       contentWillWrite = false;
     try {

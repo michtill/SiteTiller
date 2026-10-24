@@ -2,6 +2,11 @@
 
 Versions follow [semantic versioning](https://semver.org). Each release is tagged `v<version>`.
 
+## 1.1.0
+
+- A new website or a redesign whose Web Lead leaves out the acceptance criteria: the Web Lead is asked for them again (at most twice) with the candidate kept; only then the request ends with a reason the user can act on.
+- The bundled recommendation sets follow the published ones (SiteTiller-advice).
+
 ## 1.0.9
 
 - The supervised services run with a small V8 young generation (`--max-semi-space-size=1`): 10–16 MB less each while working.

@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "revision": 2,
-  "date": "2026-10-22",
+  "revision": 4,
+  "date": "2026-10-24",
   "default": "performance",
   "sets": {
     "performance": {
@@ -125,10 +125,6 @@
       "roles": {
         "primary": [
           {
-            "provider": "anthropic",
-            "model": "claude-sonnet-5-5"
-          },
-          {
             "provider": "openai",
             "model": "gpt-6.1-sol"
           },
@@ -153,12 +149,12 @@
         ],
         "verify": [
           {
-            "provider": "openai",
-            "model": "gpt-6-luna"
-          },
-          {
             "provider": "anthropic",
             "model": "claude-haiku-5-5"
+          },
+          {
+            "provider": "openai",
+            "model": "gpt-6-luna"
           },
           {
             "provider": "gemini",

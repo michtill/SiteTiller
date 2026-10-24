@@ -81,11 +81,20 @@ export async function supervise(options: {
     if (s.child && s.child.exitCode === null && !s.starting) return Promise.resolve(s.internal);
     if (s.starting) return s.starting;
     s.starting = (async () => {
+      // The log says when a service is woken and how long it took (documentation 2.6).
+      const requested = Date.now();
+      console.log('[supervisor] ' + s.name + ' starting');
       const internal = await freePort(),
         env = { ...(await options.environment(s.name)), SITETILLER_LISTEN_PORT: String(internal), HOST: '127.0.0.1' };
       const child = spawn(
         process.execPath,
-        ['--import', pathToFileURL(join(options.repo, 'scripts/network-policy.mjs')).href, join(options.repo, s.entry)],
+        // A small young generation of V8: the services are not compute heavy, and it keeps each one 10–16 MB smaller.
+        [
+          '--max-semi-space-size=1',
+          '--import',
+          pathToFileURL(join(options.repo, 'scripts/network-policy.mjs')).href,
+          join(options.repo, s.entry),
+        ],
         { cwd: options.repo, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },
       );
       options.output(s.name, child);
@@ -99,6 +108,7 @@ export async function supervise(options: {
           s.child = child;
           s.internal = internal;
           s.startedAt = s.lastUsed = Date.now();
+          console.log('[supervisor] ' + s.name + ' ready in ' + (s.startedAt - requested) + ' ms');
           await record();
           return internal;
         }
@@ -165,6 +175,7 @@ export async function supervise(options: {
         if (s.open > 0) continue;
         const child = s.child;
         s.child = null;
+        console.log('[supervisor] ' + s.name + ' asleep after ' + Math.round(idleTime / 60000) + ' min idle');
         await new Promise<void>((resolve) => {
           child.once('exit', () => resolve());
           child.kill('SIGTERM');

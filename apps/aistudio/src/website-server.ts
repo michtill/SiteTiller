@@ -154,7 +154,8 @@ if (import.meta.main) {
   if (!process.env.SITETILLER_SITE_DIRECTORY || !process.env.SITETILLER_SITE_ORIGIN)
     throw Error('Set SITETILLER_SITE_DIRECTORY and SITETILLER_SITE_ORIGIN.');
   websiteServer(process.env.SITETILLER_SITE_DIRECTORY, process.env.SITETILLER_SITE_ORIGIN).listen(
-    Number(process.env.PORT || 8080),
+    // Under the Shell's supervisor on a hidden port (documentation 2.6).
+    Number(process.env.SITETILLER_LISTEN_PORT || process.env.PORT || 8080),
     process.env.HOST || '127.0.0.1',
   );
 }

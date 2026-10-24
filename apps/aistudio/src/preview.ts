@@ -155,4 +155,5 @@ http
       res.end('Náhled se připravuje.');
     }
   })
-  .listen(Number(process.env.PORT || 8080), process.env.HOST || '127.0.0.1');
+  // Under the Shell's supervisor on a hidden port (documentation 2.6).
+  .listen(Number(process.env.SITETILLER_LISTEN_PORT || process.env.PORT || 8080), process.env.HOST || '127.0.0.1');

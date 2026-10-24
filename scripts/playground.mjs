@@ -149,56 +149,42 @@ if (command === 'init') {
   if (!existsSync(join(repo, 'apps/cmstudio/dist/index.html'))) throw Error('CMStudio build is missing');
   if (!existsSync(join(repo, 'apps/aistudio/dist/index.html')))
     throw Error('AI Studio build is missing (npm run build)');
+  // Only the Shell starts: it supervises the other services like on the server (documentation 2.6), starting each
+  // with its first request and letting the unused ones sleep. The data of the instance are not touched.
   const env = await environment(),
-    started = [],
-    handles = new Map();
+    entry = join(repo, 'apps/shell/server.ts'),
+    log = openSync(join(root, 'logs', 'shell.log'), 'a'),
+    error = openSync(join(root, 'logs', 'shell-error.log'), 'a');
+  const child = spawn(process.execPath, ['--import', pathToFileURL(join(repo, 'scripts/network-policy.mjs')).href, entry], {
+    cwd: repo,
+    env: { ...serviceEnvironment(env, instance, 'shell'), SITETILLER_SUPERVISE: '1', SITETILLER_SERVICE_LOGS: join(root, 'logs') },
+    windowsHide: true,
+    detached: true,
+    stdio: ['ignore', log, error],
+  });
+  closeSync(log);
+  closeSync(error);
+  if (!child.pid) throw Error('Failed to spawn shell');
+  child.unref();
+  await atomicJson(join(root, 'processes.json'), [
+    { name: 'shell', pid: child.pid, entry, port: instance.ports.shell, startedAt: new Date().toISOString() },
+  ]);
   try {
-    for (const [name, entry] of services) {
-      const log = openSync(join(root, 'logs', name + '.log'), 'a'),
-        error = openSync(join(root, 'logs', name + '-error.log'), 'a');
-      const child = spawn(
-        process.execPath,
-        ['--import', pathToFileURL(join(repo, 'scripts/network-policy.mjs')).href, join(repo, entry)],
-        {
-          cwd: repo,
-          env: serviceEnvironment(env, instance, name),
-          windowsHide: true,
-          detached: true,
-          stdio: ['ignore', log, error],
-        },
-      );
-      closeSync(log);
-      closeSync(error);
-      if (!child.pid) throw Error('Failed to spawn ' + name);
-      handles.set(child.pid, child);
-      started.push({
-        name,
-        pid: child.pid,
-        entry: join(repo, entry),
-        port: instance.ports[name],
-        startedAt: new Date().toISOString(),
-      });
-      child.unref();
-      await atomicJson(join(root, 'processes.json'), started);
-      await ready(instance.ports[name], name, env, child);
-    }
-    console.log('Started ' + started.map((s) => s.name + ':' + s.port).join(', '));
-    console.log('Shell: http://127.0.0.1:' + instance.ports.shell + '/');
+    await ready(instance.ports.shell, 'shell', env, child);
   } catch (e) {
-    for (const service of started) {
-      try {
-        await stopOwnedChild(handles.get(service.pid));
-      } catch {}
-    }
+    await stopOwnedChild(child).catch(() => {});
     await atomicJson(join(root, 'processes.json'), []);
     throw e;
   }
+  console.log('Started shell:' + instance.ports.shell + ' (it starts the other services when they are needed)');
+  console.log('Shell: http://127.0.0.1:' + instance.ports.shell + '/');
 } else if (command === 'network' || command === 'restart') {
   const instance = await readJson(join(root, 'instance.json'));
   if (instance.kind !== 'sitetiller-playground' || resolve(instance.root) !== root)
     throw Error('Not an isolated instance');
   const records = await readJson(join(root, 'processes.json')).catch(() => []),
-    controller = records.find((r) => r.name === 'aistudio');
+    supervised = Object.values(await readJson(join(root, 'supervised.json')).catch(() => ({}))),
+    controller = [...records, ...supervised].find((r) => r.name === 'aistudio');
   if (command === 'restart' && process.argv[3] !== 'aistudio') throw Error('Only restart aistudio is supported');
   if (controller) {
     const env = await environment(),
@@ -218,34 +204,11 @@ if (command === 'init') {
   } else {
     if (!controller || resolve(controller.entry) !== resolve(join(repo, 'apps/aistudio/src/server.ts')))
       throw Error('No owned AI controller');
-    const env = await environment();
+    // The Shell supervises the AI Studio: stopping it is enough, the next request starts it with the new code and
+    // network mode; shell sessions and the other services stay.
     await stopVerifiedWindowsProcess(controller);
-    const log = openSync(join(root, 'logs/aistudio.log'), 'a'),
-      error = openSync(join(root, 'logs/aistudio-error.log'), 'a');
-    const child = spawn(
-      process.execPath,
-      ['--import', pathToFileURL(join(repo, 'scripts/network-policy.mjs')).href, controller.entry],
-      {
-        cwd: repo,
-        env: serviceEnvironment(env, instance, 'aistudio'),
-        windowsHide: true,
-        detached: true,
-        stdio: ['ignore', log, error],
-      },
-    );
-    closeSync(log);
-    closeSync(error);
-    if (!child.pid) throw Error('Controller failed to spawn');
-    child.unref();
-    await atomicJson(
-      join(root, 'processes.json'),
-      records.map((r) => (r.name === 'aistudio' ? { ...r, pid: child.pid, startedAt: new Date().toISOString() } : r)),
-    );
-    await ready(instance.ports.aistudio, 'aistudio', env, child);
-    console.log(
-      'Only AI controller restarted; shell sessions and five other services preserved. Mode: ' +
-        env.SITETILLER_NETWORK_MODE,
-    );
+    const mode = normalizeNetworkMode(instance.networkMode);
+    console.log('AI controller stopped; it starts with the next request. Mode: ' + mode);
   }
 } else if (command === 'stop') {
   const records = await readJson(join(root, 'processes.json')).catch(() => []);

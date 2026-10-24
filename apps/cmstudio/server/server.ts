@@ -529,4 +529,7 @@ http
       });
     }
   })
-  .listen(port, '127.0.0.1', () => console.log(`SiteTiller CMStudio: ${origin}`));
+  // Under the Shell's supervisor on a hidden port; the origin stays the public port (documentation 2.6).
+  .listen(Number(process.env.SITETILLER_LISTEN_PORT || port), '127.0.0.1', () =>
+    console.log(`SiteTiller CMStudio: ${origin}`),
+  );

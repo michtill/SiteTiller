@@ -1,6 +1,6 @@
 # Deployment
 
-One SiteTiller instance runs as one container (`scripts/serve.mjs` starts all six services); its data is the volume mounted at `/instance`. The image never contains instance data.
+One SiteTiller instance runs as one container (`scripts/serve.mjs` runs the Shell, which starts the other five services when they are needed and lets the unused ones sleep, documentation 2.6); its data is the volume mounted at `/instance`. The image never contains instance data.
 
 ## Files
 

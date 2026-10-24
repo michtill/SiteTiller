@@ -27,7 +27,6 @@ import {
 } from './mcp.ts';
 import { appVersion } from '../aistudio/src/app-version.ts';
 import { createShare, sharesFor, allShares, revokeShare, shareUrl } from './shares.ts';
-import { statusPath, statusToken, serveStatus, noteActivity } from './instance-status.ts';
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -150,16 +149,15 @@ async function readForm(req: http.IncomingMessage) {
   }
   return new URLSearchParams(text);
 }
-const instanceStatusToken = await statusToken(settingsDirectory);
-// Whether the AI Studio runs a job, a publication or a save (its busy state), for the instance status.
-async function aiBusy() {
-  const response = await fetch('http://127.0.0.1:' + process.env.AISTUDIO_PORT + '/api/state', {
-    headers: { 'x-sitetiller-gateway': secret, origin: 'http://127.0.0.1:' + process.env.AISTUDIO_PORT },
-    signal: AbortSignal.timeout(10000),
-  });
-  if (!response.ok) throw Error('AI Studio');
-  return !!(await response.json()).busy;
-}
+// The Shell as the supervisor of the whole instance (documentation 2.6): it runs the other services and lets the unused
+// ones sleep. Started for a single service (the tests), it does not.
+const supervisor =
+  process.env.SITETILLER_SUPERVISE === '1' ? await (await import('./instance-services.ts')).superviseInstance() : null;
+if (supervisor)
+  for (const signal of ['SIGTERM', 'SIGINT'] as const)
+    process.on(signal, () => {
+      void supervisor.stop().then(() => process.exit(0));
+    });
 // Signs out everywhere: a new password ends every session and preview access.
 async function endSessions() {
   await endConnections(data);
@@ -171,9 +169,6 @@ async function endSessions() {
 http
   .createServer(async (req, res) => {
     try {
-      if ((req.url || '').split('?')[0] === statusPath)
-        return await serveStatus(req, res, instanceStatusToken, aiBusy);
-      noteActivity();
       await refreshPreviewOrigin();
       if (publicPreviewOrigin && req.headers.host === new URL(publicPreviewOrigin).host)
         return await servePublicPreview(req, res, {
@@ -513,7 +508,7 @@ http
           }
           const input = new URLSearchParams(body);
           entered = Object.fromEntries(
-            [...input].filter(([key]) => ['name', 'theme', 'language', 'contentDefault'].includes(key)),
+            [...input].filter(([key]) => ['name', 'theme', 'language', 'contentDefault', 'sleepMinutes'].includes(key)),
           );
           returnTo = settingsReturnTo(input.get('returnTo'));
           try {
@@ -525,6 +520,7 @@ http
                   theme: input.get('theme'),
                   ...(input.has('language') ? { language: input.get('language') } : {}),
                   ...(input.has('contentDefault') ? { contentDefault: input.get('contentDefault') } : {}),
+                  ...(input.has('sleepMinutes') ? { sleepMinutes: Number(input.get('sleepMinutes')) } : {}),
                 },
                 { current },
               );
@@ -1138,6 +1134,26 @@ http
           'x-sitetiller-gateway': secret,
         };
       delete headers['content-length'];
+      // A sleeping studio (documentation 2.6): the page that loads it says it is waking up and loads again; the
+      // supervisor starts the studio meanwhile. Other requests just wait for it.
+      const service = { content: 'cmstudio', site: 'aistudio', preview: 'preview' }[match[1]]!;
+      if (
+        supervisor?.asleep(service) &&
+        req.method === 'GET' &&
+        ['document', 'iframe'].includes(String(req.headers['sec-fetch-dest'] || ''))
+      ) {
+        void supervisor.wake(service).catch(() => {});
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+        return res.end(
+          '<!doctype html><html lang="' +
+            language +
+            '"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="1"><title>' +
+            t('waking_up') +
+            '</title><style>body{margin:0;display:grid;place-items:center;height:100vh;font:16px system-ui,sans-serif;color:#5d6c64;background:#f4f6f3}</style></head><body><p>' +
+            t('waking_up') +
+            '</p></body></html>',
+        );
+      }
       const proxy = http.request(
         { hostname: '127.0.0.1', port: upstream, path: match[2] + url.search, method: req.method, headers },
         (response) => {
@@ -1205,7 +1221,6 @@ if (process.env.SITETILLER_PUBLIC_PREVIEW_PORT)
   http
     .createServer(async (req, res) => {
       try {
-        noteActivity();
         if (!(await refreshPreviewOrigin())) {
           res.writeHead(404);
           return res.end();

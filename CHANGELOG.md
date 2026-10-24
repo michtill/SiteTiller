@@ -2,6 +2,11 @@
 
 Versions follow [semantic versioning](https://semver.org). Each release is tagged `v<version>`.
 
+## 1.0.9
+
+- The supervised services run with a small V8 young generation (`--max-semi-space-size=1`): 10–16 MB less each while working.
+- The Shell logs when a service is woken, how long it took to be ready, and when it falls asleep.
+
 ## 1.0.8
 
 - Same application as 1.0.7. Stopping the Playground works outside Windows too (the recorded process is checked in /proc and stopped with SIGTERM), which made the CI of 1.0.7 fail.

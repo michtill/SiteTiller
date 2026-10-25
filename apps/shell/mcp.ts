@@ -446,7 +446,14 @@ export async function handleMcp(req: http.IncomingMessage, res: http.ServerRespo
   }
   if (message.method === 'ping') return (reply({}), true);
   if (message.method === 'tools/list') {
-    reply({ tools: tools.filter((tool) => allowed(tool.level, settings)).map(({ level, run, ...tool }) => tool) });
+    reply({
+      tools: tools.map(({ level, run, ...tool }) => ({
+        ...tool,
+        description:
+          tool.description +
+          (level === 'edit' ? ' Needs the permission Edit the draft.' : level === 'publish' ? ' Needs the permission Publish.' : ''),
+      })),
+    });
     return true;
   }
   if (message.method !== 'tools/call') return (fail(-32601, 'Neznámá metoda.'), true);
@@ -587,7 +594,7 @@ const tools: {
     name: 'get_overview',
     level: 'read',
     description:
-      'Website name, draft steps (newest last), published versions, whether the content has unpublished edits, and your permissions.',
+      'Website name, draft steps (newest last), published versions, whether the content has unpublished edits, your permissions, and the preview addresses with what they show (public_preview: the live preview of the latest step).',
     inputSchema: object({}),
     async run(_args, ctx) {
       const state = await ai(ctx, 'state'),
@@ -612,7 +619,17 @@ const tools: {
         })),
         published_commit: state.publishedCommit || null,
         unpublished_content: publication ? !!publication.unpublished : null,
-        public_preview: state.publicPreviewUrl || null,
+        // What the preview addresses show (documentation 2.8): the public one is the live preview of the latest draft
+        // step, the best one to look at while working on the draft; without it, preview_link gives a private one.
+        public_preview: state.publicPreviewUrl
+          ? {
+              url: state.publicPreviewUrl,
+              shows:
+                'The latest draft step, live: it changes with every new step and shows the unpublished content. Best for checking your work on the draft. Public without sign-in, noindex.',
+            }
+          : null,
+        private_preview:
+          'preview_link gives a private link to the latest step (or any step, saved draft or version); it opens after signing in to the editor.',
         permissions: {
           read: true,
           edit: ctx.settings.edit,

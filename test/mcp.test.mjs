@@ -122,7 +122,11 @@ test('MC-01: MCP is off by default (404); switched on it reads and edits the dra
   const token = await accessToken('Claude Code');
   const init = await rpc(token, 'initialize', { protocolVersion: '2025-06-18' });
   assert.equal(init.body.result.serverInfo.name, 'SiteTiller');
-  const names = (await rpc(token, 'tools/list')).body.result.tools.map((t) => t.name);
+  // Every tool is listed even without its permission (an assistant reads the list once when it connects); the
+  // description says which permission it needs, and the call explains how to turn it on.
+  const tools = (await rpc(token, 'tools/list')).body.result.tools,
+    names = tools.map((t) => t.name);
+  assert.match(tools.find((t) => t.name === 'publish_step').description, /Needs the permission Publish/);
   assert.deepEqual(names, [
     'get_overview',
     'list_site_files',
@@ -145,6 +149,7 @@ test('MC-01: MCP is off by default (404); switched on it reads and edits the dra
     'share_preview',
     'list_shares',
     'revoke_share',
+    'publish_step',
   ]);
   await settings({ edit: 'on' });
   assert.equal((await rpc(token, 'initialize')).status, 404);

@@ -2,6 +2,10 @@
 
 Versions follow [semantic versioning](https://semver.org). Each release is tagged `v<version>`.
 
+## 1.1.1
+
+- MCP: every tool is listed even without its permission (an assistant reads the list once when it connects, so a permission turned on later still finds its tool); the description says which permission it needs. get_overview says what the public preview shows (the live preview of the latest step) and offers the private preview_link.
+
 ## 1.1.0
 
 - A new website or a redesign whose Web Lead leaves out the acceptance criteria: the Web Lead is asked for them again (at most twice) with the candidate kept; only then the request ends with a reason the user can act on.

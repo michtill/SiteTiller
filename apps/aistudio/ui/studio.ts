@@ -1,4 +1,5 @@
 import { reactive, nextTick } from 'vue';
+import { tabTitle } from '../../../packages/ui/tab-title.mjs';
 import { t, tm } from './i18n.ts';
 // The application state of AI Studio and everything that changes it. Components render this state; the
 // preview iframes are the one part handled imperatively (see preview.ts), because they must stay alive.
@@ -74,7 +75,11 @@ export function onOpenSettings(handler: () => void) {
 window.addEventListener('message', (event) => {
   if (!framed || event.source !== window.parent || event.origin !== location.origin) return;
   const data = event.data || {};
-  if (data.type === 'sitetiller-visibility') {
+  // The sun/moon switches the whole editor for a while (documentation 2.4); the frame tells every part.
+  if (data.type === 'sitetiller-mode' && ['light', 'dark'].includes(data.mode)) {
+    (window as any).sitetillerApplyTheme?.(data.mode === 'light');
+    window.dispatchEvent(new Event('sitetiller-mode'));
+  } else if (data.type === 'sitetiller-visibility') {
     studioVisible = !!data.visible;
     if (studioVisible) {
       reportLocation();
@@ -180,7 +185,7 @@ async function refreshNow(initialState?: any) {
   const current = s.current;
   if (current.editorName) {
     s.editorName = current.editorName;
-    document.title = current.editorName + ' — AI Studio';
+    document.title = tabTitle(current.editorName);
     reportTitle();
   }
   const sources = current.cmsPreviewSources || {};

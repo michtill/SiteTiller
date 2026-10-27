@@ -685,11 +685,13 @@ export async function workflow(
       for (const path of requestedImages) {
         const cached = cachedImages.find((image) => image.path === path);
         if (cached && !vision.some((image) => image.path === path)) vision.push(cached);
-        if (!vision.some((i) => i.path === path) && original[path])
+        // A read image is shown to the agent: from the website, or from the media of the Content editor, whose
+        // context holds only a placeholder.
+        if (!vision.some((i) => i.path === path) && (original[path] || importedBinary[path]))
           vision.push({
             path,
             mime: (await import('./images.ts')).imageMime(path),
-            data: (await project.binary(baseCommit, path)).toString('base64'),
+            data: (importedBinary[path] || (await project.binary(baseCommit, path))).toString('base64'),
           });
       }
       continue;
@@ -749,11 +751,14 @@ export async function workflow(
         if (image.source) {
           safeSitePath(project.root, image.source);
           if (!raster(image.source)) throw Error('Neplatný zdroj obrázku.');
+          // The source is a website image, a website attachment, or an image of the content (its bytes from the
+          // Content editor); the edit is always a new image (documentation 4.7).
           if (
             !original[image.source] &&
-            !images.some((i) => i.use === 'website' && 'site/assets/' + i.id === image.source)
+            !images.some((i) => i.use === 'website' && 'site/assets/' + i.id === image.source) &&
+            !(image.source.startsWith('site/cms/') && importedBinary[image.source])
           )
-            throw Error('Zdrojový obrázek není součástí webu ani webovou přílohou.');
+            throw Error('Zdrojový obrázek není součástí webu, obsahu ani webovou přílohou.');
         }
         const capability = image.capability || (image.source ? 'precise' : 'fast');
         if (!['precise', 'fast'].includes(capability)) throw Error('Neplatná obrazová capability.');
@@ -797,7 +802,9 @@ export async function workflow(
         const uploaded = images.find((i) => i.use === 'website' && 'site/assets/' + i.id === image.source);
         const source = image.source
           ? uploaded || {
-              data: (await project.binary(baseCommit, image.source)).toString('base64'),
+              data: (importedBinary[image.source] || (await project.binary(baseCommit, image.source))).toString(
+                'base64',
+              ),
               mime: (await import('./images.ts')).imageMime(image.source),
             }
           : null;
@@ -843,7 +850,14 @@ export async function workflow(
         });
       }
       needsVerification = true;
-      feedback = { imageResults, instruction: 'Integrate the exact returned asset paths. Originals are preserved.' };
+      feedback = {
+        imageResults,
+        instruction:
+          'Integrate the exact returned asset paths. Originals are preserved.' +
+          (imageResults.some((result) => result.source?.startsWith('site/cms/'))
+            ? ' An edited content image replaces the original in the content: add it with contentFiles to the folder of the original under a new name and point the record field to the new file; this needs the unpublished content.'
+            : ''),
+      };
       continue;
     }
     const deletes = value.deleteFiles || [];

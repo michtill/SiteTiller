@@ -26,7 +26,9 @@ test('AI-37: an older team becomes the custom team "Vlastní tým"; the recommen
   const custom = { roles: roles('custom-model'), imageModels: images, autoTeam: false };
   assert.equal(migrateTeams(custom, onlineRecommendation), true);
   assert.equal(custom.defaultTeam, 'custom-1');
-  assert.deepEqual(custom.teams, [{ id: 'custom-1', name: 'Vlastní tým', ...{ roles: roles('custom-model'), imageModels: images } }]);
+  assert.deepEqual(custom.teams, [
+    { id: 'custom-1', name: 'Vlastní tým', ...{ roles: roles('custom-model'), imageModels: images } },
+  ]);
   // Who used the recommended team keeps it, and the custom team they had saved aside is not lost.
   const auto = { roles: roles('recommended-model'), imageModels: images, autoTeam: true, customTeam: own };
   migrateTeams(auto, onlineRecommendation);
@@ -69,50 +71,58 @@ test('AI-37: recommended and custom teams are all valid; a vanished default set 
   assert.deepEqual(config.teamNotice, { missing: { cs: 'Ekonomický tým', en: 'Economy team' } });
   assert.equal(config.roles.primary.model, 'gemini-2.5-pro');
 });
-test('AI-37: a request runs with the chosen team, which is frozen for it and carried by the step', { timeout: 120000 }, async () => {
-  const stack = await isolatedStack({ controllerImports: ['test/fixtures/teams-provider.mjs'] });
-  try {
-    const login = await fetch(stack.origin + '/login', {
-        method: 'POST',
-        headers: { Origin: stack.origin },
-        body: new URLSearchParams({ password: stack.password }),
-        redirect: 'manual',
-      }),
-      headers = {
-        Cookie: login.headers.get('set-cookie').split(';')[0],
-        Origin: stack.origin,
-        'Content-Type': 'application/json',
-      };
-    const state = async () => await (await fetch(stack.origin + '/site/api/state', { headers })).json();
-    const run = (body) =>
-      fetch(stack.origin + '/site/api/run', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ prompt: 'What is this website?', checks: { technical: false, verification: false }, ...body }),
-      });
-    const unknown = await run({ team: 'no-such-team' });
-    assert.equal(unknown.status, 422);
-    assert.match((await unknown.json()).error, /Tým neexistuje/);
-    assert.equal((await run({ team: 'custom-2' })).status, 202);
-    let after;
-    for (let i = 0; i < 200; i++) {
-      after = await state();
-      if (!after.busy) break;
-      await new Promise((r) => setTimeout(r, 25));
+test(
+  'AI-37: a request runs with the chosen team, which is frozen for it and carried by the step',
+  { timeout: 120000 },
+  async () => {
+    const stack = await isolatedStack({ controllerImports: ['test/fixtures/teams-provider.mjs'] });
+    try {
+      const login = await fetch(stack.origin + '/login', {
+          method: 'POST',
+          headers: { Origin: stack.origin },
+          body: new URLSearchParams({ password: stack.password }),
+          redirect: 'manual',
+        }),
+        headers = {
+          Cookie: login.headers.get('set-cookie').split(';')[0],
+          Origin: stack.origin,
+          'Content-Type': 'application/json',
+        };
+      const state = async () => await (await fetch(stack.origin + '/site/api/state', { headers })).json();
+      const run = (body) =>
+        fetch(stack.origin + '/site/api/run', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            prompt: 'What is this website?',
+            checks: { technical: false, verification: false },
+            ...body,
+          }),
+        });
+      const unknown = await run({ team: 'no-such-team' });
+      assert.equal(unknown.status, 422);
+      assert.match((await unknown.json()).error, /Tým neexistuje/);
+      assert.equal((await run({ team: 'custom-2' })).status, 202);
+      let after;
+      for (let i = 0; i < 200; i++) {
+        after = await state();
+        if (!after.busy) break;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      const request = after.requests.at(-1);
+      assert.deepEqual(request.team, { id: 'custom-2', kind: 'custom', name: 'Druhý tým' });
+      assert.equal(request.models.primary.model, 'gpt-6-luna');
+      assert.deepEqual(
+        [...new Set(JSON.parse(await readFile(join(stack.root, 'fixture-models-asked.json'), 'utf8')))],
+        ['gpt-6-luna'],
+      );
+      // The default team did not change.
+      assert.equal(after.defaultTeam, 'custom-1');
+    } finally {
+      await stack.close();
     }
-    const request = after.requests.at(-1);
-    assert.deepEqual(request.team, { id: 'custom-2', kind: 'custom', name: 'Druhý tým' });
-    assert.equal(request.models.primary.model, 'gpt-6-luna');
-    assert.deepEqual(
-      [...new Set(JSON.parse(await readFile(join(stack.root, 'fixture-models-asked.json'), 'utf8')))],
-      ['gpt-6-luna'],
-    );
-    // The default team did not change.
-    assert.equal(after.defaultTeam, 'custom-1');
-  } finally {
-    await stack.close();
-  }
-});
+  },
+);
 test(
   'AI-37: Settings shows every team as a tab in place, makes one the default, creates, renames and deletes a custom team',
   { timeout: 240000 },
@@ -131,66 +141,70 @@ test(
       await page.locator('button:not(.show-password)').click();
       await page.waitForURL((url) => url.pathname === '/');
       await page.goto(stack.origin + '/settings/aiapi');
+      const settings = await studioFrame(page, 'settings');
       for (const [key, name] of [
         [fixtureKeys.openai, 'OpenAI'],
         [fixtureKeys.anthropic, 'Anthropic'],
       ]) {
-        await page.locator('input[name=key]').fill(key);
-        await page.getByRole('button', { name: 'Přidat klíč', exact: true }).click();
-        await page.getByText('Klíč ' + name + ' je uložený.', { exact: true }).waitFor();
+        await settings.locator('input[name=key]').fill(key);
+        await settings.getByRole('button', { name: 'Přidat klíč', exact: true }).click();
+        await settings.getByText('Klíč ' + name + ' je uložený.', { exact: true }).waitFor();
       }
-      const tab = (name) => page.locator('.team-tabs a', { hasText: name });
+      const tab = (name) => settings.locator('.team-tabs a', { hasText: name });
       const api = async () => await (await page.request.get(stack.origin + '/site/api/state')).json();
       // The sets of the newer GitHub file and the migrated custom team; the custom team is the default one.
-      assert.deepEqual(await page.locator('.team-tabs a').allTextContents(), [
+      assert.deepEqual(await settings.locator('.team-tabs a').allTextContents(), [
         'Výkonný tým',
         'Ekonomický tým',
         'Vlastní tým',
       ]);
       assert.equal(await tab('Vlastní tým').getAttribute('aria-current'), 'page');
       assert.notEqual(await tab('Vlastní tým').getAttribute('data-default'), null);
-      await page.getByText('Seznam modelů je načtený.', { exact: true }).waitFor();
+      await settings.getByText('Seznam modelů je načtený.', { exact: true }).waitFor();
       // A tab only shows its team, in place.
-      await page.evaluate(() => {
+      await settings.evaluate(() => {
         window.samePage = true;
       });
       await tab('Ekonomický tým').click();
-      await page.getByText('Levnější modely na běžné úpravy.', { exact: true }).waitFor();
+      await settings.getByText('Levnější modely na běžné úpravy.', { exact: true }).waitFor();
       assert.equal(await tab('Ekonomický tým').getAttribute('aria-current'), 'page');
-      assert.equal(await page.locator('select[name=role_primary]').isDisabled(), true);
-      assert.equal(await page.locator('select[name=role_primary]').inputValue(), 'anthropic|claude-sonnet-5-5');
+      assert.equal(await settings.locator('select[name=role_primary]').isDisabled(), true);
+      assert.equal(await settings.locator('select[name=role_primary]').inputValue(), 'anthropic|claude-sonnet-5-5');
       assert.equal((await api()).defaultTeam, 'custom-1');
       // Make default saves in place.
-      await page.getByRole('button', { name: 'Nastavit jako výchozí', exact: true }).click();
-      await page.locator('.team-status:not([data-busy])').getByText('Výchozí tým', { exact: true }).waitFor();
-      assert.equal(await page.evaluate(() => window.samePage), true);
+      await settings.getByRole('button', { name: 'Nastavit jako výchozí', exact: true }).click();
+      await settings.locator('.team-status:not([data-busy])').getByText('Výchozí tým', { exact: true }).waitFor();
+      assert.equal(await settings.evaluate(() => window.samePage), true);
       assert.notEqual(await tab('Ekonomický tým').getAttribute('data-default'), null);
       let state = await api();
       assert.equal(state.defaultTeam, 'economy');
       assert.equal(state.roles.primary.model, 'claude-sonnet-5-5');
       // Update checks GitHub at once.
-      await page.getByRole('button', { name: 'Aktualizovat', exact: true }).click();
-      await page.locator('.team-status:not([data-busy])').waitFor();
-      await page.getByText('Doporučení GitHub 2026-10-22', { exact: true }).waitFor();
+      await settings.getByRole('button', { name: 'Aktualizovat', exact: true }).click();
+      await settings.locator('.team-status:not([data-busy])').waitFor();
+      await settings.getByText('Doporučení GitHub 2026-10-22', { exact: true }).waitFor();
       // A new custom team is a copy of the shown one; it is renamed and saved.
-      await page.getByRole('button', { name: '+ Nový tým', exact: true }).click();
-      await page.waitForURL(/team=custom-2/);
+      await settings.getByRole('button', { name: '+ Nový tým', exact: true }).click();
+      await settings.waitForURL(/team=custom-2/);
       assert.equal(await tab('Vlastní tým 2').getAttribute('aria-current'), 'page');
-      assert.equal(await page.locator('select[name=role_primary]').inputValue(), 'anthropic|claude-sonnet-5-5');
-      await page.locator('input[name=teamName]').fill('Levný');
-      await page.getByRole('button', { name: 'Uložit', exact: true }).click();
-      await page.getByText('Uloženo', { exact: true }).waitFor();
+      assert.equal(await settings.locator('select[name=role_primary]').inputValue(), 'anthropic|claude-sonnet-5-5');
+      await settings.locator('input[name=teamName]').fill('Levný');
+      await settings.getByRole('button', { name: 'Uložit', exact: true }).click();
+      await settings.getByText('Uloženo', { exact: true }).waitFor();
       assert.equal(await tab('Levný').getAttribute('aria-current'), 'page');
       // The default team cannot be deleted; another custom team can, after the dialog.
       await tab('Vlastní tým').click();
-      await page.waitForFunction((name) => document.querySelector('input[name=teamName]').value === name, 'Vlastní tým');
-      assert.equal(await page.locator('#team-delete').isVisible(), true);
+      await settings.waitForFunction(
+        (name) => document.querySelector('input[name=teamName]').value === name,
+        'Vlastní tým',
+      );
+      assert.equal(await settings.locator('#team-delete').isVisible(), true);
       await tab('Levný').click();
-      await page.waitForFunction((name) => document.querySelector('input[name=teamName]').value === name, 'Levný');
-      await page.locator('#team-delete').click();
-      await page.locator('dialog').getByRole('button', { name: 'Smazat tým', exact: true }).click();
-      await page.waitForURL(/team=economy/);
-      assert.deepEqual(await page.locator('.team-tabs a').allTextContents(), [
+      await settings.waitForFunction((name) => document.querySelector('input[name=teamName]').value === name, 'Levný');
+      await settings.locator('#team-delete').click();
+      await settings.locator('dialog').getByRole('button', { name: 'Smazat tým', exact: true }).click();
+      await settings.waitForURL(/team=economy/);
+      assert.deepEqual(await settings.locator('.team-tabs a').allTextContents(), [
         'Výkonný tým',
         'Ekonomický tým',
         'Vlastní tým',
@@ -201,11 +215,11 @@ test(
         ['performance', 'economy', 'custom-1'],
       );
       // The default team has no Delete.
-      await page.getByRole('button', { name: 'Nastavit jako výchozí', exact: true }).waitFor({ state: 'hidden' });
+      await settings.getByRole('button', { name: 'Nastavit jako výchozí', exact: true }).waitFor({ state: 'hidden' });
       await tab('Vlastní tým').click();
-      await page.getByRole('button', { name: 'Nastavit jako výchozí', exact: true }).click();
-      await page.locator('.team-status:not([data-busy])').getByText('Výchozí tým', { exact: true }).waitFor();
-      assert.equal(await page.locator('#team-delete').isVisible(), false);
+      await settings.getByRole('button', { name: 'Nastavit jako výchozí', exact: true }).click();
+      await settings.locator('.team-status:not([data-busy])').getByText('Výchozí tým', { exact: true }).waitFor();
+      assert.equal(await settings.locator('#team-delete').isVisible(), false);
       // The AI Studio offers every team for the next request, the default one chosen; the choice closes when the
       // user clicks elsewhere.
       state = await api();

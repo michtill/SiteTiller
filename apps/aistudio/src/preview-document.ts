@@ -7,10 +7,20 @@ export function previewDocument(html: string, commit: string, embedded = false, 
   html = /<\/head>/i.test(html)
     ? html.replace(/<\/head>/i, titleBridge + '</head>')
     : html.replace(/<body\b[^>]*>/i, (match) => match + titleBridge);
+  // A page without its own icon gets an empty one, so a preview opened on its own never shows the icon of SiteTiller:
+  // the preview shows the website as its visitors see it (documentation 4.3).
+  if (!/<link\b[^>]*\brel\s*=\s*["']?[^"'>]*\bicon\b/i.test(html))
+    html = /<head\b[^>]*>/i.test(html)
+      ? html.replace(/<head\b[^>]*>/i, (match) => match + '<link rel="icon" href="data:,">')
+      : '<link rel="icon" href="data:,">' + html;
   if (embedded) {
     const storage =
       '<script data-sitetiller-preview-storage>(()=>{for(const name of ["localStorage","sessionStorage"]){try{window[name].getItem("sitetiller-storage-probe");}catch{const values=new Map();const store={get length(){return values.size;},key:index=>Array.from(values.keys())[index]??null,getItem:key=>values.get(String(key))??null,setItem:(key,value)=>values.set(String(key),String(value)),removeItem:key=>values.delete(String(key)),clear:()=>values.clear()};Object.defineProperty(window,name,{value:store,configurable:true});}}})();</script>';
-    return html.replace(/<head\b[^>]*>/i, (match) => match + storage);
+    // In the studio the page's scrollbar takes the colours of the studio's colour mode, sent by the studio
+    // (documentation 2.4); the website itself is unchanged.
+    const scrollbar =
+      '<script data-sitetiller-preview-scrollbar>addEventListener("message",(event)=>{const data=event.data||{};if(event.source!==window.parent||data.type!=="sitetiller-preview-scrollbar"||typeof data.thumb!=="string"||typeof data.track!=="string")return;const root=document.documentElement;root.style.setProperty("scrollbar-color",data.thumb+" "+data.track);root.style.setProperty("color-scheme",data.mode==="light"?"light":"dark");});</script>';
+    return html.replace(/<head\b[^>]*>/i, (match) => match + storage + scrollbar);
   }
   // Opened on its own (not in the studio), the page shows a small corner with "i"; on hover or focus it says what is
   // shown (documentation 4.3). It never covers or moves the page.

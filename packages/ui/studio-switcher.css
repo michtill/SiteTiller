@@ -27,3 +27,99 @@
   stroke-width: 2;
   stroke-linecap: round;
 }
+/* Switching studios (studio-toggle.ts): two icons on a soft track, the open studio raised. Its colours follow the
+   part it sits in (currentColor); --studio-toggle-on is the raised button. */
+.studio-toggle {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  margin-left: auto;
+  padding: 2px;
+  border-radius: 10px;
+  background: color-mix(in srgb, currentColor 9%, transparent);
+}
+.studio-toggle a {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: inherit;
+  opacity: 0.6;
+  transition:
+    background 0.15s,
+    opacity 0.15s;
+}
+.studio-toggle a:hover {
+  opacity: 1;
+}
+.studio-toggle a[aria-current='page'] {
+  opacity: 1;
+  background: var(--studio-toggle-on, var(--ui-raised));
+  box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 14%, transparent);
+}
+.studio-toggle svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* The menu, the website name and the studio name look the same in both studios and in Settings (the Shell's
+   .shell-brand): one font, sizes and spacing here, stronger than the studios' own rules. */
+details.studio-switcher > summary.studio-switcher-summary,
+.shell-brand > .studio-switcher-summary,
+.studio-toggle {
+  font-family: Inter, 'Segoe UI', system-ui, sans-serif;
+}
+details.studio-switcher > summary.studio-switcher-summary,
+.shell-brand > .studio-switcher-summary {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  min-width: 0;
+}
+.studio-switcher .studio-switcher-summary .studio-logo,
+.shell-brand .studio-switcher-summary .studio-logo {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  margin: 0;
+}
+.studio-switcher .studio-switcher-summary .studio-logo .studio-switcher-name,
+.shell-brand .studio-switcher-summary .studio-logo .studio-switcher-name {
+  display: block;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 18px;
+  letter-spacing: -0.2px;
+  opacity: 0.78;
+  color: inherit;
+}
+.studio-switcher .studio-switcher-summary .studio-logo small,
+.shell-brand .studio-switcher-summary .studio-logo small {
+  display: block;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 20px;
+  letter-spacing: -0.2px;
+  opacity: 1;
+  color: inherit;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* In Settings the menu's place shows the settings icon, raised like the open studio in the toggle. */
+.studio-menu-toggle.studio-menu-active {
+  border-color: transparent;
+  background: var(--studio-toggle-on, var(--ui-raised));
+  box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 14%, transparent);
+}

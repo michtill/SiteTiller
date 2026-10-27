@@ -253,6 +253,24 @@ export async function selectPreviewTarget(selection: Selection, force = false, f
     if (request === previewRequest) previewCancel = null;
   }
 }
+// The page in the preview gets the scrollbar colours of the studio's colour mode (documentation 2.4): when it loads
+// (it reports its title) and whenever the mode changes.
+function scrollbarColours(target: Window) {
+  const style = getComputedStyle(document.documentElement);
+  target.postMessage(
+    {
+      type: 'sitetiller-preview-scrollbar',
+      mode: document.documentElement.dataset.dayNight === 'day' ? 'light' : 'dark',
+      thumb: style.getPropertyValue('--ui-scroll').trim(),
+      track: style.getPropertyValue('--ui-page').trim(),
+    },
+    '*',
+  );
+}
+new MutationObserver(() => {
+  for (const frame of container?.querySelectorAll('iframe') || [])
+    if (frame.contentWindow) scrollbarColours(frame.contentWindow);
+}).observe(document.documentElement, { attributes: true, attributeFilter: ['data-day-night'] });
 // Kept previews remember the latest title of the page shown in them; the visible one also updates the toolbar.
 window.addEventListener('message', (event) => {
   if (event.data?.type !== 'sitetiller-preview-title' || typeof event.data.title !== 'string') return;
@@ -261,6 +279,7 @@ window.addEventListener('message', (event) => {
     if (frame.contentWindow === event.source) {
       const meta = previewMeta.get(frame);
       if (meta) meta.title = title;
+      scrollbarColours(frame.contentWindow);
     }
   if (
     s.current &&

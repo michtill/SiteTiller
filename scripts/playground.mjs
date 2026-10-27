@@ -71,7 +71,7 @@ if (command === 'init') {
   // The administrator e-mail (documentation 2.4) is required; SITETILLER_ADMIN_EMAIL sets it at installation.
   await atomicJson(join(paths.settings, 'shared.json'), {
     name: 'SiteTiller playground',
-    theme: 'green',
+    theme: 'light',
     ...(process.env.SITETILLER_ADMIN_EMAIL ? { adminEmail: process.env.SITETILLER_ADMIN_EMAIL } : {}),
   });
   const password = randomBytes(18).toString('base64url');

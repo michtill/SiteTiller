@@ -79,7 +79,8 @@ test('ST-07: explicit static root, custom settings paths, Host/Origin/token and 
     assert.equal(catalog.aliases.media, 'file');
     assert.equal((await (await fetch(origin + '/api/bootstrap')).json()).contentRevision, boot.contentRevision);
     assert.equal(boot.settings.name, 'Shell name');
-    assert.equal(boot.settings.theme, 'sand');
+    // A former environment colour reads as the Light colour mode (documentation 2.4).
+    assert.equal(boot.settings.theme, 'light');
     assert.equal(await (await fetch(origin + '/')).text(), 'ISOLATED BUILD');
     const foreignStatus = await new Promise((resolve, reject) => {
       const req = http.get(origin + '/api/bootstrap', { headers: { Host: 'foreign.invalid' } }, (res) => {

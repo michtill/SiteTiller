@@ -215,13 +215,13 @@ test(
       response = await fetch(origin + '/settings', {
         method: 'POST',
         headers: { Cookie: newCookie, Origin: origin },
-        body: new URLSearchParams({ name: 'Updated fixture', theme: 'blue', revision: revision(shared) }),
+        body: new URLSearchParams({ name: 'Updated fixture', theme: 'dark', revision: revision(shared) }),
       });
       assert.equal(response.status, 200);
       response = await fetch(origin + '/settings', {
         method: 'POST',
         headers: { Cookie: newCookie, Origin: origin },
-        body: new URLSearchParams({ name: 'Stale fixture', theme: 'green', revision: revision(shared) }),
+        body: new URLSearchParams({ name: 'Stale fixture', theme: 'light', revision: revision(shared) }),
       });
       assert.equal(response.status, 409);
       const { chromium } = await import('playwright');
@@ -251,7 +251,7 @@ test(
         await studio.frameLocator('#preview').locator('h1').waitFor();
         assert.equal(await studio.frameLocator('#preview').locator('h1').textContent(), 'SiteTiller playground');
         await page.goto(origin + '/settings/aiapi?returnTo=%2Fsite%2F');
-        await page.locator('h1').filter({ hasText: 'Modely AI studia' }).waitFor();
+        await (await studioFrame(page, 'settings')).locator('h1').filter({ hasText: 'Modely AI studia' }).waitFor();
         assert.equal(errors.length, 0, errors.join('\n'));
       } finally {
         await browser.close();

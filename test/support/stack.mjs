@@ -56,7 +56,7 @@ export async function isolatedStack({ networkMode = 'offline', controllerImports
     await atomicJson(join(root, 'cms/settings.json'), {
       name: 'LEGACY MUST NOT WIN',
       subtitle: 'LEGACY',
-      theme: 'black',
+      theme: 'light',
       autoPublish: true,
     });
     const { stdout } = await execute(process.execPath, ['scripts/playground.mjs', 'env'], {

@@ -23,6 +23,7 @@ import {
   restoreConfirmedPublicationEvidence,
 } from './publication-evidence.ts';
 import { atomicJson } from '../../../packages/settings/index.mjs';
+import { colourMode } from '../../../packages/settings/shared-ui.mjs';
 import { writeApprovals } from './approvals.ts';
 import { settingsSiteUrl } from './settings-site-url.ts';
 async function editorName() {
@@ -1953,10 +1954,8 @@ const server = http.createServer(async (req, res) => {
         ? 'en'
         : 'cs'
       : normalizeLocale(process.env.SITETILLER_UI_LANGUAGE);
-    // The day look takes the environment colours (theme) of the Shared settings; the night look stays black.
-    const palette = ['green', 'blue', 'plum', 'graphite', 'sand', 'black', 'light'].includes(shared?.theme)
-      ? shared.theme
-      : '';
+    // The colour mode of the Shared settings (documentation 2.4); theme.js applies it before the page is painted.
+    const mode = shared ? colourMode(shared) : '';
     res.end(
       assetBody
         .toString()
@@ -1966,7 +1965,7 @@ const server = http.createServer(async (req, res) => {
             language +
             '"' +
             (shared ? ' data-shared-language="' + language + '"' : '') +
-            (palette ? ' data-day-palette="' + palette + '"' : '') +
+            (mode ? ' data-mode="' + mode + '"' : '') +
             '>',
         ),
     );

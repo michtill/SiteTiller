@@ -61,9 +61,36 @@ for (const file of ['packages/models/recommended-sets.json']) {
     const [newer, older] = [versions[i], versions[i + 1]].map((text) => JSON.parse(text)),
       content = (value) => JSON.stringify({ ...value, date: '', revision: 0 });
     if (content(newer) !== content(older) && !((newer.revision || 0) > (older.revision || 0))) {
-      console.error(file + ': the content changed but the revision ' + newer.revision + ' is not higher than ' + older.revision + '.');
+      console.error(
+        file +
+          ': the content changed but the revision ' +
+          newer.revision +
+          ' is not higher than ' +
+          older.revision +
+          '.',
+      );
       process.exitCode = 1;
     }
   }
 }
 console.log('Recommendation revisions checked.');
+// The editor's colours are only the --ui-* variables of packages/ui/colors.css (documentation 2.4): a fixed colour in
+// another stylesheet would not follow the Light and Dark colour modes.
+const fixedColour = /#[0-9a-fA-F]{3,8}(?![\w-])|\b(white|black)\b(?!-)|rgba?\(/;
+for (const file of [
+  'apps/cmstudio/editor/style.css',
+  'apps/aistudio/ui/style.css',
+  'apps/shell/shell.css',
+  ...(await readdir('packages/ui'))
+    .filter((f) => f.endsWith('.css') && f !== 'colors.css')
+    .map((f) => 'packages/ui/' + f),
+]) {
+  const lines = (await readFile(file, 'utf8')).split('\n');
+  lines.forEach((line, i) => {
+    if (fixedColour.test(line.replace(/\/\*.*?\*\//g, ''))) {
+      console.error(file + ':' + (i + 1) + ': a fixed colour; use a --ui-* variable of packages/ui/colors.css.');
+      process.exitCode = 1;
+    }
+  });
+}
+console.log('Colours checked.');

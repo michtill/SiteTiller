@@ -9,6 +9,7 @@ import { uploadName, folderMaxBytes, folderMaxMb } from './file-upload.ts';
 import { writeDesignContent } from './design-content.ts';
 import { Publication } from './publication.ts';
 import { SettingsStore } from './settings.ts';
+import { colourMode } from '../../../packages/settings/shared-ui.mjs';
 import http from 'node:http';
 import { readFile, readdir, stat, mkdir, writeFile } from 'node:fs/promises';
 import { resolve, join, extname, relative, isAbsolute } from 'node:path';
@@ -55,9 +56,7 @@ async function sharedLook() {
   } catch {}
   return {
     language: shared?.language === 'en' ? 'en' : 'cs',
-    theme: ['green', 'blue', 'plum', 'graphite', 'sand', 'black', 'light'].includes(shared?.theme)
-      ? shared.theme
-      : 'green',
+    theme: colourMode(shared),
   };
 }
 const editorSettings = new SettingsStore(root, { sharedFile: process.env.SITETILLER_SHARED_SETTINGS_FILE });
@@ -202,6 +201,8 @@ http
             media: await mediaFiles(),
             contentRevision: await restoreRevision(root),
             autoPublish: await currentEditMode(),
+            // The toolbar's Live website link (documentation 2.2).
+            liveSiteUrl: process.env.SITETILLER_SITE_URL || null,
           };
         });
         return json(200, result);
@@ -232,6 +233,8 @@ http
             ...(await editorSettings.snapshot()),
             token,
             autoPublish: await currentEditMode(),
+            // The toolbar's Live website link (documentation 2.2).
+            liveSiteUrl: process.env.SITETILLER_SITE_URL || null,
           };
         });
         return json(200, result);

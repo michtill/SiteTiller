@@ -1,0 +1,76 @@
+/* The colours of the whole editor (documentation 2.4, Colour mode): the Content editor, the Shell's pages and AI Studio
+   use only these variables, each named by its purpose. Light is the default; data-cms-theme="dark" on <html> (AI Studio:
+   data-theme="dark") switches everything to Dark. No other stylesheet sets a fixed colour (scripts/check.mjs). */
+:root {
+  color-scheme: light;
+  --ui-page: #f6f8f6;
+  --ui-sidebar: #e9eeea;
+  --ui-surface: #ffffff;
+  --ui-raised: #ffffff;
+  /* The canvas behind a website preview: white like a browser, in both modes. */
+  --ui-website: #ffffff;
+  --ui-surface-2: #f4f7f2;
+  --ui-hover: #e6ece3;
+  --ui-selected: #d3ddd5;
+  --ui-row-selected: #edf2ed;
+  --ui-border: #dfe5db;
+  --ui-border-strong: #bdcbc0;
+  --ui-text: #24352e;
+  --ui-text-soft: #405548;
+  --ui-muted: #788477;
+  --ui-accent: #4c6556;
+  --ui-accent-hover: #3c5144;
+  --ui-accent-soft: #738e60;
+  --ui-on-accent: #ffffff;
+  --ui-action: #dfe7e1;
+  --ui-action-hover: #d0dcd3;
+  --ui-highlight: #d9ec98;
+  --ui-on-highlight: #24352e;
+  --ui-indicator: #6c8873;
+  --ui-scroll: #a0b4a5;
+  --ui-scroll-hover: #849e8b;
+  --ui-focus: #a1b8a8;
+  --ui-danger: #a03939;
+  --ui-danger-bg: #fff0ec;
+  --ui-warning: #967334;
+  --ui-warning-bg: #fff6e8;
+  --ui-shadow: rgba(23, 42, 33, 0.14);
+  --ui-backdrop: rgba(23, 42, 33, 0.45);
+}
+/* Dark: nearly black, with a soft sage accent. */
+:root[data-cms-theme='dark'],
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --ui-page: #101116;
+  --ui-sidebar: #14161c;
+  --ui-surface: #181a22;
+  --ui-raised: #343949;
+  --ui-website: #ffffff;
+  --ui-surface-2: #1c1f28;
+  --ui-hover: #252935;
+  --ui-selected: #303542;
+  --ui-row-selected: #232733;
+  --ui-border: #2c303c;
+  --ui-border-strong: #3b4050;
+  --ui-text: #e9ecf2;
+  --ui-text-soft: #c4c9d4;
+  --ui-muted: #9298a9;
+  --ui-accent: #b9cf8c;
+  --ui-accent-hover: #c8dba0;
+  --ui-accent-soft: #9fb577;
+  --ui-on-accent: #1a2011;
+  --ui-action: #20232d;
+  --ui-action-hover: #303542;
+  --ui-highlight: #b9cf8c;
+  --ui-on-highlight: #1a2011;
+  --ui-indicator: #b9cf8c;
+  --ui-scroll: #3b4050;
+  --ui-scroll-hover: #545a6c;
+  --ui-focus: #7f9461;
+  --ui-danger: #ff8f80;
+  --ui-danger-bg: #3a2222;
+  --ui-warning: #f0c36d;
+  --ui-warning-bg: #352c1c;
+  --ui-shadow: rgba(0, 0, 0, 0.5);
+  --ui-backdrop: rgba(0, 0, 0, 0.6);
+}

@@ -147,7 +147,14 @@ test('HI-01: real Studio UI menu, language priority, responsive tabs, version ac
     assert.equal(await page.locator('.release-actions #save-draft').count(), 1);
     await page.locator('#studio-switcher summary').click();
     const labels = await page.locator('#studio-switcher nav>:is(a,button)').allTextContents();
-    assert.deepEqual(labels, ['Editor obsahu', 'AI Studio', 'Nastavení', 'Odhlásit']);
+    assert.deepEqual(labels, ['Nastavení', 'Odhlásit']);
+    assert.deepEqual(
+      await page
+        .locator('.studio-header .studio-toggle a')
+        .evaluateAll((a) => a.map((e) => e.getAttribute('aria-label'))),
+      ['Editor obsahu', 'AI Studio'],
+    );
+    assert.equal(await page.locator('.studio-toggle a[aria-current=page]').getAttribute('aria-label'), 'AI Studio');
     await page.locator('#studio-switcher summary').click();
     await page.evaluate(() => (document.getElementById('workspace')!.style.gridTemplateColumns = '700px 1fr'));
     let ys = await page
@@ -223,7 +230,7 @@ test('HI-01: real Studio UI menu, language priority, responsive tabs, version ac
     const workBefore = JSON.stringify([state.head, state.requests, state.releases]);
     // The app's confirm dialog (packages/ui), not the browser's.
     await page.locator('#delete-preview').click();
-    // The library's layout in the AI Studio colours (its styles load as a file: no inline styles here).
+    // The library's layout in the editor's dark colours (packages/ui/colors.css; its styles load as a file).
     assert.deepEqual(
       await page
         .locator('dialog.ui-confirm')
@@ -232,7 +239,7 @@ test('HI-01: real Studio UI menu, language priority, responsive tabs, version ac
           getComputedStyle(d.querySelector('footer')).justifyContent,
           getComputedStyle(d.querySelector('.ui-confirm-ok')).backgroundColor,
         ]),
-      ['rgb(24, 26, 34)', 'flex-end', 'rgb(214, 250, 114)'],
+      ['rgb(24, 26, 34)', 'flex-end', 'rgb(185, 207, 140)'],
     );
     await page.locator('dialog.ui-confirm .ui-confirm-ok').click();
     await page.waitForFunction(() => !document.querySelector('.saved-draft-card'));

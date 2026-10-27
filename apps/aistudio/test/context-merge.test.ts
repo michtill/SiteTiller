@@ -63,3 +63,54 @@ test('AI-16: reading a small batch works when already provided CMS context has m
     await rm(root, { recursive: true, force: true });
   }
 });
+test('AI-16: an image of the Content editor media that the agent reads is shown to it', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'context-media-')),
+    previous = process.env.SITETILLER_CMS_ROOT;
+  try {
+    const cms = join(root, 'cms');
+    await mkdir(join(cms, 'schema'), { recursive: true });
+    await mkdir(join(cms, 'data'));
+    await mkdir(join(cms, 'media/images'), { recursive: true });
+    await writeFile(
+      join(cms, 'schema/structure.json'),
+      JSON.stringify({ version: 1, lists: {}, folders: { images: { type: 'img' } } }),
+    );
+    const bytes = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII=',
+      'base64',
+    );
+    await writeFile(join(cms, 'media/images', 'cover.png'), bytes);
+    process.env.SITETILLER_CMS_ROOT = cms;
+    const project = new Project(join(root, 'project'));
+    await project.init(null);
+    await project.write({ 'site/index.html': '<!doctype html><title>Fixture</title>' });
+    await project.commit('Fixture page');
+    let calls = 0,
+      media = '';
+    const result = await workflow(
+      project,
+      [{ provider: 'openai', key: 'fixture', highModel: 'fixture', lowModel: 'fixture' }],
+      'Jak vypadá obal?',
+      join(root, 'drafts'),
+      () => {},
+      async (_client, _instruction, input) => {
+        if (++calls === 1) {
+          media = Object.keys(input.files).find((path) => path.startsWith('site/cms/media/'))!;
+          assert.ok(!input._images.some((image: any) => image.path === media));
+          return { value: { action: 'read', paths: [media] } };
+        }
+        assert.equal(input._images.find((image: any) => image.path === media)?.data, bytes.toString('base64'));
+        return { value: { action: 'answer', summary: 'Cover seen.' } };
+      },
+      undefined,
+      [],
+      { cmsSource: 'unpublished' },
+    );
+    assert.ok(result.conversationOnly);
+    assert.equal(calls, 2);
+  } finally {
+    if (previous === undefined) delete process.env.SITETILLER_CMS_ROOT;
+    else process.env.SITETILLER_CMS_ROOT = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});

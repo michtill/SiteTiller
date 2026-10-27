@@ -562,3 +562,14 @@ test('HI-02: obsolete failure cannot clear newer pending intent; timeout clears 
     await page.waitForTimeout(1200);
     await ready(page, 'saved', draft2Id, saved2);
   }));
+test('HI-12: a preview page without its own icon gets an empty one, never the icon of SiteTiller; its own icon stays', () => {
+  const page = '<!doctype html><html><head><title>Fixture</title></head><body><p>Hello</p></body></html>';
+  for (const embedded of [false, true]) {
+    const html = previewDocument(page, 'abc', embedded);
+    assert.equal(html.match(/<link rel="icon" href="data:,">/g)?.length, 1);
+    assert.ok(html.indexOf('<link rel="icon" href="data:,">') < html.indexOf('</head>'));
+  }
+  const own = page.replace('</head>', '<link rel="shortcut icon" href="favicon.ico"></head>');
+  assert.ok(!previewDocument(own, 'abc').includes('data:,'));
+  assert.ok(previewDocument(own, 'abc').includes('href="favicon.ico"'));
+});

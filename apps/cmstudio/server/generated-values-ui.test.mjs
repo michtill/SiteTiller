@@ -46,7 +46,7 @@ test('ST-03: new collection Code defaults to generated pattern and values assign
     const page = await browser.newPage();
     page.setDefaultTimeout(5000);
     await page.goto(origin);
-    await page.getByRole('button', { name: 'Editor struktury', exact: true }).click();
+    await page.getByRole('button', { name: 'Struktura', exact: true }).click();
     await page.getByRole('button', { name: '＋ Přidat kolekci', exact: true }).click();
     const add = page.getByRole('dialog', { name: 'Přidat do struktury' });
     await add.getByLabel('Název', { exact: true }).fill('Alba');
@@ -70,12 +70,12 @@ test('ST-03: new collection Code defaults to generated pattern and values assign
     await pattern.fill('alb##');
     await page.getByRole('button', { name: 'Uložit strukturu', exact: true }).click();
     await page.waitForFunction(() =>
-      document.querySelector('.architect-tabs .badge')?.textContent?.includes('Uloženo'),
+      document.querySelector('.architect-toolbar .badge')?.textContent?.includes('Uloženo'),
     );
     const saved = JSON.parse(await readFile(join(root, 'schema/structure.json'), 'utf8'));
     assert.equal(saved.lists.albums.columns.code.type, 'generated');
     assert.equal(saved.lists.albums.columns.code.valuePattern, 'alb##');
-    await page.getByRole('button', { name: '← Editor obsahu', exact: true }).click();
+    await page.getByRole('button', { name: 'Zpět', exact: true }).click();
     await page.getByRole('button', { name: '＋ Nová položka', exact: true }).click();
     const code = page.getByRole('textbox', { name: 'Kód', exact: true });
     assert.equal(await code.isEditable(), false);
@@ -106,7 +106,7 @@ test('ST-03: new collection Code defaults to generated pattern and values assign
       JSON.parse(await readFile(join(root, 'data/albums.json'), 'utf8')).map((r) => r.code),
       ['alb01', 'alb02'],
     );
-    await page.getByRole('button', { name: 'Editor struktury', exact: true }).click();
+    await page.getByRole('button', { name: 'Struktura', exact: true }).click();
     const codeDefinition = page.locator('.field-definition[data-order-key="code"]');
     await codeDefinition.locator('.field-toggle').click();
     await codeDefinition.getByRole('checkbox', { name: 'Jen pro čtení', exact: true }).uncheck();
@@ -115,9 +115,9 @@ test('ST-03: new collection Code defaults to generated pattern and values assign
       page.getByRole('button', { name: 'Uložit strukturu', exact: true }).click(),
     ]);
     await page.waitForFunction(() =>
-      document.querySelector('.architect-tabs .badge')?.textContent?.includes('Uloženo'),
+      document.querySelector('.architect-toolbar .badge')?.textContent?.includes('Uloženo'),
     );
-    await page.getByRole('button', { name: '← Editor obsahu', exact: true }).click();
+    await page.getByRole('button', { name: 'Zpět', exact: true }).click();
     await page.getByRole('button', { name: '＋ Nová položka', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('input[aria-label="Kód"]')?.value === 'alb03');
     assert.equal(await code.isEditable(), true);

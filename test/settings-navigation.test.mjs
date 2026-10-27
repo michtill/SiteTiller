@@ -44,14 +44,14 @@ test(
         assert.match(html, new RegExp('name="returnTo" value="' + safe.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '"'));
         assert.ok(
           html.includes('class="shell-back" href="' + safe + '">') &&
-            html.includes('>Editor obsahu</a>') &&
-            html.includes('>AI Studio</a>'),
+            html.includes('aria-label="Editor obsahu"') &&
+            html.includes('aria-label="AI Studio"'),
         );
         const revision = html.match(/name="revision" value="([^"]+)"/)[1];
         const saved = await fetch(stack.origin + '/settings', {
           method: 'POST',
           headers,
-          body: new URLSearchParams({ returnTo: destination, revision, name: 'Fixture', theme: 'green' }),
+          body: new URLSearchParams({ returnTo: destination, revision, name: 'Fixture', theme: 'light' }),
           redirect: 'manual',
         });
         assert.equal(saved.status, 200);
@@ -106,13 +106,16 @@ test(
             await cm.locator('#shared-settings-link').click();
           }
           await page.waitForURL('**/settings?**');
-          assert.equal(await page.locator('input[name=returnTo]').inputValue(), source);
+          // Settings open in the Shell frame beside the studios (documentation 2.2).
+          const settings = await studioFrame(page, 'settings');
+          await settings.locator('input[name=returnTo]').waitFor({ state: 'attached' });
+          assert.equal(await settings.locator('input[name=returnTo]').inputValue(), source);
           // Save only saves (the screen stays open); the button of the studio the user came from returns there.
           if (action === 'save') {
-            await page.getByRole('button', { name: 'Uložit', exact: true }).click();
-            await page.getByText('Uloženo', { exact: true }).waitFor();
+            await settings.getByRole('button', { name: 'Uložit', exact: true }).click();
+            await settings.getByText('Uloženo', { exact: true }).waitFor();
           }
-          await page
+          await settings
             .getByRole('link', { name: source.startsWith('/site/') ? 'AI Studio' : 'Editor obsahu', exact: true })
             .click();
           await page.waitForURL(stack.origin + source);

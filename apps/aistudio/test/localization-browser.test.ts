@@ -72,7 +72,8 @@ test('I18-01: interface follows the chosen language and falls back to English', 
     await page.locator('#prompt').waitFor();
     assert.equal(await page.locator('html').getAttribute('lang'), 'cs');
     assert.equal(await page.locator('#edits-tab').textContent(), 'Úpravy');
-    assert.equal(await page.locator('#theme-toggle').getAttribute('aria-label'), 'Zapnout tmavý režim');
+    // The sun/moon is only for a while: after a reload the colour mode of the settings applies again (documentation 2.4).
+    assert.equal(await page.locator('#theme-toggle').getAttribute('aria-label'), 'Zapnout světlý režim');
     // A language this installation does not offer falls back to English.
     await page.evaluate(() => localStorage.setItem('sitetiller-language', 'xx'));
     await page.reload();

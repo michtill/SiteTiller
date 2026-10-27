@@ -1,6 +1,6 @@
 {
   "name": "@sitetiller/cmstudio",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -9,7 +9,7 @@
     "start": "node server/server.ts",
     "test": "node --test tests/*.test.ts tests/*.test.mjs server/design-content.test.mjs server/design-assets.test.mjs server/design-restore.test.mjs server/discard-changes.test.mjs server/media-delete.test.mjs server/folder-limit.test.mjs server/field-defaults.test.mjs server/design-content-api.test.mjs server/design-restore-api.test.mjs server/design-structure-api.test.mjs",
     "check": "tsc --noEmit",
-    "test:browser": "node --test --test-concurrency=1 server/external-refresh.test.mjs server/publication-dialog.test.mjs server/readonly-fields.test.mjs server/generated-values-ui.test.mjs server/leave-record.test.mjs server/shared-ui.test.mjs server/published-structure.test.mjs server/markdown-editor.test.mjs server/structure-templates.test.mjs"
+    "test:browser": "node --test --test-concurrency=1 server/external-refresh.test.mjs server/publication-dialog.test.mjs server/readonly-fields.test.mjs server/generated-values-ui.test.mjs server/leave-record.test.mjs server/shared-ui.test.mjs server/published-structure.test.mjs server/markdown-editor.test.mjs server/structure-templates.test.mjs server/image-viewer.test.mjs"
   },
   "dependencies": {
     "@tiptap/core": "3.32.0",

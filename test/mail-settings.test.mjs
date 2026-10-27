@@ -14,7 +14,7 @@ test('SH-12: the administrator e-mail must be a valid address and sending e-mail
   const old = process.env.SITETILLER_SHARED_SETTINGS_FILE;
   try {
     // The administrator e-mail is saved only as a valid address.
-    const base = { name: 'Example', theme: 'green' };
+    const base = { name: 'Example', theme: 'light' };
     assert.throws(() => validateShared({ ...base, adminEmail: '' }, { current: {} }), { status: 422 });
     assert.throws(() => validateShared({ ...base, adminEmail: 'not an address' }, { current: {} }), { status: 422 });
     assert.equal(validateShared({ ...base, adminEmail: ' admin@example.test ' }, { current: {} }).adminEmail, 'admin@example.test');

@@ -6,13 +6,13 @@
   padding: 30px;
   border: 1px solid var(--ui-dialog-border, transparent);
   border-radius: 12px;
-  background: var(--ui-dialog-bg, #fff);
-  color: var(--ui-dialog-text, #24352e);
+  background: var(--ui-dialog-bg, var(--ui-surface));
+  color: var(--ui-dialog-text, var(--ui-text));
   font: inherit;
-  box-shadow: 0 18px 50px #0003;
+  box-shadow: 0 18px 50px var(--ui-shadow);
 }
 .ui-confirm::backdrop {
-  background: var(--ui-dialog-backdrop, #172a21a8);
+  background: var(--ui-dialog-backdrop, var(--ui-backdrop));
 }
 .ui-confirm h2 {
   margin: 0;
@@ -33,7 +33,7 @@
   gap: 10px;
   margin-top: 26px;
   padding-top: 24px;
-  border-top: 1px solid var(--ui-dialog-line, #edf0e9);
+  border-top: 1px solid var(--ui-dialog-line, var(--ui-border));
 }
 .ui-confirm button {
   width: auto;
@@ -42,20 +42,20 @@
   font: inherit;
   font-size: 13px;
   font-weight: 550;
-  color: var(--ui-dialog-button-text, #3d5144);
-  background: var(--ui-dialog-button-bg, #fff);
-  border: 1px solid var(--ui-dialog-button-border, #dbe2db);
+  color: var(--ui-dialog-button-text, var(--ui-text));
+  background: var(--ui-dialog-button-bg, var(--ui-surface));
+  border: 1px solid var(--ui-dialog-button-border, var(--ui-border));
   border-radius: 8px;
   cursor: pointer;
 }
 .ui-confirm button:hover {
-  background: var(--ui-dialog-button-hover, #edf4ed);
+  background: var(--ui-dialog-button-hover, var(--ui-hover));
 }
 .ui-confirm button.ui-confirm-ok {
-  color: var(--ui-dialog-primary-text, #fff);
-  background: var(--ui-dialog-primary, var(--cms-primary, var(--primary, #24352e)));
+  color: var(--ui-dialog-primary-text, var(--ui-on-accent));
+  background: var(--ui-dialog-primary, var(--cms-primary, var(--primary, var(--ui-accent))));
   border-color: transparent;
 }
 .ui-confirm button.ui-confirm-ok:hover {
-  background: var(--ui-dialog-primary-hover, var(--cms-primary-hover, var(--primary-hover, #16231d)));
+  background: var(--ui-dialog-primary-hover, var(--cms-primary-hover, var(--primary-hover, var(--ui-accent))));
 }

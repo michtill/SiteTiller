@@ -1,7 +1,7 @@
 // Creates a new, empty SiteTiller instance on a server and connects it, in one step. Run once inside the image:
 //   node scripts/instance-create.mjs <deployment.json>
 // deployment.json: as for instance-adopt.mjs (sourceRoot is not needed), plus adminEmail (required: password reset and
-// website forms, documentation 2.4), name? and networkMode? (default providers). Without productionGit the version history is the instance's own Git, Version 0 = the new draft.
+// website forms, documentation 2.4), name?, language? (cs or en, default en) and networkMode? (default providers). Without productionGit the version history is the instance's own Git, Version 0 = the new draft.
 // The instance has no collections, no files and a "new website" draft; its password is printed once
 // (change it in the Studio menu under Password) and stored only as a hash. An existing instance is never touched.
 import { mkdir, readdir, writeFile, rm } from 'node:fs/promises';
@@ -19,6 +19,8 @@ const exec = promisify(execFile),
   root = resolve(process.env.SITETILLER_INSTANCE || '/instance'),
   deployment = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 if (!validEmail(deployment.adminEmail)) throw Error('deployment.adminEmail: the administrator e-mail is required');
+if (deployment.language !== undefined && !['cs', 'en'].includes(deployment.language))
+  throw Error('deployment.language: cs or en');
 await prepareInstanceUser(root);
 const present = await readdir(root).catch(() => []);
 if (present.length) throw Error('The instance directory is not empty; instance-create never overwrites: ' + root);
@@ -37,8 +39,9 @@ await atomicJson(join(root, 'instance.json'), {
 });
 await atomicJson(join(settings, 'shared.json'), {
   name: deployment.name || new URL(deployment.siteUrl).hostname,
-  theme: 'green',
-  language: 'cs',
+  theme: 'light',
+  // The interface language of a new installation is English unless the deployment asks for Czech.
+  language: deployment.language === 'cs' ? 'cs' : 'en',
   adminEmail: deployment.adminEmail,
 });
 const password = randomBytes(12).toString('base64url');

@@ -1,3 +1,4 @@
+import './fixtures/field-catalog-server.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm, writeFile, mkdir, readFile } from 'node:fs/promises';
@@ -168,6 +169,67 @@ test('AI-26: pixel editing preserves original bytes, commits a distinct asset an
     );
     assert.equal(await project.head(), stable);
   } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+test('AI-26: an image of the content is a source of an image edit; the new image goes back to the content as a new file', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'content-image-edit-')),
+    previous = process.env.SITETILLER_CMS_ROOT;
+  try {
+    const cms = join(root, 'cms');
+    await mkdir(join(cms, 'schema'), { recursive: true });
+    await mkdir(join(cms, 'data'));
+    await mkdir(join(cms, 'media/images'), { recursive: true });
+    await writeFile(
+      join(cms, 'schema/structure.json'),
+      JSON.stringify({ version: 1, lists: {}, folders: { images: { type: 'img' } } }),
+    );
+    await writeFile(join(cms, 'media/images/cover.png'), Buffer.from(input, 'base64'));
+    process.env.SITETILLER_CMS_ROOT = cms;
+    const project = new Project(join(root, 'project'));
+    await project.init(null);
+    await project.write({ 'site/index.html': '<!doctype html><title>Fixture</title>' });
+    await project.commit('Fixture page');
+    let edited = '',
+      calls = 0;
+    const run = workflow(
+      project,
+      [{ provider: 'openai', key: 'fixture', highModel: 'fixture', lowModel: 'fixture' }],
+      'Ořízni obal.',
+      join(root, 'drafts'),
+      () => {},
+      async (_client: any, _instruction: any, value: any) => {
+        if (++calls === 1) {
+          const source = Object.keys(value.files).find((path) => path.startsWith('site/cms/media/'))!;
+          return {
+            value: {
+              action: 'image',
+              imageEdits: [{ source, prompt: 'Crop', target: 'site/assets/cover-cropped.png', format: 'png' }],
+            },
+          };
+        }
+        // The agent is told how the new image replaces the original in the content.
+        assert.match(value.feedback.instruction, /contentFiles/);
+        throw Error('fixture stop');
+      },
+      undefined,
+      [],
+      {
+        cmsSource: 'unpublished',
+        model: 'gpt-image-1.5',
+        call: (async (_key: any, _model: any, source: any) => {
+          edited = source.data;
+          return { ...decodeImage({ data: output }), data: output, usage: {} };
+        }) as any,
+      },
+    );
+    await assert.rejects(run, /fixture stop/);
+    // The edit got the bytes of the content image.
+    assert.equal(edited, input);
+    assert.equal(calls, 2);
+  } finally {
+    if (previous === undefined) delete process.env.SITETILLER_CMS_ROOT;
+    else process.env.SITETILLER_CMS_ROOT = previous;
     await rm(root, { recursive: true, force: true });
   }
 });

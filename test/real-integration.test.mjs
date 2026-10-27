@@ -64,7 +64,7 @@ test(
       }
       const baseline = (await api('/content/api/bootstrap')).value;
       assert.equal(baseline.settings.name, 'SiteTiller playground');
-      assert.equal(baseline.settings.theme, 'green');
+      assert.equal(baseline.settings.theme, 'light');
       assert.equal(baseline.autoPublish, false);
       assert.equal(baseline.lists.pages.rows[0].title, 'SiteTiller playground');
       assert.equal((await api('/content/api/publication')).value.unpublished, false);
@@ -95,7 +95,9 @@ test(
       const pointerBefore = await readFile(join(root, '.production/current.json'), 'utf8');
       assert.doesNotMatch(await (await fetch(website + '/')).text(), /Genuine CM draft/);
       // Offline there are no usable models; answering with none keeps AI Studio from leading to AI models.
-      await page.route('**/site/api/models', (route) => route.fulfill({ json: { models: [], issues: [], optionalIssues: [] } }));
+      await page.route('**/site/api/models', (route) =>
+        route.fulfill({ json: { models: [], issues: [], optionalIssues: [] } }),
+      );
       await page.goto(origin + '/site/');
       studio = await studioFrame(page, 'site');
       await studio.locator('#workspace').waitFor({ state: 'visible' });
@@ -182,17 +184,18 @@ test(
       assert.match(await (await fetch(website + '/')).text(), /Genuine CM draft/);
       assert.doesNotMatch(await (await fetch(website + '/')).text(), /AI adapter draft/);
       await page.goto(origin + '/settings');
-      await page.locator('input[name=name]').fill('Shared genuine fixture');
-      await page.locator('select[name=theme]').selectOption('blue');
-      await page.getByRole('button', { name: 'Uložit', exact: true }).click();
-      await page.getByText('Uloženo', { exact: true }).waitFor();
+      const settings = await studioFrame(page, 'settings');
+      await settings.locator('input[name=name]').fill('Shared genuine fixture');
+      await settings.locator('select[name=theme]').selectOption('dark');
+      await settings.getByRole('button', { name: 'Uložit', exact: true }).click();
+      await settings.getByText('Uloženo', { exact: true }).waitFor();
       assert.equal((await readJson(join(root, 'settings/shared.json'))).name, 'Shared genuine fixture');
       await page.goto(origin + '/content/');
       studio = await studioFrame(page, 'content');
       await studio.getByRole('textbox', { name: 'Nadpis', exact: true }).waitFor();
       assert.equal((await api('/content/api/bootstrap')).value.settings.name, 'Shared genuine fixture');
-      assert.equal((await api('/content/api/bootstrap')).value.settings.theme, 'blue');
-      assert.equal(await studio.locator('html').getAttribute('data-cms-theme'), 'blue');
+      assert.equal((await api('/content/api/bootstrap')).value.settings.theme, 'dark');
+      assert.equal(await studio.locator('html').getAttribute('data-cms-theme'), 'dark');
       await page.goto(origin + '/site/');
       studio = await studioFrame(page, 'site');
       await studio.locator('#workspace').waitFor({ state: 'visible' });

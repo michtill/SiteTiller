@@ -18,12 +18,12 @@ test('I18-01: EN common error envelopes translate ordinary validation/conflicts/
     const html = await renderPage(
       'settings',
       {
-        fields: { name: 'Přihlásit se', theme: 'blue', language: 'en' },
+        fields: { name: 'Přihlásit se', theme: 'dark', language: 'en' },
         error: settingsError(source, 'en'),
         returnTo: '/site/',
         revision: revision({}),
       },
-      { language: 'en', theme: 'blue', site: 'Přihlásit se' },
+      { language: 'en', theme: 'dark', site: 'Přihlásit se' },
     );
     assert.ok(html.includes(english));
     assert.ok(!html.includes(source));
@@ -70,7 +70,7 @@ test('SH-04: concurrent settings saves wait in one queue; a failed save changes 
       ...initial,
       returnTo: '/site/',
       name: 'First',
-      theme: 'green',
+      theme: 'light',
       language: 'cs',
       contentDefault: 'live',
     });
@@ -90,7 +90,7 @@ test('SH-04: concurrent settings saves wait in one queue; a failed save changes 
       ...intermediate,
       returnTo: '/site/',
       name: 'Přihlásit se',
-      theme: 'blue',
+      theme: 'dark',
       language: 'en',
       contentDefault: 'live',
     }).then((r) => {
@@ -124,7 +124,7 @@ test('SH-04: concurrent settings saves wait in one queue; a failed save changes 
       ...fields(html),
       returnTo: '/site/',
       name: '',
-      theme: 'blue',
+      theme: 'dark',
       language: 'en',
       contentDefault: 'live',
     });

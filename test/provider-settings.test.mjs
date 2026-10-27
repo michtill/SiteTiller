@@ -7,7 +7,7 @@ import { allowedNetworkURL } from '../scripts/network-policy.mjs';
 import { detectProvider } from '../packages/providers/index.mjs';
 import { fixtureKeys } from './fixtures/provider-catalog-mock.mjs';
 import { isolatedStack } from './support/stack.mjs';
-import { launchBrowser } from './support/browser.mjs';
+import { launchBrowser, studioFrame } from './support/browser.mjs';
 const keyPattern = new RegExp(Object.values(fixtureKeys).join('|'));
 test('OP-05: provider mode allows only intended APIs; fixture offline remains explicit', () => {
   assert.equal(allowedNetworkURL('offline', 'https://api.openai.com/v1/models'), false);
@@ -36,7 +36,15 @@ test('AI-33: the provider is told by the key shape only; unknown and admin keys 
   // Gemini's newer auth key from AI Studio.
   assert.deepEqual(detectProvider(fixtureKeys.geminiAuth), { provider: 'gemini' });
   assert.deepEqual(detectProvider('sk-admin-' + 'c'.repeat(40)), { problem: 'admin' });
-  for (const value of ['', 'hello', 'AIza-too-short', 'AQ.short', 'AQ ' + 'e'.repeat(40), 'xai-' + 'd'.repeat(40), 'sk-short'])
+  for (const value of [
+    '',
+    'hello',
+    'AIza-too-short',
+    'AQ.short',
+    'AQ ' + 'e'.repeat(40),
+    'xai-' + 'd'.repeat(40),
+    'sk-short',
+  ])
     assert.deepEqual(detectProvider(value), { problem: 'unknown' }, value);
 });
 test('AI-33: catalog errors distinguish offline/network/auth/access/quota/rate without leaking bodies', async () => {
@@ -215,65 +223,70 @@ test(
       page.setDefaultTimeout(30000);
       await signIn(page, stack);
       await page.goto(stack.origin + '/settings/aiapi?returnTo=%2Fsite%2F');
-      await addKey(page, fixtureKeys.openai);
-      await page.getByText('Klíč OpenAI je uložený.', { exact: true }).waitFor();
-      await addKey(page, fixtureKeys.anthropic);
-      await page.getByText('Klíč Anthropic je uložený.', { exact: true }).waitFor();
-      await addKey(page, fixtureKeys.gemini);
-      await page.getByText('Klíč Google Gemini je uložený.', { exact: true }).waitFor();
+      let settings = await studioFrame(page, 'settings');
+      await addKey(settings, fixtureKeys.openai);
+      await settings.getByText('Klíč OpenAI je uložený.', { exact: true }).waitFor();
+      await addKey(settings, fixtureKeys.anthropic);
+      await settings.getByText('Klíč Anthropic je uložený.', { exact: true }).waitFor();
+      await addKey(settings, fixtureKeys.gemini);
+      await settings.getByText('Klíč Google Gemini je uložený.', { exact: true }).waitFor();
       // The table names the providers only; the keys are never sent back to the browser.
-      assert.deepEqual(await page.locator('.keys-table .key-provider').allTextContents(), [
+      assert.deepEqual(await settings.locator('.keys-table .key-provider').allTextContents(), [
         'OpenAI',
         'Anthropic',
         'Google Gemini',
       ]);
-      assert.equal(await page.locator('input[name=key]').inputValue(), '');
+      assert.equal(await settings.locator('input[name=key]').inputValue(), '');
       // The key is not a sign-in password: no password field, so the browser does not offer to save it; the
       // characters are hidden until the eye shows them.
-      const field = page.locator('input[name=key]');
-      assert.deepEqual(await field.evaluate((i) => [i.type, i.autocomplete, getComputedStyle(i).webkitTextSecurity]), ['text', 'off', 'disc']);
-      await page.locator('.key-add .show-password').click();
+      const field = settings.locator('input[name=key]');
+      assert.deepEqual(await field.evaluate((i) => [i.type, i.autocomplete, getComputedStyle(i).webkitTextSecurity]), [
+        'text',
+        'off',
+        'disc',
+      ]);
+      await settings.locator('.key-add .show-password').click();
       assert.equal(await field.evaluate((i) => getComputedStyle(i).webkitTextSecurity), 'none');
-      await page.locator('.key-add .show-password').click();
-      assert.equal(await page.locator('input[type=password]').count(), 0);
-      assert.doesNotMatch(await page.content(), keyPattern);
+      await settings.locator('.key-add .show-password').click();
+      assert.equal(await settings.locator('input[type=password]').count(), 0);
+      assert.doesNotMatch(await settings.content(), keyPattern);
       const text = await readFile(join(stack.root, '.sitetiller/config.json'), 'utf8');
       assert.doesNotMatch(text, keyPattern);
       // Gemini models are offered for the team roles as provider · model, without Gemini twice.
-      await page.getByText('Seznam modelů je načtený.', { exact: true }).waitFor();
+      await settings.getByText('Seznam modelů je načtený.', { exact: true }).waitFor();
       assert.ok(
-        (await page.locator('select[name=role_primary] option').allTextContents()).includes(
+        (await settings.locator('select[name=role_primary] option').allTextContents()).includes(
           'Google · Gemini 2.5 Pro',
         ),
       );
       // Unknown and admin keys are refused with the reason under the field; nothing is saved.
-      await addKey(page, 'hello-not-a-key');
-      await page
+      await addKey(settings, 'hello-not-a-key');
+      await settings
         .getByText('Tento klíč aplikace nepoznává. Podporuje klíče OpenAI, Anthropic a Google Gemini.', { exact: true })
         .waitFor();
-      await addKey(page, 'sk-admin-' + 'c'.repeat(40));
-      await page.getByText(/správcovský klíč OpenAI/).waitFor();
+      await addKey(settings, 'sk-admin-' + 'c'.repeat(40));
+      await settings.getByText(/správcovský klíč OpenAI/).waitFor();
       assert.equal(await readFile(join(stack.root, '.sitetiller/config.json'), 'utf8'), text);
       // Another key of a saved provider: the app's confirm dialog; Cancel keeps the saved key.
-      await addKey(page, 'sk-proj-badFixtureKey000000000000');
-      const dialog = page.getByRole('dialog', { name: 'Potvrdit akci' });
+      await addKey(settings, 'sk-proj-badFixtureKey000000000000');
+      const dialog = settings.getByRole('dialog', { name: 'Potvrdit akci' });
       await dialog.getByText('Nahradit uložený klíč OpenAI?').waitFor();
       await dialog.getByRole('button', { name: 'Zrušit' }).click();
       assert.equal(await readFile(join(stack.root, '.sitetiller/config.json'), 'utf8'), text);
       // Confirm: the provider refuses it, so it is not saved and the saved key stays.
-      await page.getByRole('button', { name: 'Přidat klíč', exact: true }).click();
+      await settings.getByRole('button', { name: 'Přidat klíč', exact: true }).click();
       await dialog.getByRole('button', { name: 'Potvrdit' }).click();
-      await page.getByText('Klíč se neuložil: klíč nebyl přijat (HTTP 401).', { exact: true }).waitFor();
+      await settings.getByText('Klíč se neuložil: klíč nebyl přijat (HTTP 401).', { exact: true }).waitFor();
       assert.equal(await readFile(join(stack.root, '.sitetiller/config.json'), 'utf8'), text);
       // Saving the team keeps the saved keys.
-      await page.getByRole('button', { name: 'Uložit', exact: true }).click();
-      await page.getByText('Uloženo', { exact: true }).waitFor();
+      await settings.getByRole('button', { name: 'Uložit', exact: true }).click();
+      await settings.getByText('Uloženo', { exact: true }).waitFor();
       assert.ok(
         (await (await page.request.get(stack.origin + '/site/api/state')).json()).providers.every((p) => p.hasKey),
       );
       // Remove key asks first, then removes the key even though the team uses it; without keys the status says so.
       for (const provider of ['openai', 'anthropic', 'gemini']) {
-        await page.locator('button[value=remove_' + provider + ']').click();
+        await settings.locator('button[value=remove_' + provider + ']').click();
         await dialog.getByText(/Opravdu odebrat klíč/).waitFor();
         await dialog.getByRole('button', { name: 'Zrušit' }).click();
         assert.equal(await dialog.count(), 0);
@@ -282,15 +295,16 @@ test(
             (p) => p.provider === provider,
           ).hasKey,
         );
-        await page.locator('button[value=remove_' + provider + ']').click();
+        await settings.locator('button[value=remove_' + provider + ']').click();
         await dialog.getByRole('button', { name: 'Potvrdit' }).click();
-        await page.getByText('Klíč je odebraný.', { exact: true }).waitFor();
-        assert.equal(await page.locator('button[value=remove_' + provider + ']').count(), 0);
+        // The page reloads in the Settings frame; the note of the previous removal must not count.
+        await settings.locator('button[value=remove_' + provider + ']').waitFor({ state: 'detached' });
+        await settings.getByText('Klíč je odebraný.', { exact: true }).waitFor();
       }
       assert.ok(
         (await (await page.request.get(stack.origin + '/site/api/state')).json()).providers.every((p) => !p.hasKey),
       );
-      assert.match(await page.locator('#model-catalog').textContent(), /nejsou zadané žádné API klíče/);
+      assert.match(await settings.locator('#model-catalog').textContent(), /nejsou zadané žádné API klíče/);
     } finally {
       await browser?.close();
       await stack.close();
@@ -312,14 +326,15 @@ test(
       page.setDefaultTimeout(30000);
       await signIn(page, stack);
       await page.goto(stack.origin + '/settings/aiapi');
-      await addKey(page, fixtureKeys.openai);
-      await page.getByText('Klíč OpenAI je uložený.', { exact: true }).waitFor();
-      await addKey(page, fixtureKeys.anthropic);
-      await page.getByText('Klíč Anthropic je uložený.', { exact: true }).waitFor();
-      await page.locator('select[name=effort_ui]').selectOption('high');
-      await page.getByRole('button', { name: 'Uložit', exact: true }).click();
-      await page.getByText('Uloženo', { exact: true }).waitFor();
-      assert.equal(await page.locator('select[name=effort_ui]').inputValue(), 'high');
+      let settings = await studioFrame(page, 'settings');
+      await addKey(settings, fixtureKeys.openai);
+      await settings.getByText('Klíč OpenAI je uložený.', { exact: true }).waitFor();
+      await addKey(settings, fixtureKeys.anthropic);
+      await settings.getByText('Klíč Anthropic je uložený.', { exact: true }).waitFor();
+      await settings.locator('select[name=effort_ui]').selectOption('high');
+      await settings.getByRole('button', { name: 'Uložit', exact: true }).click();
+      await settings.getByText('Uloženo', { exact: true }).waitFor();
+      assert.equal(await settings.locator('select[name=effort_ui]').inputValue(), 'high');
       const state = await (await page.request.get(stack.origin + '/site/api/state')).json();
       assert.ok(state.providers.filter((p) => p.provider !== 'gemini').every((p) => p.hasKey));
       assert.equal(state.roles.ui.reasoningEffort, 'high');
@@ -331,11 +346,12 @@ test(
       const catalog = await (await page.request.get(stack.origin + '/settings/aiapi/catalog')).json();
       assert.ok(catalog.roles.every((role) => role.options.length > 1));
       await page.goto(stack.origin + '/settings/aiapi');
-      await page.getByText('Seznam modelů je načtený.', { exact: true }).waitFor();
-      assert.ok((await page.locator('select[name=role_primary] option').count()) > 1);
-      assert.equal(await page.locator('select[name=effort_ui]').inputValue(), 'high');
+      settings = await studioFrame(page, 'settings');
+      await settings.getByText('Seznam modelů je načtený.', { exact: true }).waitFor();
+      assert.ok((await settings.locator('select[name=role_primary] option').count()) > 1);
+      assert.equal(await settings.locator('select[name=effort_ui]').inputValue(), 'high');
       assert.equal(
-        await page.locator('select[name=role_primary]').inputValue(),
+        await settings.locator('select[name=role_primary]').inputValue(),
         state.roles.primary.provider + '|' + state.roles.primary.model,
       );
     } finally {
@@ -367,15 +383,16 @@ test(
         await route.continue();
       });
       await page.goto(stack.origin + '/settings/aiapi');
+      let settings = await studioFrame(page, 'settings');
       const places = () =>
-        page.evaluate(() =>
+        settings.evaluate(() =>
           ['select[name=role_primary]', 'select[name=image_fast]', '#team-save'].map(
             (selector) => document.querySelector(selector).getBoundingClientRect().top,
           ),
         );
       const before = await places();
       // Without keys the status line says so in the place of the Save and load models button.
-      assert.match(await page.locator('#model-catalog').textContent(), /nejsou zadané žádné API klíče/);
+      assert.match(await settings.locator('#model-catalog').textContent(), /nejsou zadané žádné API klíče/);
       const arrived = page.waitForResponse('**/settings/aiapi/catalog?*');
       release();
       await arrived;

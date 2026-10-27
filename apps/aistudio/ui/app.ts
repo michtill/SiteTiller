@@ -2,6 +2,7 @@ import { ref, computed, watch, nextTick } from 'vue';
 import { t } from './i18n.ts';
 import { s, navigateStudio, sharedSettingsHref, openSettingsDialog, resetPreviewSelection } from './studio.ts';
 import StudioSwitcher from '../../../packages/ui/studio-switcher.ts';
+import StudioToggle from '../../../packages/ui/studio-toggle.ts';
 import Timeline from './timeline.ts';
 import PromptForm from './prompt-form.ts';
 import HistoryPanel from './history-panel.ts';
@@ -15,7 +16,7 @@ import RealityDialog from './reality-dialog.ts';
 import WebsiteNotice from './website-notice.ts';
 import { dialogs } from './dialogs.ts';
 // AI Studio: the conversation with its tabs on the left, the preview on the right, the width between them adjustable.
-const template = `<main id="workspace" ref="workspace" :hidden="!s.session?.authenticated||undefined" :aria-busy="s.ready?undefined:'true'" :class="{resizing:dragging}" :style="{'--chat-width':width+'%'}"><aside><header class="studio-header"><StudioSwitcher menu-id="studio-switcher" active="site" :label="t('ai_studio')" :name="s.editorName" :settings-href="settingsHref" @navigate="navigate"/><div class="workspace-tabs" role="tablist" :aria-label="t('website_workspace')"><button v-for="tab in tabs" :key="tab.name" :id="tab.id" type="button" role="tab" :aria-selected="String(s.workspaceTab===tab.name)" :aria-controls="tab.panel" :tabindex="s.workspaceTab===tab.name?0:-1" :disabled="!s.ready" @click="select(tab.name)" @keydown="tabKey($event,tab.name)"><span>{{t(tab.label)}}</span></button></div></header>
+const template = `<main id="workspace" ref="workspace" :hidden="!s.session?.authenticated||undefined" :aria-busy="s.ready?undefined:'true'" :class="{resizing:dragging}" :style="{'--chat-width':width+'%'}"><aside><header class="studio-header"><StudioSwitcher menu-id="studio-switcher" active="site" :label="t('ai_studio')" :name="s.editorName" :settings-href="settingsHref" @navigate="navigate"/><StudioToggle active="site" @navigate="navigate"/><div class="workspace-tabs" role="tablist" :aria-label="t('website_workspace')"><button v-for="tab in tabs" :key="tab.name" :id="tab.id" type="button" role="tab" :aria-selected="String(s.workspaceTab===tab.name)" :aria-controls="tab.panel" :tabindex="s.workspaceTab===tab.name?0:-1" :disabled="!s.ready" @click="select(tab.name)" @keydown="tabKey($event,tab.name)"><span>{{t(tab.label)}}</span></button></div></header>
 <section id="edits-panel" role="tabpanel" aria-labelledby="edits-tab" :hidden="s.workspaceTab!=='edits'||undefined"><p v-if="!s.ready&&s.loadingText" class="timeline-loading">{{s.loadingText}}</p><WebsiteNotice/><Timeline v-if="s.current" @reality="dialogs.reality()"/><div v-else id="timeline" class="timeline" aria-live="polite"></div><PromptForm/></section>
 <SavedDrafts :hidden="s.workspaceTab!=='drafts'||undefined"/><HistoryPanel :hidden="s.workspaceTab!=='history'||undefined"/></aside>
 <div id="splitter" role="separator" :aria-label="t('chat_width')" aria-orientation="vertical" :aria-valuenow="String(Math.round(width))" tabindex="0" @pointerdown="dragStart" @pointermove="dragMove" @pointerup="dragEnd" @lostpointercapture="dragEnd" @keydown="splitterKey"></div><PreviewPanel/></main>
@@ -30,6 +31,7 @@ export default {
   template,
   components: {
     StudioSwitcher,
+    StudioToggle,
     Timeline,
     PromptForm,
     HistoryPanel,

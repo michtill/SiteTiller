@@ -26,15 +26,17 @@ export default {
     const frame = ref<HTMLElement | null>(null);
     onMounted(() => mountPreview(frame.value!));
     const selection = computed(() => s.displayedSelection);
-    // 'light' = day (environment colours, or the light look), 'dark' = night (black); theme.js applies them.
-    const theme = ref(document.documentElement.dataset.dayNight === 'day' ? 'light' : 'dark');
+    // 'light' or 'dark', from the colour mode of the Shared settings; theme.js applies them. The toggle switches the
+    // whole editor (the Shell frame tells the other parts) until it is opened again; it is not saved (documentation 2.4).
+    const current = () => (document.documentElement.dataset.dayNight === 'day' ? 'light' : 'dark');
+    const theme = ref(current());
+    window.addEventListener('sitetiller-mode', () => (theme.value = current()));
     const themeLabel = computed(() => t(theme.value === 'dark' ? 'switch_to_light_mode' : 'switch_to_dark_mode'));
     function toggleTheme() {
       theme.value = theme.value === 'dark' ? 'light' : 'dark';
       (window as any).sitetillerApplyTheme?.(theme.value === 'light');
-      try {
-        localStorage.setItem('sitetiller-theme', theme.value);
-      } catch {}
+      if (window.parent !== window)
+        window.parent.postMessage({ type: 'sitetiller-mode', mode: theme.value }, location.origin);
     }
     function reload() {
       if (s.displayedSelection) void selectPreviewTarget({ ...s.displayedSelection }, true, s.previewFollowCurrent);

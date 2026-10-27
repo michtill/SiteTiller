@@ -74,7 +74,7 @@ test('ED-18: the Editor reads name, theme and default edit mode from the Shared 
     await writeFile(join(root, 'cms/settings.json'), '{"name":"Legacy","theme":"plum","autoPublish":true}');
     const store = new SettingsStore(root);
     // The legacy cms/settings.json is ignored.
-    assert.deepEqual(await store.snapshot(), { settings: { name: 'Shared site', theme: 'blue' } });
+    assert.deepEqual(await store.snapshot(), { settings: { name: 'Shared site', theme: 'light' } });
     assert.equal(await store.liveByDefault(), false);
     await writeFile(shared, '{"name":"Renamed","theme":"sand","contentDefault":"live"}');
     assert.equal((await store.snapshot()).settings.name, 'Renamed');

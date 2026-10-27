@@ -1,6 +1,7 @@
 import { providerIds, providerName, detectProvider, imageModelProvider } from '../../packages/providers/index.mjs';
-import { withSharedSettingsSave, sharedLanguage } from '../../packages/settings/shared-ui.mjs';
-import { renderPage, settingsError } from './pages.ts';
+import { withSharedSettingsSave, sharedLanguage, colourMode } from '../../packages/settings/shared-ui.mjs';
+import { tabTitle } from '../../packages/ui/tab-title.mjs';
+import { renderPage, settingsError, iconLinks, escapeText } from './pages.ts';
 import { translate } from '../../packages/i18n/index.mjs';
 import {
   atomicJson,
@@ -80,6 +81,7 @@ try {
   if (e.code !== 'ENOENT') console.error('Shell sessions could not be restored (' + (e.code || e.name) + ')');
 }
 let sessionWrites: Promise<unknown> = Promise.resolve();
+let settingsSaves = 0;
 function persistSessions() {
   const now = Date.now();
   for (const [key, expires] of sessions) if (expires < now) sessions.delete(key);
@@ -95,6 +97,13 @@ const valid = (req: http.IncomingMessage) => {
   return token && (sessions.get(hashed(token)) || 0) > Date.now() ? token : null;
 };
 // The website name, theme and interface language of the Shell pages come from the common settings.
+// The application's icon (documentation 2.2): the files and the links every page of the application carries.
+const appIcons: Record<string, { file: string; type: string }> = {
+  '/favicon.svg': { file: '../../packages/ui/icons/favicon.svg', type: 'image/svg+xml' },
+  '/favicon-32.png': { file: '../../packages/ui/icons/favicon-32.png', type: 'image/png' },
+  '/apple-touch-icon.png': { file: '../../packages/ui/icons/apple-touch-icon.png', type: 'image/png' },
+  '/favicon.ico': { file: '../../packages/ui/icons/favicon.ico', type: 'image/x-icon' },
+};
 async function shared() {
   let settings: any = {};
   try {
@@ -102,7 +111,7 @@ async function shared() {
   } catch {}
   return {
     language: sharedLanguage(settings),
-    theme: typeof settings.theme === 'string' ? settings.theme : 'green',
+    theme: colourMode(settings),
     site: typeof settings.name === 'string' && settings.name.trim() ? settings.name.trim() : 'SiteTiller',
   };
 }
@@ -466,6 +475,12 @@ http
         );
         return redirect('/');
       }
+      // The application's icon (documentation 2.2), also before signing in; the website and its preview keep their own.
+      const icon = ['GET', 'HEAD'].includes(req.method || '') && appIcons[url.pathname];
+      if (icon) {
+        res.writeHead(200, { 'Content-Type': icon.type, 'Cache-Control': 'public, max-age=86400' });
+        return res.end(req.method === 'HEAD' ? undefined : await readFile(new URL(icon.file, import.meta.url)));
+      }
       // A saved draft's preview is sandboxed, so the browser sends no sign-in cookie with the files the page loads
       // (styles, scripts, images). Those files come with the draft's own short-lived key, which the preview checks;
       // the page itself still needs the sign-in (documentation 2.8).
@@ -489,6 +504,31 @@ http
       }
       if (url.pathname === '/login') return redirect('/');
       if (url.pathname === '/') return page(200, 'home');
+      // Studios and Settings stay alive: a top-level visit of a studio or settings screen gets the frame page, which
+      // loads it into an iframe (Sec-Fetch-Dest: iframe). Browsers without the header get the screen directly.
+      if (
+        req.method === 'GET' &&
+        req.headers['sec-fetch-dest'] === 'document' &&
+        /^\/(content\/(structure)?|site\/|settings(\/(mail|addresses|mcp|aiapi))?|password)$/.test(url.pathname)
+      ) {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        return res.end(
+          '<!doctype html><html lang="' +
+            language +
+            '"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' +
+            escapeText(tabTitle(look.site)) +
+            '</title>' +
+            iconLinks +
+            '<style>html,body{margin:0;height:100%;overflow:hidden}iframe{position:fixed;inset:0;width:100%;height:100%;border:0;display:block}iframe[hidden]{display:none}</style></head><body><script src="/__shell/frame.js"></script></body></html>',
+        );
+      }
+      // Every save in Settings counts; the frame reloads the studios when the count changed while Settings were open
+      // (documentation 2.2), so a name, language or team saved there shows in them.
+      if (req.method === 'POST' && /^\/(settings|password)(\/|$)/.test(url.pathname)) settingsSaves++;
+      if (req.method === 'GET' && url.pathname === '/__shell/settings-saves') {
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        return res.end(JSON.stringify({ saves: settingsSaves }));
+      }
 
       if (url.pathname === '/settings') {
         const path = join(data, 'settings/shared.json');
@@ -543,6 +583,7 @@ http
           fields = {
             ...current,
             ...entered,
+            theme: entered?.theme ?? colourMode(current),
             language: entered?.language ?? current.language ?? shown,
             contentDefault: entered?.contentDefault ?? current.contentDefault ?? 'draft',
           };
@@ -576,7 +617,7 @@ http
             await withSharedSettingsSave(sharedPath, async () => {
               const current = await readJson(sharedPath),
                 candidate = validateShared(
-                  { name: current.name, theme: current.theme, adminEmail: shownAdmin },
+                  { name: current.name, theme: colourMode(current), adminEmail: shownAdmin },
                   { current },
                 );
               await updateSettings(sharedPath, candidate, revision(current));
@@ -676,7 +717,7 @@ http
                   validateShared(
                     {
                       name: current.name,
-                      theme: current.theme,
+                      theme: colourMode(current),
                       publicPreview: input.has('publicPreview'),
                       publicPreviewOrigin: address,
                     },
@@ -868,10 +909,7 @@ http
             };
           });
           const imageOptions = (catalog?.models || [])
-            .filter(
-              (m: any) =>
-                imageModelProvider(m.id) === m.provider,
-            )
+            .filter((m: any) => imageModelProvider(m.id) === m.provider)
             .map((m: any) => ({ value: m.id, label: provider(m.provider) + ' · ' + m.name }));
           const images = [
             ['precise', t('images_precise_editing')],
@@ -1000,7 +1038,8 @@ http
           else {
             const action = input.get('teamAction') || 'save',
               teamId = input.get('teamId') || undefined,
-              inPlace = ['default', 'refresh'].includes(action) && (req.headers.accept || '').includes('application/json');
+              inPlace =
+                ['default', 'refresh'].includes(action) && (req.headers.accept || '').includes('application/json');
             postedTeam = teamId || null;
             if (action === 'save') {
               const roles = Object.fromEntries(
@@ -1081,21 +1120,6 @@ http
           images,
           returnTo: settingsReturnTo(back),
         });
-      }
-
-      // Studios stay alive: a top-level visit of a studio screen gets the frame page, which loads the studio into an
-      // iframe (Sec-Fetch-Dest: iframe) proxied below. Browsers without the header get the studio directly.
-      if (
-        req.method === 'GET' &&
-        req.headers['sec-fetch-dest'] === 'document' &&
-        /^\/(content\/(structure)?|site\/)$/.test(url.pathname)
-      ) {
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        return res.end(
-          '<!doctype html><html lang="' +
-            language +
-            '"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SiteTiller</title><style>html,body{margin:0;height:100%;overflow:hidden}iframe{position:fixed;inset:0;width:100%;height:100%;border:0;display:block}iframe[hidden]{display:none}</style></head><body><script src="/__shell/frame.js"></script></body></html>',
-        );
       }
       // The interface library's confirm dialog for the settings pages (documentation 0.5).
       if (req.method === 'GET' && url.pathname === '/__shell/ui/confirm-dialog.js') {

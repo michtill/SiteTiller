@@ -594,11 +594,13 @@ const tools: {
     name: 'get_overview',
     level: 'read',
     description:
-      'Website name, draft steps (newest last), published versions, whether the content has unpublished edits, your permissions, and the preview addresses with what they show (public_preview: the live preview of the latest step).',
+      'Website name, draft steps (newest last), published versions, each with the tools that do what the AI Studio offers for it (actions), whether the content has unpublished edits, your permissions, and the preview addresses with what they show (public_preview: the live preview of the latest step).',
     inputSchema: object({}),
     async run(_args, ctx) {
       const state = await ai(ctx, 'state'),
         publication = await cms(ctx, '/api/publication').catch(() => null);
+      // What can be done with each step, saved draft and version, as in the AI Studio (documentation 2.8, 4.3).
+      const view = ['preview_link', 'share_preview'];
       return {
         site: await ctx.site(),
         latest_commit: state.head,
@@ -608,14 +610,28 @@ const tools: {
           label: r.assistant ? 'Asistent (' + r.assistant + ')' : r.firstStep ? r.firstStep : 'request',
           text: String(r.prompt || '').slice(0, 500),
           status: r.status,
+          ...(r.commit
+            ? {
+                actions:
+                  r.commit === state.head
+                    ? ['delete_last_step', 'save_draft', 'publish_step', ...view]
+                    : ['return_to_step', 'save_draft', 'publish_step', ...view],
+              }
+            : {}),
         })),
-        saved_drafts: (state.savedDrafts || []).map((d: any) => ({ id: d.id, name: d.name, created_at: d.createdAt })),
+        saved_drafts: (state.savedDrafts || []).map((d: any) => ({
+          id: d.id,
+          name: d.name,
+          created_at: d.createdAt,
+          actions: ['load_into_draft', 'delete_saved_draft', ...view],
+        })),
         published_versions: (state.releases || []).map((r: any) => ({
           id: r.id,
           number: r.number + (r.minor !== undefined ? '.' + r.minor : ''),
           description: r.description || '',
           commit: r.commit,
           published_at: r.publishedAt,
+          actions: ['load_into_draft', ...view],
         })),
         published_commit: state.publishedCommit || null,
         unpublished_content: publication ? !!publication.unpublished : null,

@@ -1,89 +1,14 @@
-/* Shell pages (sign-in, home, common settings, password) in the look of the Content editor: its colours per
-   theme, a side band with the website name and a content column with the editor's forms and buttons. */
+/* Shell pages (sign-in, home, common settings, password) in the look of the Content editor: its colours
+   (packages/ui/colors.css), a side band with the website name and a content column with the editor's forms and buttons. */
 :root {
-  --sidebar: #173b2d;
-  --page: #f4f6f1;
-  --primary: #295b40;
-  --primary-hover: #1d4831;
-  --sidebar-text: #bdd1c2;
-  --sidebar-strong: #d1e3d5;
-  --sidebar-muted: #98b4a2;
-  --accent: #a9cb81;
-  --focus: #a7d7ba;
   font-family:
     Inter,
     Segoe UI,
     Arial,
     sans-serif;
-  color: #24352e;
-  background: var(--page);
+  color: var(--ui-text);
+  background: var(--ui-page);
   font-synthesis: none;
-}
-:root[data-cms-theme='blue'] {
-  --sidebar: #203b58;
-  --page: #f2f5f8;
-  --primary: #355c80;
-  --primary-hover: #274763;
-  --sidebar-text: #cfdae7;
-  --sidebar-strong: #deebf7;
-  --sidebar-muted: #a4b8cc;
-  --accent: #91bce0;
-  --focus: #a9cbe8;
-}
-:root[data-cms-theme='plum'] {
-  --sidebar: #49344d;
-  --page: #f6f2f6;
-  --primary: #715372;
-  --primary-hover: #59405b;
-  --sidebar-text: #e0d2e4;
-  --sidebar-strong: #eddfef;
-  --sidebar-muted: #bfacc5;
-  --accent: #d4a4d9;
-  --focus: #d6b7dd;
-}
-:root[data-cms-theme='graphite'] {
-  --sidebar: #303942;
-  --page: #f2f4f5;
-  --primary: #4d6071;
-  --primary-hover: #3b4c5b;
-  --sidebar-text: #d0d8e0;
-  --sidebar-strong: #e3eaf1;
-  --sidebar-muted: #a6b5c3;
-  --accent: #b2c8dc;
-  --focus: #b9ccdc;
-}
-:root[data-cms-theme='sand'] {
-  --sidebar: #554738;
-  --page: #f7f3ed;
-  --primary: #806b50;
-  --primary-hover: #65533d;
-  --sidebar-text: #e4d7c6;
-  --sidebar-strong: #f2e7d9;
-  --sidebar-muted: #c9b69e;
-  --accent: #ddc08b;
-  --focus: #e4cfaa;
-}
-:root[data-cms-theme='black'] {
-  --sidebar: #181818;
-  --page: #f3f3f3;
-  --primary: #343434;
-  --primary-hover: #242424;
-  --sidebar-text: #d0d0d0;
-  --sidebar-strong: #e4e4e4;
-  --sidebar-muted: #a8a8a8;
-  --accent: #ccc;
-  --focus: #bbb;
-}
-:root[data-cms-theme='light'] {
-  --sidebar: #e9eeea;
-  --page: #f6f8f6;
-  --primary: #4c6556;
-  --primary-hover: #3c5144;
-  --sidebar-text: #405548;
-  --sidebar-strong: #344b3c;
-  --sidebar-muted: #65786a;
-  --accent: #738e60;
-  --focus: #a1b8a8;
 }
 * {
   box-sizing: border-box;
@@ -96,8 +21,8 @@ body {
 .shell-band {
   width: 255px;
   flex-shrink: 0;
-  background: var(--sidebar);
-  color: var(--sidebar-text);
+  background: var(--ui-sidebar);
+  color: var(--ui-text-soft);
   padding: 34px 28px;
   display: flex;
   flex-direction: column;
@@ -109,21 +34,21 @@ body {
   font-weight: 500;
   letter-spacing: 0;
   text-transform: none;
-  color: var(--sidebar-muted);
+  color: var(--ui-muted);
   overflow-wrap: anywhere;
 }
 .shell-site {
   font-size: 21px;
   font-weight: 600;
   letter-spacing: -0.5px;
-  color: var(--sidebar-strong);
+  color: var(--ui-text);
   overflow-wrap: anywhere;
 }
 .shell-dot {
   display: inline-block;
   width: 7px;
   height: 7px;
-  background: var(--accent);
+  background: var(--ui-accent-soft);
   border-radius: 50%;
   margin-right: 8px;
 }
@@ -141,7 +66,7 @@ body {
   font-size: 10px;
   letter-spacing: 1.8px;
   font-weight: 650;
-  color: #819080;
+  color: var(--ui-muted);
   text-transform: uppercase;
 }
 h1 {
@@ -154,27 +79,27 @@ h1 {
 .login-path {
   font-size: 14px;
   font-style: italic;
-  color: #788477;
+  color: var(--ui-text-soft);
   margin: 4px 0 28px;
 }
 p {
-  color: #5f6e62;
+  color: var(--ui-text-soft);
   line-height: 1.6;
 }
 .error {
-  color: #a03939;
+  color: var(--ui-danger);
 }
 small {
   display: block;
   font-size: 13px;
-  color: #788477;
+  color: var(--ui-text-soft);
   margin-top: 6px;
 }
 label {
   display: block;
   margin-top: 16px;
   font-size: 13px;
-  color: #3d5144;
+  color: var(--ui-text);
 }
 input,
 select {
@@ -184,8 +109,8 @@ select {
   padding: 11px 12px;
   font: inherit;
   color: inherit;
-  background: white;
-  border: 1px solid #dbe2db;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
   border-radius: 8px;
 }
 /* A switch: the box beside its text, not a full-width field. */
@@ -208,31 +133,31 @@ button {
   font: inherit;
   font-size: 14px;
   font-weight: 550;
-  color: white;
-  background: var(--primary);
+  color: var(--ui-on-accent);
+  background: var(--ui-accent);
   border: 0;
   border-radius: 8px;
   cursor: pointer;
 }
 button:hover {
-  background: var(--primary-hover);
+  background: var(--ui-accent-hover);
 }
 a {
-  color: var(--primary);
+  color: var(--ui-accent);
 }
 a.card {
   display: block;
   padding: 18px 20px;
   margin: 12px 0;
-  border: 1px solid #dbe2db;
+  border: 1px solid var(--ui-border);
   border-radius: 10px;
-  background: white;
-  color: #24352e;
+  background: var(--ui-surface);
+  color: var(--ui-text);
   text-decoration: none;
   font-size: 18px;
 }
 a.card:hover {
-  background: #edf4ed;
+  background: var(--ui-hover);
 }
 .links {
   display: flex;
@@ -242,7 +167,7 @@ a.card:hover {
   font-size: 14px;
 }
 :focus-visible {
-  outline: 3px solid var(--focus);
+  outline: 3px solid var(--ui-focus);
   outline-offset: 2px;
 }
 @media (max-width: 760px) {
@@ -257,37 +182,12 @@ a.card:hover {
     padding: 32px 20px;
   }
 }
-/* Back to the studio: a button under the site name in the side band. */
 /* Settings lead back to the two studios, one under the other (like the home page cards). */
 .shell-studios {
   display: flex;
   flex-direction: column;
   gap: 8px;
   margin-top: 22px;
-}
-.shell-back {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 14px;
-  border: 1px solid color-mix(in srgb, var(--sidebar-strong) 28%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--sidebar-strong) 10%, transparent);
-  color: var(--sidebar-strong);
-  font-size: 14px;
-  text-decoration: none;
-}
-.shell-back:hover {
-  background: color-mix(in srgb, var(--sidebar-strong) 18%, transparent);
-}
-.shell-back svg {
-  width: 16px;
-  height: 16px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
 }
 /* A password field with its eye button inside the right edge. */
 .password-field {
@@ -337,10 +237,10 @@ button.show-password:not([aria-pressed='true']) .eye-closed {
   font-size: 14px;
 }
 .warning {
-  color: #9a5b00;
+  color: var(--ui-warning);
 }
 .notice {
-  color: #2f6b45;
+  color: var(--ui-text-soft);
 }
 /* A second action next to the main one (Send a test e-mail). */
 button.secondary {
@@ -352,37 +252,16 @@ button.secondary {
 fieldset {
   margin: 22px 0 0;
   padding: 4px 16px 16px;
-  border: 1px solid #d7ddd6;
+  border: 1px solid var(--ui-border);
   border-radius: 8px;
 }
 legend {
   padding: 0 6px;
   font-size: 13px;
   font-weight: 600;
-  color: #3d5144;
+  color: var(--ui-text);
 }
 /* The settings screens: one switch in the side band, the open screen highlighted. */
-.settings-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-top: 26px;
-}
-.settings-nav a {
-  padding: 8px 12px;
-  border-radius: 8px;
-  color: var(--sidebar-text);
-  text-decoration: none;
-  font-size: 14px;
-}
-.settings-nav a:hover {
-  background: color-mix(in srgb, var(--sidebar-strong) 10%, transparent);
-}
-.settings-nav a[aria-current='page'] {
-  background: color-mix(in srgb, var(--sidebar-strong) 16%, transparent);
-  color: var(--sidebar-strong);
-  font-weight: 600;
-}
 /* AI models: the model and its reasoning effort side by side under one label. */
 .model-row {
   display: flex;
@@ -412,8 +291,8 @@ legend {
   height: 18px;
   margin-left: 8px;
   border-radius: 50%;
-  background: #d98a00;
-  color: #fff;
+  background: var(--ui-warning);
+  color: var(--ui-on-accent);
   font-size: 12px;
   font-weight: 700;
 }
@@ -438,11 +317,11 @@ label.token input {
 }
 .mcp-log td {
   padding: 4px 6px;
-  border-top: 1px solid rgba(127, 127, 127, 0.25);
+  border-top: 1px solid var(--ui-shadow);
   vertical-align: top;
 }
 .mcp-log tr.failed td:last-child {
-  color: #b42318;
+  color: var(--ui-danger);
 }
 /* Shared previews: every link in one table, its address selectable, Copy and Revoke beside it. */
 .shares-table {
@@ -458,7 +337,7 @@ label.token input {
 }
 .shares-table td {
   padding: 6px;
-  border-top: 1px solid rgba(127, 127, 127, 0.25);
+  border-top: 1px solid var(--ui-shadow);
   vertical-align: middle;
 }
 .shares-table .share-url {
@@ -497,7 +376,7 @@ label.token input {
 }
 .keys-table td {
   padding: 8px 6px;
-  border-top: 1px solid #e3e8df;
+  border-top: 1px solid var(--ui-border);
   vertical-align: middle;
 }
 .keys-table .key-provider {
@@ -543,14 +422,14 @@ button.link-button {
   padding: 0;
   font-size: 13px;
   font-weight: 500;
-  color: #a03939;
+  color: var(--ui-danger);
   background: none;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 button.link-button:hover {
   background: none;
-  color: #7d2a2a;
+  color: var(--ui-danger);
 }
 .key-remove {
   margin-top: 10px;
@@ -574,9 +453,9 @@ p.intro {
   margin: 22px 0 0;
   padding: 0 14px;
   font-size: 14px;
-  color: #5d6c64;
-  background: rgba(255, 255, 255, 0.55);
-  border: 1px solid #dbe2db;
+  color: var(--ui-text-soft);
+  background: var(--ui-shadow);
+  border: 1px solid var(--ui-border);
   border-radius: 8px;
 }
 .model-status[hidden] {
@@ -589,22 +468,22 @@ p.intro {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #2f9e55;
+  background: var(--ui-accent);
 }
 .model-status[data-state='none']::before {
   background: transparent;
-  border: 2px solid #b5c0b8;
+  border: 2px solid var(--ui-border-strong);
 }
 .model-status[data-state='issues']::before,
 .model-status[data-state='failed']::before {
-  background: #d23c32;
+  background: var(--ui-danger);
 }
 .model-status[data-state='loading']::before {
   width: 14px;
   height: 14px;
   background: transparent;
-  border: 2px solid #cfd8d1;
-  border-top-color: var(--primary);
+  border: 2px solid var(--ui-border-strong);
+  border-top-color: var(--ui-accent);
   animation: model-status-spin 0.8s linear infinite;
 }
 @keyframes model-status-spin {
@@ -624,7 +503,7 @@ p.intro {
   flex-wrap: wrap;
   gap: 4px;
   margin: 4px 0 0;
-  border-bottom: 1px solid #dbe2db;
+  border-bottom: 1px solid var(--ui-border);
 }
 .team-tabs a,
 .team-tabs button {
@@ -636,7 +515,7 @@ p.intro {
   padding: 10px 16px;
   font-size: 15px;
   font-weight: 400;
-  color: #5d6c64;
+  color: var(--ui-text-soft);
   text-decoration: none;
   background: transparent;
   border: 1px solid transparent;
@@ -646,13 +525,13 @@ p.intro {
 .team-tabs a:hover,
 .team-tabs button:hover {
   color: inherit;
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--ui-shadow);
 }
 .team-tabs a[aria-current='page'] {
   color: inherit;
   font-weight: 650;
-  background: rgba(255, 255, 255, 0.7);
-  border-color: #dbe2db;
+  background: var(--ui-shadow);
+  border-color: var(--ui-border);
   border-bottom-color: transparent;
   cursor: default;
 }
@@ -661,11 +540,11 @@ p.intro {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #2f9e55;
+  background: var(--ui-accent);
 }
 .team-tabs .team-new {
   margin-left: auto;
-  color: var(--primary);
+  color: var(--ui-accent);
 }
 .team-status,
 .team-source {
@@ -675,7 +554,7 @@ p.intro {
   justify-content: space-between;
   gap: 8px 16px;
   margin: 12px 0 4px;
-  color: #5d6c64;
+  color: var(--ui-text-soft);
 }
 .team-status[hidden],
 .team-source[hidden],
@@ -714,8 +593,11 @@ input.secret:not(.shown) {
   height: 14px;
   margin-right: 8px;
   vertical-align: -2px;
-  border: 2px solid #cfd8d1;
-  border-top-color: #2f9e55;
+  border: 2px solid var(--ui-border-strong);
+  border-top-color: var(--ui-accent);
   border-radius: 50%;
   animation: model-status-spin 0.8s linear infinite;
 }
+/* Settings have the studios' header (studio-switcher.css): the same 220 px band, the settings icon in the menu's place,
+   the website name and "Settings", the studio toggle with neither studio raised; Back under it returns where the
+   user came from. */

@@ -2,6 +2,17 @@
 
 Versions follow [semantic versioning](https://semver.org). Each release is tagged `v<version>`.
 
+## 1.2.0
+
+- One header for the Content editor, AI Studio, Settings and the Structure editor: the studio switch as two icons (document, sparkles) beside the website name; the menu holds Settings and Log out. Settings and the Structure editor have a side band with their own icon, Back and their sections.
+- Colour mode Light / Dark for the whole application (Settings → Interface → Default colour mode) instead of the environment colours; all colours are one set of CSS variables. The sun/moon in AI Studio and the new toggle above the Content editor's form switch every part until the next opening.
+- Content editor: a toolbar above the form and the files (colour mode, Live website); the form scrolls inside its own frame like the AI Studio preview; no width limit; clicking an image in a folder or in the form shows it large, modally.
+- Structure editor: the field table fits without sideways scrolling; Unique key is a checkbox in the table; Displayed item name and Filters and grouping are checkboxes in the field detail; fields are reordered by dragging; Add field under the table.
+- AI Studio: the tabs Edits / Saved / Published; the preview's scrollbar follows the colour mode; an image of the content the agent reads is shown to it and can be the source of an image edit (the result goes back to the content as a new file).
+- The SiteTiller icon and the tab title "SiteTiller · <website name>" in every part of the application.
+- A preview of the website opened on its own shows the website's icon, or an empty one when the website has none, never the SiteTiller icon.
+- A new installation has an English interface; `language: "cs"` in deployment.json for Czech. Existing instances keep their language.
+
 ## 1.1.1
 
 - MCP: every tool is listed even without its permission (an assistant reads the list once when it connects, so a permission turned on later still finds its tool); the description says which permission it needs. get_overview says what the public preview shows (the live preview of the latest step) and offers the private preview_link.

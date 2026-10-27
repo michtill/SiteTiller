@@ -46,7 +46,7 @@ export function validateShared(value, { current = {} } = {}) {
     typeof value.name !== 'string' ||
     !value.name.trim() ||
     value.name.length > 200 ||
-    !['green', 'blue', 'plum', 'graphite', 'sand', 'black', 'light'].includes(value.theme)
+    !['light', 'dark'].includes(value.theme)
   )
     throw Object.assign(Error('Neplatné společné nastavení.'), { status: 422 });
   const result = { ...current, name: value.name.trim(), theme: value.theme };

@@ -69,7 +69,7 @@ test('ED-17: the published view opens the Structure editor read-only; the workin
     await name.waitFor();
     assert.equal(await name.inputValue(), 'Published items');
     assert.equal(await name.isEditable(), false);
-    assert.equal(await page.locator('.architect-identity .publication-readonly').isVisible(), true);
+    assert.equal(await page.locator('.architect-toolbar .publication-readonly').isVisible(), true);
     assert.equal(await page.locator('.architect-controls').count(), 0);
     // Every control stays in place, disabled, so the read-only view looks like the editable one.
     assert.equal(await page.locator('.structure-list .primary').isDisabled(), true);

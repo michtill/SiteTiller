@@ -401,6 +401,8 @@ test('OP-09: a new server instance is empty, reaches the providers, shows its pa
     );
     assert.equal((await exec('git', ['--git-dir=' + git, 'for-each-ref'])).stdout.trim(), '');
     assert.equal(shared.name, 'example.cz');
+    // A new installation speaks English unless the deployment asks for Czech (documentation 2.4).
+    assert.equal(shared.language, 'en');
     assert.deepEqual([Object.keys(schema.lists), Object.keys(schema.folders)], [[], []]);
     assert.deepEqual(
       config.releases.map((r) => r.number),

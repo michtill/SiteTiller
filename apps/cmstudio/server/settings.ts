@@ -1,3 +1,4 @@
+import { colourMode } from '../../../packages/settings/shared-ui.mjs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Problem } from './store.ts';
@@ -12,19 +13,14 @@ export class SettingsStore {
       return JSON.parse(await readFile(this.sharedFile, 'utf8'));
     } catch (e: any) {
       if (e.code !== 'ENOENT') throw e;
-      return { name: 'SiteTiller', theme: 'green' };
+      return { name: 'SiteTiller', theme: 'light' };
     }
   }
   async snapshot() {
     const shared = await this.shared();
-    if (
-      !shared ||
-      typeof shared.name !== 'string' ||
-      !shared.name.trim() ||
-      !['green', 'blue', 'plum', 'graphite', 'sand', 'black', 'light'].includes(shared.theme)
-    )
+    if (!shared || typeof shared.name !== 'string' || !shared.name.trim())
       throw new Problem(422, 'Neplatné společné nastavení.');
-    return { settings: { name: shared.name, theme: shared.theme } };
+    return { settings: { name: shared.name, theme: colourMode(shared) } };
   }
   // Whether the Editor starts in live editing (only applied when there are no unpublished changes).
   async liveByDefault() {

@@ -99,7 +99,7 @@ test('ED-04: focus loads external changes, protects dirty form and shows publish
     assert.equal(await page.getByRole('textbox', { name: 'Title', exact: true }).evaluate((el) => el.readOnly), true);
     assert.equal(await page.getByRole('button', { name: 'Uložit úpravy', exact: true }).count(), 0);
     // The published structure can be browsed read-only (published-structure.test.mjs).
-    assert.equal(await page.getByRole('button', { name: 'Editor struktury', exact: true }).isEnabled(), true);
+    assert.equal(await page.getByRole('button', { name: 'Struktura', exact: true }).isEnabled(), true);
     await page.locator('.publication-view-menu summary').click();
     await page
       .locator('.publication-view-options')

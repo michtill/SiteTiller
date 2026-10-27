@@ -128,12 +128,14 @@ for (const language of ['cs', 'en'])
       const text =
         language === 'en'
           ? {
-              menu: ['Content editor', 'AI Studio', 'Settings', 'Log out'],
+              menu: ['Settings', 'Log out'],
+              toggle: ['Content editor', 'AI Studio'],
               dialog: 'Unsaved changes',
               save: 'Save',
               discard: 'Discard edits',
               cancel: 'Cancel',
               structure: 'Structure editor',
+              back: 'Back',
               fieldType: 'Field type',
               single: 'Single-line text',
               label: 'Label',
@@ -142,12 +144,14 @@ for (const language of ['cs', 'en'])
               error: 'already exists',
             }
           : {
-              menu: ['Editor obsahu', 'AI Studio', 'Nastavení', 'Odhlásit'],
+              menu: ['Nastavení', 'Odhlásit'],
+              toggle: ['Editor obsahu', 'AI Studio'],
               dialog: 'Neuložené úpravy',
               save: 'Uložit',
               discard: 'Zahodit úpravy',
               cancel: 'Storno',
               structure: 'Editor struktury',
+              back: 'Zpět',
               fieldType: 'Typ pole',
               single: 'Jednořádkový text',
               label: 'Popisek',
@@ -162,6 +166,15 @@ for (const language of ['cs', 'en'])
       assert.equal(await page.locator('html').getAttribute('data-shared-language'), language);
       await openMenu();
       assert.deepEqual(await menu.locator('nav>:is(a,button)').allTextContents(), text.menu);
+      // The studios are switched by the two icons beside the menu; the open one is marked.
+      assert.deepEqual(
+        await page.locator('.studio-toggle a').evaluateAll((a) => a.map((e) => e.getAttribute('aria-label'))),
+        text.toggle,
+      );
+      assert.equal(
+        await page.locator('.studio-toggle a[aria-current=page]').getAttribute('aria-label'),
+        text.toggle[0],
+      );
       await openMenu();
       assert.equal(await page.locator('.studio-brand-actions,.cms-settings-entry,.cms-settings-overlay').count(), 0);
       assert.equal(await page.getByRole('button', { name: 'Moje kolekce', exact: false }).count(), 1);
@@ -171,7 +184,7 @@ for (const language of ['cs', 'en'])
         dialog = page.getByRole('dialog', { name: text.dialog });
       await title.fill('Rozepsaný obsah');
       await openMenu();
-      await menu.getByRole('link', { name: text.menu[2], exact: true }).click();
+      await menu.getByRole('link', { name: text.menu[0], exact: true }).click();
       await dialog.waitFor();
       assert.equal(await dialog.getByRole('button', { name: text.save, exact: true }).count(), 1);
       await dialog.getByRole('button', { name: text.cancel, exact: true }).click();
@@ -179,7 +192,7 @@ for (const language of ['cs', 'en'])
       assert.equal(new URL(page.url()).pathname, '/content/');
       await id.fill('two');
       await openMenu();
-      await menu.getByRole('link', { name: text.menu[2], exact: true }).click();
+      await menu.getByRole('link', { name: text.menu[0], exact: true }).click();
       await dialog.getByRole('button', { name: text.save, exact: true }).click();
       const error = page.getByRole('status').filter({ hasText: text.error });
       await error.waitFor();
@@ -188,7 +201,7 @@ for (const language of ['cs', 'en'])
       assert.equal(new URL(page.url()).pathname, '/content/');
       await id.fill('one');
       await openMenu();
-      await menu.getByRole('link', { name: text.menu[2], exact: true }).click();
+      await menu.getByRole('link', { name: text.menu[0], exact: true }).click();
       await dialog.getByRole('button', { name: text.save, exact: true }).click();
       // Settings are a Shell screen: leaving the Editor for them asks about unsaved edits first.
       await page.waitForURL((url) => url.pathname === '/settings');
@@ -196,25 +209,26 @@ for (const language of ['cs', 'en'])
       await page.goto(origin + '/content/');
       await title.fill('Neuložené odhlášení');
       await openMenu();
-      await menu.getByRole('button', { name: text.menu[3], exact: true }).click();
+      await menu.getByRole('button', { name: text.menu[1], exact: true }).click();
       await dialog.getByRole('button', { name: text.cancel, exact: true }).click();
       assert.equal(await title.inputValue(), 'Neuložené odhlášení');
       await openMenu();
-      await menu.getByRole('button', { name: text.menu[3], exact: true }).click();
+      await menu.getByRole('button', { name: text.menu[1], exact: true }).click();
       await dialog.getByRole('button', { name: text.discard, exact: true }).click();
       await page.waitForURL(origin + '/logout');
       assert.equal(JSON.parse(await readFile(join(root, 'data/items.json'), 'utf8'))[0].title, 'Rozepsaný obsah');
       await page.goto(origin + '/content/?view=current');
       await title.waitFor();
       await openMenu();
-      await menu.getByRole('link', { name: text.menu[2], exact: true }).click();
+      await menu.getByRole('link', { name: text.menu[0], exact: true }).click();
       await page.waitForURL((url) => url.pathname === '/settings');
       assert.equal(new URL(page.url()).searchParams.get('returnTo'), '/content/?view=current');
       await page.goto(origin + '/content/structure');
-      await page.getByRole('heading', { name: text.structure, exact: true }).waitFor();
+      // The Structure editor has the side band of Settings: its tabs and the Back button (documentation 2.2).
+      await page.getByRole('navigation', { name: text.structure, exact: true }).waitFor();
       assert.equal(await menu.count(), 0);
       const back = page.locator('.architect-back');
-      assert.equal(await back.textContent(), '← ' + text.menu[0]);
+      assert.equal(await back.textContent(), text.back);
       const field = page.locator('.field-definition').first();
       await field.locator('.field-toggle').click();
       assert.equal(await field.getByLabel(text.fieldType).locator('option[value="text"]').textContent(), text.single);

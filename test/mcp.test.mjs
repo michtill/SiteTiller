@@ -315,6 +315,11 @@ test(
     assert.equal(r.error, '');
     const overview = (await call(token, 'get_overview')).value;
     assert.equal(overview.published_versions.at(-1).description, 'Od asistenta');
+    // Each step, saved draft and version names the tools that do what the AI Studio offers for it.
+    const latest = overview.steps.findLast((step) => step.commit === overview.latest_commit);
+    assert.deepEqual(latest.actions, ['delete_last_step', 'save_draft', 'publish_step', 'preview_link', 'share_preview']);
+    assert.ok(overview.steps.filter((step) => step.commit && step.commit !== overview.latest_commit).every((step) => step.actions[0] === 'return_to_step'));
+    assert.deepEqual(overview.published_versions.at(-1).actions, ['load_into_draft', 'preview_link', 'share_preview']);
     assert.match(await (await fetch(stack.website + '/ukazka.html')).text(), /Text od asistenta/);
     await settings({ enabled: 'on', edit: 'on' });
   },

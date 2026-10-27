@@ -1,5 +1,6 @@
 import { createApp } from 'vue';
 import App from './app.ts';
+import '../../../packages/ui/colors.css';
 import '../../../packages/ui/confirm-dialog.css';
 import '../../../packages/ui/studio-switcher.css';
 import { t, locale } from './i18n.ts';

@@ -97,23 +97,8 @@ export async function launchBrowser(chromium: any) {
     );
   }
 }
-// Ephemeral isolated preview. Never exposes the studio, credentials or project metadata.
-export async function browserChecks(
-  root: string,
-  files: Record<string, string>,
-  browserTests: any[] = [],
-  preferredImages: string[] = [],
-) {
-  validateBrowserTests(browserTests, files);
-  const scenarios: any[] = [];
-  let scenarioTime = 0;
-  const { chromium } = await import('playwright');
-  const errors: string[] = [],
-    warnings: string[] = [],
-    screenshots: any[] = [],
-    checks: any[] = [],
-    interactions: any[] = [],
-    imageEvidence: any[] = [];
+// The website of a draft served on loopback for the checks in a browser: the rendered pages, its files and its forms.
+export async function siteServer(root: string, files: Record<string, string>) {
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url || '/', 'http://127.0.0.1'),
@@ -147,6 +132,7 @@ export async function browserChecks(
         '.svg': 'image/svg+xml',
         '.json': 'application/json',
         '.pdf': 'application/pdf',
+        '.ico': 'image/x-icon',
       };
       res.writeHead(200, {
         'Content-Type': raster(name) ? imageMime(name) : mime[extname(name)] || 'text/plain',
@@ -168,6 +154,26 @@ export async function browserChecks(
     server.once('error', reject);
     server.listen(0, '127.0.0.1', resolve);
   });
+  return server;
+}
+// Ephemeral isolated preview. Never exposes the studio, credentials or project metadata.
+export async function browserChecks(
+  root: string,
+  files: Record<string, string>,
+  browserTests: any[] = [],
+  preferredImages: string[] = [],
+) {
+  validateBrowserTests(browserTests, files);
+  const scenarios: any[] = [];
+  let scenarioTime = 0;
+  const { chromium } = await import('playwright');
+  const errors: string[] = [],
+    warnings: string[] = [],
+    screenshots: any[] = [],
+    checks: any[] = [],
+    interactions: any[] = [],
+    imageEvidence: any[] = [];
+  const server = await siteServer(root, files);
   let browser: any;
   try {
     browser = await launchBrowser(chromium);

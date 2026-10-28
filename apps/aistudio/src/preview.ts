@@ -25,6 +25,7 @@ const mime: any = {
   '.pdf': 'application/pdf',
   '.gif': 'image/gif',
   '.avif': 'image/avif',
+  '.ico': 'image/x-icon',
   '.txt': 'text/plain',
   '.json': 'application/json',
 };

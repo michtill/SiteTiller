@@ -25,6 +25,7 @@ test('AI-11: composer choices persist between requests in page but reset after r
     assert.deepEqual(studio.calls.find((c) => c.path === 'run')?.body.checks, {
       technical: false,
       verification: false,
+      completeness: false,
     });
     assert.equal(await page.locator('#request-technical').isChecked(), false);
     await page.locator('#team-choice summary').click();
@@ -34,6 +35,8 @@ test('AI-11: composer choices persist between requests in page but reset after r
     await page.waitForFunction(() => !document.getElementById('workspace')?.hasAttribute('aria-busy'));
     assert.equal(await page.locator('#request-technical').isChecked(), true);
     assert.equal(await page.locator('#request-verification').isChecked(), true);
+    // The completeness check is the third check, off by default (documentation 4.11).
+    assert.equal(await page.locator('#request-completeness').isChecked(), false);
     assert.deepEqual(studio.errors, []);
   } finally {
     await studio.close();

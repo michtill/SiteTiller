@@ -50,7 +50,8 @@ function templates(language: string): Template[] {
         },
       },
       folders: images,
-      rows: { elements: prepared(['title', 'motto', 'main-photo', 'hero-text', 'footer']) },
+      // The website icon is part of the content (documentation 4.11); AI Studio prepares its sizes from this image.
+      rows: { elements: prepared(['title', 'motto', 'main-photo', 'hero-text', 'footer', 'site-icon']) },
     },
     {
       id: 'pages',

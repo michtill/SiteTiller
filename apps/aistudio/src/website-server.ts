@@ -35,6 +35,7 @@ export function websiteServer(directory: string, origin: string) {
     '.pdf': 'application/pdf',
     '.gif': 'image/gif',
     '.avif': 'image/avif',
+    '.ico': 'image/x-icon',
   };
   const serve = async (req: http.IncomingMessage, res: http.ServerResponse) => {
     try {

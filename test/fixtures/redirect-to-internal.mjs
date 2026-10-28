@@ -26,3 +26,25 @@ http.get = (url, options, callback) => {
   });
   return request;
 };
+// The link check (documentation 4.11, RE-06) asks with http.request: the same stand-in redirect, and two more faked
+// public names, one that exists (200) and one that is gone (404).
+Object.assign(names, { 'ok.example.test': '93.184.216.34', 'gone.example.test': '93.184.216.34' });
+const request = http.request;
+http.request = (url, options, callback) => {
+  const host = new URL(url).hostname,
+    status = { 'redirect.example.test': 302, 'ok.example.test': 200, 'gone.example.test': 404 }[host];
+  if (!status) return request(url, options, callback);
+  const stand = Object.assign(new EventEmitter(), {
+    setTimeout: () => stand,
+    destroy: (error) => error && stand.emit('error', error),
+    end: () =>
+      setImmediate(() =>
+        callback({
+          statusCode: status,
+          headers: status === 302 ? { location: 'http://inner.example.test/admin' } : {},
+          destroy() {},
+        }),
+      ),
+  });
+  return stand;
+};

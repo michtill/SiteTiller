@@ -2,6 +2,13 @@
 
 Versions follow [semantic versioning](https://semver.org). Each release is tagged `v<version>`.
 
+## 1.3.0
+
+- Completeness check (documentation 4.11): before every publication the AI Studio shows what a finished website is expected to have, as ✓ or ⚠ in six groups – face of the website (icon, titles, descriptions), search engines (one h1, lang, sitemap.xml, robots.txt, canonical, readable addresses), sharing (Open Graph), accessibility (alt, contrast, heading order), EU rules (contact, personal data information for forms, consent to tracking cookies) and function (404 page, image sizes). It only reports and never blocks; Fix in AI Studio prefills the request. An AI part (the Verifier of the default team) judges whether the texts fit the content; the result is kept per commit. Without an AI key only the rules run.
+- Completeness check is also a third check of a request (off by default) and an MCP tool check_completeness; publish_step returns the result.
+- Check external links too: on a click, HEAD/GET to the public addresses the website links to, with the same protection as loading a website; nothing is kept.
+- Prepare the website icon: a fixed host step makes favicon.ico, favicon-32.png and apple-touch-icon.png from one square image and links them in every page. The Website elements template has a prepared Website icon entry.
+
 ## 1.2.0
 
 - One header for the Content editor, AI Studio, Settings and the Structure editor: the studio switch as two icons (document, sparkles) beside the website name; the menu holds Settings and Log out. Settings and the Structure editor have a side band with their own icon, Back and their sections.

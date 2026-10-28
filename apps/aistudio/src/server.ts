@@ -1,13 +1,6 @@
 import { providerIds, detectProvider } from '../../../packages/providers/index.mjs';
 import { recommendedSetsUrl, recommendedLimit, parseRecommendationSets } from '../../../packages/models/index.mjs';
-import {
-  migrateTeams,
-  teamOf,
-  teamList,
-  applyRecommended,
-  createTeam,
-  validTeamName,
-} from './teams.ts';
+import { migrateTeams, teamOf, teamList, applyRecommended, createTeam, validTeamName } from './teams.ts';
 import { Problem } from './problem.ts';
 import { appVersion } from './app-version.ts';
 import { readResponseLanguage } from './final-answer.ts';
@@ -62,7 +55,7 @@ import { restoreProduction } from './restore-production.ts';
 import { compareReality, loadReality } from './reality.ts';
 import { assistantStep } from './assistant-step.ts';
 import { shareSnapshot, removeShareSnapshot, aliveShares } from './share-snapshot.ts';
-import { importWebsite, publicUrl } from './web-import.ts';
+import { importWebsite, publicUrl, probePublic } from './web-import.ts';
 import { realitySnapshot } from './reality-source.ts';
 import { studioPreviewPolicy } from './site-policy.ts';
 import { publicationTarget, publishableSteps } from './publication-target.ts';
@@ -93,8 +86,11 @@ import {
   validImages,
   resolvePrimary,
   migrateAgentConfig,
+  clientFor,
   type Role,
 } from './team.ts';
+import { callModel } from './providers.ts';
+import { completenessFor, reviewInstruction, checkExternalLinks } from './completeness.ts';
 import { catalog, unavailable } from './catalog.ts';
 import { addRequest } from './journal.ts';
 import { recentConversation, searchConversation, hydrateRecentMemory } from './memory.ts';
@@ -159,6 +155,18 @@ if (!config.automaticReasoningPolicy) {
   config.roles.verify.reasoningEffort = 'auto';
   config.automaticReasoningPolicy = 1;
   await save('config.json', config);
+}
+// The completeness check of a version (documentation 4.11), kept per commit. Its AI part is the Verifier of the
+// default team; without that provider's key only the rules run.
+async function completeness(commit: string) {
+  const team = teamOf(config, await currentRecommendation(), config.defaultTeam),
+    keys = providerKeys(),
+    review =
+      team?.verify && keys[team.verify.provider]
+        ? async (excerpt: any[]) =>
+            (await callModel(clientFor(team, keys, 'verify'), reviewInstruction, { pages: excerpt })).value
+        : null;
+  return completenessFor(project, commit, data, review);
 }
 // AI settings are the only key source; environment variables are deliberately ignored.
 function providerKeys() {
@@ -662,6 +670,28 @@ const server = http.createServer(async (req, res) => {
           throw Error('Nelze ověřit nepublikované úpravy obsahu.');
         return response(res, 200, { unpublished: status.unpublished });
       }
+      // The completeness check of the shown version (documentation 4.11); the publication dialog asks for it.
+      if (path === '/api/completeness' && req.method === 'GET') {
+        const commit = url.searchParams.get('commit') || (await project.head());
+        try {
+          await project.git(['merge-base', '--is-ancestor', commit, await project.head()]);
+        } catch {
+          throw new Problem(422, 'Vybraná verze není součástí návrhu.');
+        }
+        return response(res, 200, await completeness(commit));
+      }
+      // Check external links too (documentation 4.11): only on the user's click, nothing is kept.
+      if (path === '/api/completeness/external-links' && req.method === 'POST') {
+        const input = await body(req),
+          commit = typeof input.commit === 'string' && input.commit ? input.commit : await project.head();
+        try {
+          await project.git(['merge-base', '--is-ancestor', commit, await project.head()]);
+        } catch {
+          throw new Problem(422, 'Vybraná verze není součástí návrhu.');
+        }
+        const result = await completeness(commit);
+        return response(res, 200, { links: await checkExternalLinks(result.externalLinks || [], probePublic) });
+      }
       if (path === '/api/state' && req.method === 'GET') {
         for (let attempt = 0; attempt < 3; attempt++) {
           const history = await historyState(),
@@ -1019,6 +1049,20 @@ const server = http.createServer(async (req, res) => {
                 ...(config.realityPaths || {}),
                 ...Object.fromEntries(result.webImport.resources.map((r: any) => [r.path, r.url])),
               };
+            // With Completeness check ticked, the step shows the completeness of the website (documentation 4.11).
+            if (checks.completeness && !result.conversationOnly && result.commit) {
+              await emit({ stage: 'completeness', status: 'running', message: 'Kontroluji kompletnost webu.' });
+              const complete = await completeness(result.commit).catch(() => null);
+              if (complete)
+                await emit({
+                  stage: 'completeness',
+                  status: 'completed',
+                  completeness: complete.groups.flatMap((group: any) =>
+                    group.items.map(({ id, ok, pages }: any) => ({ group: group.id, id, ok, pages })),
+                  ),
+                  completenessAi: complete.ai.done,
+                });
+            }
             job = { ...job, status: 'ready', ...result };
           } catch (caught: any) {
             // A stopped request ends without a step; whatever the interrupted code reported, it says so.
@@ -1698,6 +1742,10 @@ const server = http.createServer(async (req, res) => {
               tests,
             };
             await save('config.json', config);
+            // The completeness check never stops a publication (documentation 4.11); a failure only leaves it out.
+            await emit({ stage: 'publish', status: 'running', message: 'Kontroluji kompletnost webu.' });
+            const complete = await completeness(input.commit).catch(() => null);
+            if (complete) job = { ...job, completeness: complete };
             await emit({
               stage: 'publish',
               status: 'running',
@@ -1781,7 +1829,12 @@ const server = http.createServer(async (req, res) => {
             await save('config.json', config);
             job = { ...job, status: 'ready', published: true, commit: input.commit };
             await save('last-job.json', job);
-            return response(res, 200, { ok: true, published: true, release: completed.release });
+            return response(res, 200, {
+              ok: true,
+              published: true,
+              release: completed.release,
+              completeness: job.completeness || null,
+            });
           } catch (e: any) {
             if (!confirmedRelease && config.pendingRelease) {
               const observed = structuredClone(config);

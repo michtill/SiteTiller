@@ -129,6 +129,7 @@ test('MC-01: MCP is off by default (404); switched on it reads and edits the dra
   assert.match(tools.find((t) => t.name === 'publish_step').description, /Needs the permission Publish/);
   assert.deepEqual(names, [
     'get_overview',
+    'check_completeness',
     'list_site_files',
     'read_site_file',
     'read_content',

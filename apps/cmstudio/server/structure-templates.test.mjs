@@ -156,6 +156,7 @@ test('ED-21: templates create the structure with prepared entries in one write, 
         ['main-photo', 'Main photo'],
         ['hero-text', 'Hero text'],
         ['footer', 'Footer'],
+        ['site-icon', 'Website icon'],
       ],
     );
   } finally {

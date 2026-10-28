@@ -361,3 +361,69 @@ export async function importWebsite(value: string, fetcher = fetchPublic) {
     },
   };
 }
+// The external links check (documentation 4.11): only whether a public address answers. HEAD, or GET when HEAD is
+// not allowed, never reading the body; the same protection as loading a website: public addresses only, the DNS answer
+// checked and pinned, every redirect checked again. Nothing of the instance leaves it except the request.
+export type LinkState = 'ok' | 'missing' | 'unavailable' | 'internal';
+export async function probePublic(value: string, timeout = 10000): Promise<LinkState> {
+  let url: URL;
+  try {
+    url = publicUrl(value);
+  } catch {
+    return 'internal';
+  }
+  const deadline = Date.now() + timeout;
+  for (let redirect = 0; redirect < 6; redirect++) {
+    let addresses;
+    try {
+      addresses = await Promise.race([
+        lookup(url.hostname.replace(/^\[|\]$/g, ''), { all: true }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(Error('timeout')), Math.max(1, deadline - Date.now())),
+        ),
+      ]);
+    } catch {
+      return 'unavailable';
+    }
+    if (!addresses.length || addresses.some((a) => !publicAddress(a.address))) return 'internal';
+    const pinned = addresses[0];
+    const ask = (method: 'HEAD' | 'GET') =>
+      new Promise<{ status: number; location?: string }>((resolve, reject) => {
+        const request = (url.protocol === 'https:' ? https : http).request(
+          url,
+          {
+            method,
+            headers: { 'User-Agent': 'SiteTiller/' + appVersion + ' link check', 'Accept-Encoding': 'identity' },
+            lookup: ((_host: any, options: any, callback: any) =>
+              options.all ? callback(null, [pinned]) : callback(null, pinned.address, pinned.family)) as any,
+          },
+          (res) => {
+            resolve({ status: res.statusCode || 0, location: res.headers.location });
+            res.destroy();
+          },
+        );
+        request.setTimeout(Math.max(1, deadline - Date.now()), () => request.destroy(Error('timeout')));
+        request.on('error', reject);
+        request.end();
+      });
+    let answer;
+    try {
+      answer = await ask('HEAD');
+      if ([405, 501].includes(answer.status)) answer = await ask('GET');
+    } catch {
+      return 'unavailable';
+    }
+    if ([301, 302, 303, 307, 308].includes(answer.status) && answer.location) {
+      try {
+        url = publicUrl(new URL(answer.location, url).href);
+      } catch {
+        return 'internal';
+      }
+      continue;
+    }
+    if (answer.status >= 200 && answer.status < 400) return 'ok';
+    if ([404, 410].includes(answer.status)) return 'missing';
+    return 'unavailable';
+  }
+  return 'unavailable';
+}

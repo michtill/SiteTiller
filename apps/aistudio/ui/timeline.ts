@@ -1,4 +1,5 @@
 import { computed, ref, onBeforeUpdate, onUpdated } from 'vue';
+import { groupLabel, ruleLabel } from './completeness-labels.ts';
 import { t, tm, teamName } from './i18n.ts';
 import { compactProgress, discussionBundles, displayMessage, releaseNumber, realityOffered } from './presentation.ts';
 import { s, APP_BASE, displayedPresentationCommit } from './studio.ts';
@@ -13,6 +14,7 @@ const stageNames = (): Record<string, string> => ({
   escalation: t('repair'),
   verify: t('requirements_verification'),
   test: t('technical_checks'),
+  completeness: t('completeness_check'),
   review: t('review'),
   ready: t('result'),
   failed: t('result'),
@@ -51,6 +53,21 @@ function sections(row: any) {
       ...(event.warnings || []).map((w: string) => t('warning') + w),
     ])
       section.items.push({ kind: 'issue', text: issue });
+    // The completeness check after a step: how many rules are met, then each warning with its pages.
+    if (Array.isArray(event.completeness)) {
+      const met = event.completeness.filter((item: any) => item.ok).length;
+      section.items.push({ kind: 'p', text: t('completeness_met', { met, all: event.completeness.length }) });
+      for (const item of event.completeness.filter((item: any) => !item.ok))
+        section.items.push({
+          kind: 'issue',
+          text:
+            groupLabel(item.group) +
+            ': ' +
+            ruleLabel(item.id) +
+            (item.pages ? ' (' + item.pages.map((p: string) => p.replace(/^site\//, '')).join(', ') + ')' : ''),
+        });
+      if (!event.completenessAi) section.items.push({ kind: 'p', text: t('completeness_ai_not_done') });
+    }
     for (const check of event.checks || [])
       section.items.push({
         kind: 'p',

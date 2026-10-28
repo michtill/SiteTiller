@@ -272,10 +272,11 @@ export async function workflow(
                 'image',
                 'web',
                 'cleanup',
+                'site_icon',
                 'blocked',
               ]
             : role === 'escalation'
-              ? ['implement', 'stage', 'read', 'verify', 'image', 'web', 'blocked']
+              ? ['implement', 'stage', 'read', 'verify', 'image', 'web', 'site_icon', 'blocked']
               : ['implement', 'stage', 'read', 'blocked'],
       },
       ...(role === 'primary'
@@ -415,6 +416,7 @@ export async function workflow(
         'blocked',
         'verify',
         'cleanup',
+        'site_icon',
       ].includes(value.action)
     )
       throw Error('Agent nevrátil platnou akci.');
@@ -452,6 +454,40 @@ export async function workflow(
       finalSummary =
         value.summary ||
         'Nepoužívané a totožné obrázky byly uklizeny. Vložené originály a starší verze zůstávají zachované.';
+    }
+    // Prepare the website icon (documentation 4.11): a fixed host step, not an image model. From one square image of
+    // the website, an attachment or the content it makes the icon files and links them from every page head.
+    if (value.action === 'site_icon') {
+      if (!['primary', 'escalation'].includes(role))
+        throw Error('Ikonu webu může připravit pouze Web Lead nebo eskalační model.');
+      const source = typeof value.source === 'string' ? attachmentPath(value.source) : '';
+      if (!source || !raster(source)) throw Error('Ikona webu potřebuje zdrojový obrázek.');
+      const uploaded = [...images.filter((i) => i.use === 'website'), ...generated].find(
+        (i) => 'site/assets/' + i.id === source,
+      );
+      const bytes = uploaded
+        ? Buffer.from(uploaded.data, 'base64')
+        : importedBinary[source] || (original[source] ? await project.binary(baseCommit, source) : null);
+      if (!bytes) throw Error('Zdrojový obrázek není součástí webu, obsahu ani webovou přílohou.');
+      emit({ stage: 'image', status: 'running', message: 'Připravuji ikonu webu.' });
+      const { siteIcons, withIconLinks } = await import('./site-icon.ts');
+      for (const [path, data] of Object.entries(
+        await siteIcons(bytes, (await import('./images.ts')).imageMime(source)),
+      )) {
+        importedBinary[path] = data;
+        files[path] = '[Binary image asset]';
+        context[path] = '[Binary image asset]';
+      }
+      for (const [path, text] of Object.entries(withIconLinks(files))) {
+        files[path] = text;
+        if (Object.hasOwn(context, path)) context[path] = text;
+      }
+      value.files = [];
+      value.deleteFiles = [];
+      staged = true;
+      finalSummary =
+        value.summary ||
+        'Ikona webu je připravená: favicon.ico, favicon-32.png a apple-touch-icon.png s odkazy v hlavičce stránek. Původní obrázek zůstal beze změny.';
     }
     if (value.action === 'verify') {
       if (

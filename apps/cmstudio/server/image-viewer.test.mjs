@@ -12,7 +12,7 @@ const png = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZuoAAAAASUVORK5CYII=',
   'base64',
 );
-test('ED-24: an image in the images folder and the selected image of a record open large over the editor; a click beside it, the close button or Esc hides it, a click on it does not', async () => {
+test('ED-25: an image in the images folder and the selected image of a record open large over the editor; a click beside it, the close button or Esc hides it, a click on it does not', async () => {
   const root = await mkdtemp(join(tmpdir(), 'cm-image-viewer-'));
   let child, browser;
   try {

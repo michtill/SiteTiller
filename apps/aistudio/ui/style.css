@@ -2923,3 +2923,70 @@ aside .studio-header::after {
   color: inherit;
   box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 14%, transparent);
 }
+/* The completeness check in the publication dialog (documentation 4.11): ✓ or ⚠ per rule, compact, scrolling inside. */
+.completeness {
+  margin: 14px 0 6px;
+  max-height: 38vh;
+  overflow-y: auto;
+  border: 1px solid var(--ui-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-scroll) transparent;
+}
+.completeness h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+.completeness h3 small {
+  font-weight: 400;
+  color: var(--ui-muted);
+  margin-left: 6px;
+}
+.completeness h4 {
+  margin: 10px 0 4px;
+  font-size: 12px;
+  color: var(--ui-text-soft);
+}
+.completeness ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.completeness li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 12px;
+}
+.completeness-mark {
+  flex: none;
+  width: 14px;
+  text-align: center;
+}
+.completeness li.is-ok .completeness-mark {
+  color: var(--ui-accent);
+}
+.completeness li.is-warning .completeness-mark {
+  color: var(--ui-warning);
+}
+.completeness-text {
+  flex: 1;
+  min-width: 0;
+}
+.completeness-text small {
+  display: block;
+  color: var(--ui-muted);
+  overflow-wrap: anywhere;
+}
+.completeness .completeness-fix {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ui-accent);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+}

@@ -327,3 +327,31 @@ test(
     await limits('strict');
   },
 );
+test(
+  'MC-13: the assistant calls check_completeness and publishes a website with warnings; the publication is not stopped',
+  { timeout: 240000 },
+  async () => {
+    // The pages without a title left by MC-12 go first, so the strict checks pass.
+    const { commit } = await ok('write_site_files', {
+      summary: 'Stránka Kontrola kompletnosti',
+      files: [{ path: 'site/index.html', text: page('Kontrola kompletnosti') }],
+      remove: ['site/bez-nazvu.html', 'site/dalsi-bez-nazvu.html'],
+    });
+    const result = await ok('check_completeness', { commit });
+    assert.equal(result.commit, commit);
+    assert.ok(result.met > 0);
+    // A bare page lacks the icon, the description and the sitemap; without an AI key the AI part is not done.
+    for (const rule of ['icon', 'description', 'sitemap'])
+      assert.ok(
+        result.warnings.some((w) => w.rule === rule),
+        rule,
+      );
+    assert.match(result.ai_part, /^not done/);
+    // The same result as the AI Studio shows before publishing.
+    const studio = await signedIn('/site/api/completeness?commit=' + commit);
+    assert.equal(studio.groups.flatMap((g) => g.items).filter((i) => !i.ok).length, result.warnings.length);
+    const published = await publish({});
+    assert.ok(published.version);
+    if (published.completeness) assert.ok(published.completeness.warnings.some((w) => w.rule === 'icon'));
+  },
+);

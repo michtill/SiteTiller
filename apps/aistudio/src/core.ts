@@ -35,7 +35,9 @@ export function safeSitePath(root: string, name: string) {
     name.split('/').some((p) => p === '.' || p === '..' || p.startsWith('.'))
   )
     throw new Error('Nepovolená cesta souboru.');
+  // The website icon for older browsers is the one .ico, at the root of the website (documentation 4.11).
   if (
+    name !== 'site/favicon.ico' &&
     !(
       (name.startsWith('site/cms/files/') || name.startsWith('site/assets/')) &&
       /\.(pdf|gif|avif|docx?|xlsx?|pptx?|odt|ods)$/i.test(name)

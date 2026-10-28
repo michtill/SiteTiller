@@ -451,7 +451,11 @@ export async function handleMcp(req: http.IncomingMessage, res: http.ServerRespo
         ...tool,
         description:
           tool.description +
-          (level === 'edit' ? ' Needs the permission Edit the draft.' : level === 'publish' ? ' Needs the permission Publish.' : ''),
+          (level === 'edit'
+            ? ' Needs the permission Edit the draft.'
+            : level === 'publish'
+              ? ' Needs the permission Publish.'
+              : ''),
       })),
     });
     return true;
@@ -577,6 +581,23 @@ async function cms(ctx: McpContext, path: string, value?: unknown) {
   if (!response.ok) throw Error(result.error || 'Editor obsahu neodpovídá.');
   return result;
 }
+// The completeness check for an assistant: the warnings with their pages, and how many rules are met.
+function completenessSummary(result: any) {
+  const items = result.groups.flatMap((group: any) => group.items.map((item: any) => ({ group: group.id, ...item })));
+  return {
+    commit: result.commit,
+    met: items.filter((item: any) => item.ok).length,
+    warnings: items
+      .filter((item: any) => !item.ok)
+      .map(({ group, id, pages, detail }: any) => ({
+        group,
+        rule: id,
+        ...(pages ? { pages } : {}),
+        ...(detail ? { detail } : {}),
+      })),
+    ai_part: result.ai.done ? 'done' : 'not done (' + (result.ai.note || 'unknown') + ')',
+  };
+}
 const object = (properties: Record<string, unknown>, required: string[] = []) => ({
   type: 'object',
   properties,
@@ -654,8 +675,20 @@ const tools: {
         },
         checks: ctx.settings.checks,
         // The structure templates of the Content editor (documentation 3.9): list_structure_templates.
-        structure_templates: 'Ready collections (contacts, website elements, images, pages) can be created with apply_structure_templates.',
+        structure_templates:
+          'Ready collections (contacts, website elements, images, pages) can be created with apply_structure_templates.',
       };
+    },
+  },
+  {
+    name: 'check_completeness',
+    level: 'read',
+    description:
+      'The completeness check of a draft step (default the latest), like before publishing in the AI Studio: icon, titles and descriptions, search engines, sharing, accessibility, EU rules and function, each ok or a warning with its pages. It only reports and never blocks; the result is kept per step.',
+    inputSchema: object({ commit: { type: 'string' } }),
+    async run(args, ctx) {
+      const commit = args.commit || (await ai(ctx, 'state')).head;
+      return completenessSummary(await ai(ctx, 'completeness?commit=' + encodeURIComponent(commit)));
     },
   },
   {
@@ -816,10 +849,10 @@ const tools: {
     level: 'edit',
     description:
       'Creates the chosen structure templates in one structure write, like Create in the Content editor. Pass their ids from list_structure_templates and schema_revision. Goes to the unpublished edits; a template whose code is already used is refused with the reason, nothing existing is replaced.',
-    inputSchema: object(
-      { ids: { type: 'array', items: { type: 'string' } }, schema_revision: { type: 'string' } },
-      ['ids', 'schema_revision'],
-    ),
+    inputSchema: object({ ids: { type: 'array', items: { type: 'string' } }, schema_revision: { type: 'string' } }, [
+      'ids',
+      'schema_revision',
+    ]),
     async run(args, ctx) {
       const result = await cms(ctx, '/api/structure-templates', {
         ids: args.ids,
@@ -1115,6 +1148,8 @@ const tools: {
               commit: result.release.commit,
               warning: result.warning || null,
               checks: ctx.settings.checks,
+              // Never stops the publication (documentation 4.11).
+              completeness: result.completeness ? completenessSummary(result.completeness) : null,
             };
       } catch (e: any) {
         if (e.websiteForeign)

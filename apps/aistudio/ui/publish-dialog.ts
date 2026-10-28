@@ -12,9 +12,10 @@ import {
   selectedStepId,
 } from './studio.ts';
 import { dialogs } from './dialogs.ts';
+import { groupLabel, ruleLabel, linkLabel } from './completeness-labels.ts';
 // Publishing the shown version: what it includes, an optional description and, if wanted, a subversion
 // of the current version. While it runs, the dialog shows the progress the server reports.
-const template = `<dialog id="publish-confirm" ref="dialog" :class="{'is-publishing':d.publishing}" :aria-busy="d.publishing?'true':undefined" :data-cms-source="d.cmsSource" :data-commit="d.commit" :data-head="d.head" :data-release-id="d.releaseId" :data-published-commit="d.publishedCommit" :data-step-id="d.stepId" @cancel="cancel"><div class="eyebrow"><span>{{t('publishing')}}</span></div><h2><span>{{t('publish_this_version')}}</span></h2><p id="confirm-description">{{d.description}}</p><div id="publish-cms-warning" class="publish-cms-warning" role="alert" :hidden="!d.warning||undefined"><strong>{{d.snapshot?t('publish_includes_step_content'):t('publish_includes_unpublished_content')}}</strong><p>{{d.snapshot?t('publish_includes_step_content_help'):t('publish_includes_unpublished_content_help')}}</p></div><label for="release-description"><span>{{t('version_description_optional')}}</span></label><textarea id="release-description" v-model="d.releaseDescription" maxlength="2000" rows="3" :placeholder="t('what_does_this_version_change')"></textarea><label class="restore-options" id="replace-release-option" :hidden="!d.subversionPossible||undefined"><input id="replace-current-release" type="checkbox" v-model="d.subversion"><span><span>{{t('create_a_subversion_of_the_current_version')}}</span></span></label><p id="replace-release-note" class="hint" :hidden="!d.subversion||undefined"><span>{{t('a_new_subversion_of_the_current_version_will')}}</span></p><label class="restore-options"><input id="publish-clear-previous" type="checkbox" v-model="d.clear" :disabled="d.publishing"><span>{{t('remove_previous_steps')}}</span></label><p id="publish-result" role="status">{{d.result}}</p><p id="publish-website-foreign" :hidden="!d.websiteForeign||undefined">{{t('publish_anyway_removes_their_changes_from_the_website')}}</p><div class="confirm-actions"><button id="cancel-publish" type="button" :disabled="d.publishing" @click="dialog.close()">{{t('back')}}</button><button id="confirm-publish" type="button" class="primary" :disabled="d.publishing" @click="confirm">{{d.publishing?t('publishing_in_progress'):d.websiteForeign?t('publish_anyway'):t('publish_website')}}</button></div></dialog>`;
+const template = `<dialog id="publish-confirm" ref="dialog" :class="{'is-publishing':d.publishing}" :aria-busy="d.publishing?'true':undefined" :data-cms-source="d.cmsSource" :data-commit="d.commit" :data-head="d.head" :data-release-id="d.releaseId" :data-published-commit="d.publishedCommit" :data-step-id="d.stepId" @cancel="cancel"><div class="eyebrow"><span>{{t('publishing')}}</span></div><h2><span>{{t('publish_this_version')}}</span></h2><p id="confirm-description">{{d.description}}</p><div id="publish-cms-warning" class="publish-cms-warning" role="alert" :hidden="!d.warning||undefined"><strong>{{d.snapshot?t('publish_includes_step_content'):t('publish_includes_unpublished_content')}}</strong><p>{{d.snapshot?t('publish_includes_step_content_help'):t('publish_includes_unpublished_content_help')}}</p></div><label for="release-description"><span>{{t('version_description_optional')}}</span></label><textarea id="release-description" v-model="d.releaseDescription" maxlength="2000" rows="3" :placeholder="t('what_does_this_version_change')"></textarea><section id="publish-completeness" class="completeness" :aria-busy="d.completenessState==='loading'?'true':undefined"><h3>{{t('completeness_check')}} <small v-if="d.completeness">{{t('completeness_met',{met:met(),all:all()})}}</small></h3><p v-if="d.completenessState==='loading'" class="hint">{{t('completeness_checking')}}</p><p v-else-if="d.completenessState==='failed'" class="hint">{{t('completeness_unavailable')}}</p><template v-else-if="d.completeness"><div v-for="group in d.completeness.groups" :key="group.id" class="completeness-group" :data-group="group.id"><h4>{{groupLabel(group.id)}}</h4><ul><li v-for="item in group.items" :key="item.id" :data-rule="item.id" :class="item.ok?'is-ok':'is-warning'"><span class="completeness-mark" aria-hidden="true">{{item.ok?'✓':'⚠'}}</span><span class="completeness-text">{{ruleLabel(item.id)}}<small v-if="item.detail">{{item.detail}}</small><small v-if="item.pages">{{t(item.id==='image_size'?'completeness_files':'completeness_pages',{pages:item.pages.map(page).join(', ')})}}</small></span><button v-if="!item.ok" type="button" class="text-action completeness-fix" :disabled="d.publishing" @click="fix(item)">{{t('fix_in_ai_studio')}}</button></li></ul></div><p v-if="!d.completeness.ai.done" class="hint">{{t('completeness_ai_not_done')}}</p><div class="completeness-group" data-group="external"><h4>{{t('external_links')}} <small v-if="d.links">{{d.links.length?t('external_links_met',{met:d.links.filter((l)=>l.state==='ok').length,all:d.links.length}):t('external_links_none')}}</small></h4><button v-if="!d.links" id="check-external-links" type="button" class="text-action completeness-fix" :disabled="d.linksLoading||d.publishing" @click="checkLinks">{{d.linksLoading?t('external_links_checking'):t('check_external_links')}}</button><ul v-else><li v-for="link in d.links.filter((l)=>l.state!=='ok')" :key="link.url" class="is-warning" :data-state="link.state"><span class="completeness-mark" aria-hidden="true">⚠</span><span class="completeness-text">{{link.url}}<small>{{linkLabel(link.state)}}</small></span></li></ul></div></template></section><label class="restore-options" id="replace-release-option" :hidden="!d.subversionPossible||undefined"><input id="replace-current-release" type="checkbox" v-model="d.subversion"><span><span>{{t('create_a_subversion_of_the_current_version')}}</span></span></label><p id="replace-release-note" class="hint" :hidden="!d.subversion||undefined"><span>{{t('a_new_subversion_of_the_current_version_will')}}</span></p><label class="restore-options"><input id="publish-clear-previous" type="checkbox" v-model="d.clear" :disabled="d.publishing"><span>{{t('remove_previous_steps')}}</span></label><p id="publish-result" role="status">{{d.result}}</p><p id="publish-website-foreign" :hidden="!d.websiteForeign||undefined">{{t('publish_anyway_removes_their_changes_from_the_website')}}</p><div class="confirm-actions"><button id="cancel-publish" type="button" :disabled="d.publishing" @click="dialog.close()">{{t('back')}}</button><button id="confirm-publish" type="button" class="primary" :disabled="d.publishing" @click="confirm">{{d.publishing?t('publishing_in_progress'):d.websiteForeign?t('publish_anyway'):t('publish_website')}}</button></div></dialog>`;
 export default {
   template,
   setup() {
@@ -28,6 +29,11 @@ export default {
       subversionPossible: false,
       result: '',
       publishing: false,
+      // The completeness check of the shown version (documentation 4.11): it informs, it never blocks.
+      completeness: null as any,
+      completenessState: '' as '' | 'loading' | 'failed',
+      links: null as any[] | null,
+      linksLoading: false,
       websiteForeign: false,
       cmsSource: '',
       commit: '',
@@ -63,6 +69,54 @@ export default {
         stepId: selectedStepId() || '',
       });
       dialog.value!.showModal();
+      void checkCompleteness(commit);
+    }
+    async function checkCompleteness(commit: string) {
+      Object.assign(d, { completeness: null, completenessState: 'loading', links: null, linksLoading: false });
+      try {
+        const result = await api('completeness?commit=' + encodeURIComponent(commit));
+        if (!Array.isArray(result?.groups) || typeof result.ai !== 'object') throw Error('Invalid result');
+        if (d.commit === commit) Object.assign(d, { completeness: result, completenessState: '' });
+      } catch {
+        if (d.commit === commit) d.completenessState = 'failed';
+      }
+    }
+    // Check external links too: only on this click (documentation 4.11).
+    async function checkLinks() {
+      const commit = d.commit;
+      d.linksLoading = true;
+      try {
+        const result = await api('completeness/external-links', { commit });
+        if (d.commit === commit && Array.isArray(result?.links)) d.links = result.links;
+      } catch (e: any) {
+        notice(e.message);
+      } finally {
+        d.linksLoading = false;
+      }
+    }
+    const items = () => (d.completeness?.groups || []).flatMap((group: any) => group.items);
+    const met = () => items().filter((item: any) => item.ok).length,
+      all = () => items().length,
+      page = (path: string) => path.replace(/^site\//, '');
+    // Fix in AI Studio: the dialog closes and the request is prefilled with the warning.
+    function fix(item: any) {
+      dialog.value!.close();
+      s.workspaceTab = 'edits';
+      s.prompt = t('completeness_fix_prompt', {
+        rule: ruleLabel(item.id),
+        detail: [
+          item.detail,
+          item.pages
+            ? t(item.id === 'image_size' ? 'completeness_files' : 'completeness_pages', {
+                pages: item.pages.map(page).join(', '),
+              })
+            : '',
+        ]
+          .filter(Boolean)
+          .map((text: string) => ' ' + text)
+          .join(''),
+      });
+      requestAnimationFrame(() => document.getElementById('prompt')?.focus());
     }
     onMounted(() => {
       dialogs.publish = open;
@@ -125,6 +179,6 @@ export default {
         d.publishing = false;
       }
     }
-    return { t, dialog, d, cancel, confirm };
+    return { t, dialog, d, cancel, confirm, met, all, page, fix, checkLinks, groupLabel, ruleLabel, linkLabel };
   },
 };

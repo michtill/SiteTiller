@@ -7,8 +7,8 @@ import { requestChecks } from '../src/request-checks.ts';
 import { Project } from '../src/project.ts';
 import { workflow } from '../src/workflow.ts';
 test('AI-11: request check defaults and strict API input', () => {
-  assert.deepEqual(requestChecks(undefined), { technical: true, verification: true });
-  assert.deepEqual(requestChecks({ technical: false }), { technical: false, verification: true });
+  assert.deepEqual(requestChecks(undefined), { technical: true, verification: true, completeness: false });
+  assert.deepEqual(requestChecks({ technical: false }), { technical: false, verification: true, completeness: false });
   for (const v of [null, [], { technical: 'false' }, { surprise: true }]) assert.throws(() => requestChecks(v));
 });
 test('AI-11: each check can be skipped independently without agent overriding owner choice', async () => {

@@ -32,7 +32,11 @@ export function selectImages(input: any, stored: any[]) {
 }
 
 export function binaryAsset(path: string) {
-  return raster(path) || /^site\/(?:cms\/files|assets)\/.+\.(pdf|gif|avif|docx?|xlsx?|pptx?|odt|ods)$/i.test(path);
+  return (
+    raster(path) ||
+    path === 'site/favicon.ico' ||
+    /^site\/(?:cms\/files|assets)\/.+\.(pdf|gif|avif|docx?|xlsx?|pptx?|odt|ods)$/i.test(path)
+  );
 }
 
 export function decodeAttachment(input: any) {

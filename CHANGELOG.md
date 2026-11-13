@@ -2,6 +2,11 @@
 
 Versions follow [semantic versioning](https://semver.org). Each release is tagged `v<version>`.
 
+## 1.4.3
+
+- Container defaults at runtime: the instance image sets SITETILLER_LISTEN=0.0.0.0 and SITETILLER_BROWSER_EXECUTABLE=/usr/bin/chromium, so every instance in it is reachable and the technical check finds its browser, also one created before; instance.json still overrides both.
+- Recommendations from SiteTiller-advice revision 5.
+
 ## 1.4.2
 
 - Healthcheck: the Shell answers GET /health with 200 "ok" under any host name, since a hosting asks under its own name (Railway: healthcheck.railway.app). Every other path still answers only on the editor address.

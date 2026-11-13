@@ -20,5 +20,7 @@ RUN apt-get update \
   && git config --system safe.directory '*'
 WORKDIR /app
 COPY --from=build /app /app
-ENV SITETILLER_INSTANCE=/instance HOME=/tmp SITETILLER_PUBLIC_PREVIEW_PORT=4541
+# Container defaults (documentation, deployment): the services listen on all interfaces behind the host's proxy and
+# the checks use the image's Chromium. instance.json (public.listen, public.browser) overrides both.
+ENV SITETILLER_INSTANCE=/instance HOME=/tmp SITETILLER_PUBLIC_PREVIEW_PORT=4541 SITETILLER_LISTEN=0.0.0.0     SITETILLER_BROWSER_EXECUTABLE=/usr/bin/chromium
 CMD ["node", "scripts/serve.mjs"]

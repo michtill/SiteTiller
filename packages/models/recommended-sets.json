@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "revision": 4,
-  "date": "2026-10-24",
+  "revision": 5,
+  "date": "2026-11-13",
   "default": "performance",
   "sets": {
     "performance": {
@@ -124,6 +124,10 @@
       },
       "roles": {
         "primary": [
+          {
+            "provider": "openai",
+            "model": "gpt-6.1-terra"
+          },
           {
             "provider": "openai",
             "model": "gpt-6.1-sol"

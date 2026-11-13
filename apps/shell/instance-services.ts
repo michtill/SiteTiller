@@ -3,7 +3,14 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ChildProcess } from 'node:child_process';
 import { readJson } from '../../packages/settings/index.mjs';
-import { services, instanceEnvironment, serviceEnvironment, websitePresentation, readShared } from '../../scripts/instance-env.mjs';
+import {
+  services,
+  instanceEnvironment,
+  serviceEnvironment,
+  websitePresentation,
+  readShared,
+  listenAddress,
+} from '../../scripts/instance-env.mjs';
 import { withSshPasswdEntry } from '../../scripts/instance-user.mjs';
 import { supervise } from './supervisor.ts';
 // The services of this instance under the Shell (documentation 2.6). The Website sleeps only when the public website
@@ -12,7 +19,7 @@ export async function superviseInstance() {
   const repo = resolve(fileURLToPath(new URL('../..', import.meta.url))),
     root = resolve(process.env.SITETILLER_INSTANCE_ROOT || ''),
     instance = await readJson(join(root, 'instance.json')),
-    listen = instance.public?.listen || '127.0.0.1',
+    listen = listenAddress(instance),
     external = websitePresentation(instance, await readShared(root)).external,
     logs = process.env.SITETILLER_SERVICE_LOGS;
   const environment = async (name: string) => {

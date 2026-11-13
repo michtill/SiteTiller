@@ -5,12 +5,13 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { bootstrapDeployment, bootstrapInstance } from '../scripts/instance-bootstrap.mjs';
-import { serviceEnvironment } from '../scripts/instance-env.mjs';
+import { serviceEnvironment, instanceEnvironment } from '../scripts/instance-env.mjs';
+import { readFileSync } from 'node:fs';
 import { atomicJson, passwordHash, passwordMatches } from '../packages/settings/index.mjs';
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const filesUnder = async (dir) =>
   (await readdir(dir, { recursive: true, withFileTypes: true })).filter((e) => e.isFile()).map((e) => join(e.parentPath, e.name));
-test('OP-11: the first start from variables creates the instance once, keeps the password only as a hash and never reads the variable again; the container listens on all interfaces', async () => {
+test('OP-11: the first start from variables creates the instance once, keeps the password only as a hash and never reads the variable again; the container listens on all interfaces and checks with the image browser', async () => {
   // The variables: the password alone is not enough, the editor address comes from the hosting's domain.
   assert.equal(bootstrapDeployment({}), null);
   assert.throws(() => bootstrapDeployment({ SITETILLER_ADMIN_PASSWORD: 'x' }), /editor address is missing/);
@@ -60,6 +61,24 @@ test('OP-11: the first start from variables creates the instance once, keeps the
     assert.equal(serviceEnvironment({}, instance, 'shell').EDIT_HOST, '0.0.0.0');
     assert.equal(serviceEnvironment({}, instance, 'shell').SITETILLER_PUBLIC_PREVIEW_PORT, '4541');
     assert.equal(serviceEnvironment({}, instance, 'website').HOST, '0.0.0.0');
+    // The image's container defaults reach every instance at runtime, also one created without listen or browser:
+    // all interfaces and the image's Chromium for the checks; instance.json overrides them.
+    const dockerfile = readFileSync(join(repo, 'deploy/instance.Dockerfile'), 'utf8');
+    assert.ok(dockerfile.includes("SITETILLER_LISTEN=0.0.0.0"));
+    assert.ok(dockerfile.includes("SITETILLER_BROWSER_EXECUTABLE=/usr/bin/chromium"));
+    const bare = { ...instance, public: { editOrigin: instance.public.editOrigin } },
+      image = { SITETILLER_LISTEN: '0.0.0.0', SITETILLER_BROWSER_EXECUTABLE: '/usr/bin/chromium' };
+    assert.equal(serviceEnvironment(image, bare, 'shell').EDIT_HOST, '0.0.0.0');
+    assert.equal(serviceEnvironment({}, bare, 'shell').EDIT_HOST, '127.0.0.1');
+    const saved = { ...process.env };
+    try {
+      Object.assign(process.env, image);
+      assert.equal((await instanceEnvironment(repo, root, bare)).SITETILLER_BROWSER_EXECUTABLE, '/usr/bin/chromium');
+      const own = await instanceEnvironment(repo, root, { ...bare, public: { ...bare.public, browser: '/opt/chrome' } });
+      assert.equal(own.SITETILLER_BROWSER_EXECUTABLE, '/opt/chrome');
+    } finally {
+      for (const key of Object.keys(image)) if (saved[key] === undefined) delete process.env[key]; else process.env[key] = saved[key];
+    }
     // Internal presentation; the administrator e-mail is optional here.
     assert.equal(instance.public.presentation, undefined);
     assert.equal(shared.adminEmail, undefined);

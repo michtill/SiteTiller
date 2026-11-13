@@ -130,9 +130,11 @@ export async function instanceEnvironment(repo, root, instance) {
   };
 }
 // Per-service variables: only the AI controller reaches the providers; the Shell and the Website listen on
-// `instance.public.listen` when the instance sits behind a proxy (a container), otherwise on loopback.
+// `instance.public.listen` when the instance sits behind a proxy (a container), otherwise on loopback. The instance
+// image sets SITETILLER_LISTEN=0.0.0.0 as the container's default, so an instance without the field is reachable too.
+export const listenAddress = (instance, env = process.env) => instance.public?.listen || env.SITETILLER_LISTEN || '127.0.0.1';
 export function serviceEnvironment(env, instance, name) {
-  const listen = instance.public?.listen || '127.0.0.1';
+  const listen = listenAddress(instance, env);
   return {
     ...env,
     ...(name === 'aistudio' ? {} : { SITETILLER_NETWORK_MODE: 'offline', SITETILLER_OFFLINE: '1' }),

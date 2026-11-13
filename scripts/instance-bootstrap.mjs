@@ -21,8 +21,14 @@ export function bootstrapDeployment(env) {
     throw Error('First start: SITETILLER_EDIT_ORIGIN must be an http(s) address without a path');
   if (env.SITETILLER_LANGUAGE !== undefined && !['cs', 'en'].includes(env.SITETILLER_LANGUAGE))
     throw Error('First start: SITETILLER_LANGUAGE is cs or en');
+  const previewPort = Number(env.SITETILLER_PUBLIC_PREVIEW_PORT || 0);
+  if (env.SITETILLER_PUBLIC_PREVIEW_PORT && !(Number.isInteger(previewPort) && previewPort > 0 && previewPort < 65536))
+    throw Error('First start: SITETILLER_PUBLIC_PREVIEW_PORT is a port number');
+  // The container sits behind the host's proxy, as with Compose: the services listen on all its interfaces.
   return {
     editOrigin: origin.origin,
+    listen: '0.0.0.0',
+    ...(previewPort ? { publicPreviewPort: previewPort } : {}),
     siteUrl: env.SITETILLER_SITE_URL || origin.origin + '/',
     ...(env.SITETILLER_PREVIEW_ORIGIN ? { previewOrigin: env.SITETILLER_PREVIEW_ORIGIN } : {}),
     ...(env.SITETILLER_ADMIN_EMAIL ? { adminEmail: env.SITETILLER_ADMIN_EMAIL } : {}),

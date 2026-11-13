@@ -2,6 +2,10 @@
 
 Versions follow [semantic versioning](https://semver.org). Each release is tagged `v<version>`.
 
+## 1.4.1
+
+- First start from variables: the services listen on all interfaces of the container (as with Compose) and the public draft preview on SITETILLER_PUBLIC_PREVIEW_PORT. In 1.4.0 a container created this way could not be reached from outside.
+
 ## 1.4.0
 
 - Warnings with every step (documentation 4.9): folded under "Warnings (N)" with Fix in AI Studio; the completeness warnings of a publication stay with the published step or the new first step "Published version N".

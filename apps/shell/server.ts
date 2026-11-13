@@ -211,6 +211,12 @@ http
           data,
           previewPort: Number(process.env.PREVIEW_PORT),
         });
+      // The hosting's healthcheck asks under its own host name (Railway: healthcheck.railway.app): /health answers
+      // "ok" on any address and nothing else does (documentation, deployment).
+      if (req.url === '/health' && (req.method === 'GET' || req.method === 'HEAD')) {
+        res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+        return res.end(req.method === 'HEAD' ? undefined : 'ok');
+      }
       // The editor answers on its chosen address and on the installation's; every other host name is refused.
       const origin = [chosenEditOrigin, installedOrigin].find((o) => o && req.headers.host === new URL(o).host);
       if (!origin) {

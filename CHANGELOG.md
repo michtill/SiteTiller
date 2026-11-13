@@ -2,6 +2,10 @@
 
 Versions follow [semantic versioning](https://semver.org). Each release is tagged `v<version>`.
 
+## 1.4.2
+
+- Healthcheck: the Shell answers GET /health with 200 "ok" under any host name, since a hosting asks under its own name (Railway: healthcheck.railway.app). Every other path still answers only on the editor address.
+
 ## 1.4.1
 
 - First start from variables: the services listen on all interfaces of the container (as with Compose) and the public draft preview on SITETILLER_PUBLIC_PREVIEW_PORT. In 1.4.0 a container created this way could not be reached from outside.

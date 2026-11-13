@@ -16,7 +16,7 @@ async function freePort() {
   await new Promise((r) => s.close(r));
   return port;
 }
-test('OP-13: the editor address entered in Settings applies at once next to the installation address, which stays as a fallback', async () => {
+test('OP-13: the editor address entered in Settings applies at once next to the installation address, which stays as a fallback; only /health answers on any host name', async () => {
   // The address: HTTPS, plain HTTP only locally, no path; empty = the installation's.
   const base = { name: 'Web', theme: 'light' };
   assert.equal(validateShared({ ...base, editOrigin: 'https://edit.example.cz/' }).editOrigin, 'https://edit.example.cz');
@@ -114,6 +114,12 @@ test('OP-13: the editor address entered in Settings applies at once next to the 
     // The installation's address stays as the fallback, its sign-in still valid; other host names stay refused.
     assert.equal((await request(installedHost, '/settings/addresses', { headers: { cookie } })).status, 200);
     assert.equal((await request('other.localhost:' + port, '/login')).status, 403);
+    // Only the healthcheck answers under any host name, with nothing but "ok".
+    const health = await request('healthcheck.example.app', '/health');
+    assert.equal(health.status, 200);
+    assert.equal(health.body, 'ok');
+    assert.equal((await request('healthcheck.example.app', '/health', { method: 'POST' })).status, 403);
+    assert.equal((await request('healthcheck.example.app', '/health/x')).status, 403);
     // A form from one address is not accepted on the other.
     const crossed = await request(chosenHost, '/settings', {
       method: 'POST',

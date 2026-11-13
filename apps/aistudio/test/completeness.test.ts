@@ -4,7 +4,10 @@ import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
-import { completenessChecks } from '../src/completeness.ts';
+import { completenessChecks, completenessWarnings } from '../src/completeness.ts';
+import { publicationClosing } from '../src/publication-history.ts';
+import { chromium } from 'playwright';
+import { studioPage } from './fixtures/studio-page.ts';
 // A solid PNG of the given size.
 function png(width: number, height: number) {
   const crcTable = Array.from({ length: 256 }, (_, n) => {
@@ -213,4 +216,83 @@ test('RE-06: Check external links too: a working link is ok, 404 is missing, no 
   assert.equal(seen.length, 100);
   assert.deepEqual(checked[7], { url: 'https://site7.example/', state: 'missing' });
   assert.equal(checked[0].url, 'https://site0.example/');
+});
+
+test('AI-40: the warnings of the publication stay with the published step or the new first step; every step folds its warnings with Fix in AI Studio', async () => {
+  const published = 'e'.repeat(40),
+    edited = 'f'.repeat(40),
+    warnings = completenessWarnings({
+      groups: [
+        { id: 'face', items: [{ id: 'icon', ok: false }, { id: 'title', ok: true }] },
+        { id: 'search', items: [{ id: 'sitemap', ok: false, pages: ['site/index.html'] }] },
+      ],
+      ai: { done: false },
+      excerpt: [],
+      externalLinks: [],
+    });
+  assert.deepEqual(warnings, {
+    items: [
+      { group: 'face', id: 'icon', pages: undefined, detail: undefined },
+      { group: 'search', id: 'sitemap', pages: ['site/index.html'], detail: undefined },
+    ],
+    ai: false,
+  });
+  const draft = () => ({
+    releases: [{ id: 'release-5', number: 5, commit: published }],
+    requests: [{ id: 'p', sequence: 1, status: 'ready', commit: published, prompt: 'P' }],
+  });
+  // With "Remove previous steps" the new first step has them, without it the published step.
+  const cleared: any = draft();
+  publicationClosing(cleared, published, 1, true, warnings);
+  assert.equal(cleared.requests[0].firstStep, 'published');
+  assert.deepEqual(cleared.requests[0].completeness, warnings);
+  const kept: any = draft();
+  publicationClosing(kept, published, 1, false, warnings);
+  assert.deepEqual([kept.requests[0].id, kept.requests[0].completeness], ['p', warnings]);
+
+  const browser = await chromium.launch({
+    ...(process.env.SITETILLER_BROWSER_EXECUTABLE ? { executablePath: process.env.SITETILLER_BROWSER_EXECUTABLE } : {}),
+    headless: true,
+  });
+  const studio = await studioPage(browser, {
+    head: edited,
+    presentationHead: edited,
+    publishedCommit: published,
+    releases: [{ id: 'release-5', number: 5, commit: published, publishedAt: '2026-10-20T17:00:00Z' }],
+    history: [{ commit: published }, { commit: edited }],
+    requests: [
+      { ...cleared.requests[0], baseCommit: published, sequence: 47 },
+      { id: 's2', status: 'ready', commit: edited, baseCommit: published, prompt: 'Uprav nadpis', sequence: 48, presentationChanged: true },
+    ],
+    events: [
+      { jobId: 's2', stage: 'request', message: 'Uprav nadpis' },
+      { jobId: 's2', stage: 'test', status: 'completed', warnings: ['Obrázek nemá popis.'] },
+      { jobId: 's2', stage: 'build', status: 'completed', message: 'Nadpis je upravený.' },
+      { jobId: 's2', stage: 'ready', commit: edited },
+    ],
+  });
+  try {
+    const page = studio.page,
+      first = page.locator(`[data-group-id="${cleared.requests[0].id}"] .step-warnings`),
+      step = page.locator('[data-group-id="s2"] .step-warnings');
+    // Folded: one line with the count, the list only after a click.
+    assert.equal((await first.locator('summary').textContent())?.trim(), '▸Upozornění (2)');
+    assert.equal(await first.locator('li').first().isVisible(), false);
+    await first.locator('summary').click();
+    assert.equal(await first.locator('li').count(), 2);
+    assert.match((await first.locator('li').nth(1).textContent()) || '', /index\.html/);
+    assert.equal((await step.locator('summary').textContent())?.trim(), '▸Upozornění (1)');
+    // Not repeated in the progress of the step.
+    assert.equal(await page.locator('[data-group-id="s2"] .progress-detail .issue').count(), 0);
+    // Fix in AI Studio prefills the request with the warning.
+    await step.locator('summary').click();
+    await step.locator('.completeness-fix').click();
+    assert.equal(await page.locator('#prompt').inputValue(), 'Oprav na webu: Obrázek nemá popis.');
+    await first.locator('.completeness-fix').first().click();
+    assert.match(await page.locator('#prompt').inputValue(), /^Doplň na webu: /);
+    assert.deepEqual(studio.errors, []);
+  } finally {
+    await studio.close();
+    await browser.close();
+  }
 });

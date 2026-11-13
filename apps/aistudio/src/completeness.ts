@@ -16,6 +16,14 @@ export type Completeness = {
   externalLinks: string[];
 };
 
+// The warnings of a check kept with a step (documentation 4.9): the rules not met and whether the AI part ran.
+export const completenessWarnings = (result: Completeness) => ({
+  items: result.groups.flatMap((group) =>
+    group.items.filter((item) => !item.ok).map(({ id, pages, detail }) => ({ group: group.id, id, pages, detail })),
+  ),
+  ai: result.ai.done,
+});
+
 // Known measuring and advertising services that set tracking cookies (EU rules: they need consent first).
 const tracking =
   /googletagmanager\.com|google-analytics\.com|connect\.facebook\.net|static\.hotjar\.com|clarity\.ms|snap\.licdn\.com|analytics\.tiktok\.com|doubleclick\.net|mc\.yandex/i;

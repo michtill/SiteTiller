@@ -90,7 +90,7 @@ import {
   type Role,
 } from './team.ts';
 import { callModel } from './providers.ts';
-import { completenessFor, reviewInstruction, checkExternalLinks } from './completeness.ts';
+import { completenessFor, completenessWarnings, reviewInstruction, checkExternalLinks } from './completeness.ts';
 import { catalog, unavailable } from './catalog.ts';
 import { addRequest } from './journal.ts';
 import { recentConversation, searchConversation, hydrateRecentMemory } from './memory.ts';
@@ -1761,6 +1761,7 @@ const server = http.createServer(async (req, res) => {
             );
             config.pendingRelease.through = target.through;
             config.pendingRelease.clearPrevious = input.clearPrevious !== false;
+            config.pendingRelease.completeness = job.completeness ? completenessWarnings(job.completeness) : null;
             config.pendingRelease.workspacePlan = await prepareWorkspacePublication(project, input.commit);
             config.pendingRelease.evidence = evidence;
             publicationPending = structuredClone(config.pendingRelease);
@@ -1822,7 +1823,13 @@ const server = http.createServer(async (req, res) => {
             config.draftBaseCommit = input.commit;
             config.reviewedThrough = target.through;
             config.lastReviewCommit = input.commit;
-            publicationClosing(config, input.commit, target.through, input.clearPrevious !== false);
+            publicationClosing(
+              config,
+              input.commit,
+              target.through,
+              input.clearPrevious !== false,
+              job.completeness ? completenessWarnings(job.completeness) : null,
+            );
             config.publishedThrough = target.through;
             events = closePublishedHistory(config, events).events;
             await save('events.json', events);

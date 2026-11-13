@@ -96,6 +96,46 @@ export function validateShared(value, { current = {} } = {}) {
       result.publicPreviewOrigin = url.origin;
     } else result.publicPreviewOrigin = '';
   }
+  // The editor address, set on Settings → Addresses and sharing (documentation 2.4); empty = the installation's. HTTPS,
+  // plain HTTP only for a local address.
+  if (Object.hasOwn(value, 'editOrigin')) {
+    const text = String(value.editOrigin ?? '').trim();
+    if (text) {
+      let url;
+      try {
+        url = new URL(text);
+      } catch {}
+      const local = url && /^(localhost|127\.0\.0\.1|\[::1\])$|\.localhost$/.test(url.hostname);
+      if (
+        !url ||
+        !(url.protocol === 'https:' || (url.protocol === 'http:' && local)) ||
+        url.username ||
+        url.password ||
+        (url.pathname !== '/' && url.pathname !== '') ||
+        url.search ||
+        url.hash
+      )
+        throw Object.assign(Error('Zadejte adresu editoru jako https://edit.example.cz bez cesty.'), { status: 422 });
+      result.editOrigin = url.origin;
+    } else result.editOrigin = '';
+  }
+  // The website presentation switched on Settings → Addresses and sharing (documentation 2.4, 7.7): internal, or external
+  // with the website Git and its branch; without it the installation's presentation applies.
+  if (Object.hasOwn(value, 'presentation')) {
+    if (!['internal', 'external'].includes(value.presentation))
+      throw Object.assign(Error('Neplatný režim prezentace.'), { status: 422 });
+    const git = String(value.websiteGit ?? current.websiteGit ?? ''),
+      branch = String(value.websiteBranch ?? current.websiteBranch ?? 'main');
+    if (git && (git.length > 500 || /[\s\0]/.test(git) || git.startsWith('-')))
+      throw Object.assign(Error('Neplatná adresa Gitu webu.'), { status: 422 });
+    if (!/^[A-Za-z0-9._/-]{1,100}$/.test(branch) || branch.startsWith('-') || branch.includes('..'))
+      throw Object.assign(Error('Neplatná větev Gitu webu.'), { status: 422 });
+    if (value.presentation === 'external' && !git)
+      throw Object.assign(Error('Neplatná adresa Gitu webu.'), { status: 422 });
+    result.presentation = value.presentation;
+    result.websiteGit = git;
+    result.websiteBranch = branch;
+  }
   // The administrator's e-mail (documentation 2.8): required on the Sending e-mail screen, which saves it here.
   if (Object.hasOwn(value, 'adminEmail')) {
     result.adminEmail = String(value.adminEmail ?? '').trim();

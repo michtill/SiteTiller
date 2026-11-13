@@ -32,9 +32,11 @@ test(
       // website (internal mode: no Git).
       const addresses = await (await fetch(stack.origin + '/settings/addresses', { headers })).text();
       assert.match(addresses, /Adresy aplikace/);
-      for (const address of [stack.origin, stack.website + '/'])
-        assert.ok(addresses.includes('value="' + address + '"'), address);
-      assert.doesNotMatch(addresses, /Git webu/);
+      assert.ok(addresses.includes('value="' + stack.website + '/"'));
+      // The editor address can be entered (OP-13); empty, it shows the installation's address.
+      assert.ok(addresses.includes('name="editOrigin" type="url" maxlength="300" value="" placeholder="' + stack.origin + '"'));
+      // Internal presentation (the installed mode): the switch shows it, no website Git in the addresses (OP-14).
+      assert.match(addresses, /name="presentation" value="internal" checked/);
       assert.doesNotMatch(settings, /Adresy aplikace/);
       const compare = (body) =>
         fetch(stack.origin + '/site/api/reality/compare', {

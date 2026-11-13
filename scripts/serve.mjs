@@ -6,9 +6,14 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readJson } from '../packages/settings/index.mjs';
 import { services, instanceEnvironment, serviceEnvironment } from './instance-env.mjs';
+import { bootstrapInstance } from './instance-bootstrap.mjs';
 const repo = resolve(fileURLToPath(new URL('..', import.meta.url))),
-  root = resolve(process.env.SITETILLER_INSTANCE || '/instance'),
-  instance = await readJson(join(root, 'instance.json'));
+  root = resolve(process.env.SITETILLER_INSTANCE || '/instance');
+// An empty volume with SITETILLER_ADMIN_PASSWORD becomes an instance first (documentation, deployment).
+await bootstrapInstance(repo, root);
+// The password variable is not passed on to the services.
+delete process.env.SITETILLER_ADMIN_PASSWORD;
+const instance = await readJson(join(root, 'instance.json')).catch(() => ({}));
 if (instance.kind !== 'sitetiller-instance' || resolve(instance.root) !== root)
   throw Error('Not a SiteTiller instance: ' + root);
 // The services run as the owner of the instance (see instance-user.mjs).

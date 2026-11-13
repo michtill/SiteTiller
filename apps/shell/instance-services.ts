@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ChildProcess } from 'node:child_process';
 import { readJson } from '../../packages/settings/index.mjs';
-import { services, instanceEnvironment, serviceEnvironment } from '../../scripts/instance-env.mjs';
+import { services, instanceEnvironment, serviceEnvironment, websitePresentation, readShared } from '../../scripts/instance-env.mjs';
 import { withSshPasswdEntry } from '../../scripts/instance-user.mjs';
 import { supervise } from './supervisor.ts';
 // The services of this instance under the Shell (documentation 2.6). The Website sleeps only when the public website
@@ -13,6 +13,7 @@ export async function superviseInstance() {
     root = resolve(process.env.SITETILLER_INSTANCE_ROOT || ''),
     instance = await readJson(join(root, 'instance.json')),
     listen = instance.public?.listen || '127.0.0.1',
+    external = websitePresentation(instance, await readShared(root)).external,
     logs = process.env.SITETILLER_SERVICE_LOGS;
   const environment = async (name: string) => {
     const current = await readJson(join(root, 'instance.json'));
@@ -40,7 +41,7 @@ export async function superviseInstance() {
       entry,
       port: Number(instance.ports[name]),
       host: name === 'website' ? listen : '127.0.0.1',
-      sleeps: name !== 'website' || instance.public?.presentation === 'external',
+      sleeps: name !== 'website' || external,
       // The AI Studio keeps working after it answered (a request, a publication, a save): it sleeps only when idle.
       ...(name === 'aistudio'
         ? {

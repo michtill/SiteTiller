@@ -1,5 +1,5 @@
 import { computed, ref, onBeforeUpdate, onUpdated } from 'vue';
-import { groupLabel, ruleLabel } from './completeness-labels.ts';
+import { completenessText, completenessFixPrompt } from './completeness-labels.ts';
 import { t, tm, teamName } from './i18n.ts';
 import { compactProgress, discussionBundles, displayMessage, releaseNumber, realityOffered } from './presentation.ts';
 import { s, APP_BASE, displayedPresentationCommit } from './studio.ts';
@@ -47,25 +47,13 @@ function sections(row: any) {
     if (event.model && !section.model) section.model = event.model;
     if (event.message && !routine.includes(event.message))
       section.items.push({ kind: 'p', text: displayMessage(event, tm) });
-    for (const issue of [
-      ...(event.errors || []),
-      ...(event.issues || []),
-      ...(event.warnings || []).map((w: string) => t('warning') + w),
-    ])
+    // Warnings are not repeated here: the step has them under its result (warningsOf).
+    for (const issue of [...(event.errors || []), ...(event.issues || [])])
       section.items.push({ kind: 'issue', text: issue });
-    // The completeness check after a step: how many rules are met, then each warning with its pages.
+    // The completeness check after a step: how many rules are met; its warnings are with the step.
     if (Array.isArray(event.completeness)) {
       const met = event.completeness.filter((item: any) => item.ok).length;
       section.items.push({ kind: 'p', text: t('completeness_met', { met, all: event.completeness.length }) });
-      for (const item of event.completeness.filter((item: any) => !item.ok))
-        section.items.push({
-          kind: 'issue',
-          text:
-            groupLabel(item.group) +
-            ': ' +
-            ruleLabel(item.id) +
-            (item.pages ? ' (' + item.pages.map((p: string) => p.replace(/^site\//, '')).join(', ') + ')' : ''),
-        });
       if (!event.completenessAi) section.items.push({ kind: 'p', text: t('completeness_ai_not_done') });
     }
     for (const check of event.checks || [])
@@ -77,6 +65,21 @@ function sections(row: any) {
     if (event.commit) section.items.push({ kind: 'code', text: event.commit.slice(0, 8) });
   }
   if (row.running && out.length) out.at(-1).running = true;
+  return out;
+}
+// The warnings of a step, folded under its result (documentation 4.9): of the checks, of the completeness check after
+// the step and of the publication's completeness check; each with the request Fix in AI Studio prefills.
+function warningsOf(group: any) {
+  const out: { text: string; prompt: string }[] = [],
+    add = (text: string, prompt: string) => {
+      if (!out.some((w) => w.text === text)) out.push({ text, prompt });
+    };
+  for (const event of group.rows.flatMap((row: any) => row.events)) {
+    for (const warning of event.warnings || []) add(warning, t('warning_fix_prompt', { warning }));
+    for (const item of Array.isArray(event.completeness) ? event.completeness.filter((i: any) => !i.ok) : [])
+      add(completenessText(item), completenessFixPrompt(item));
+  }
+  for (const item of group.request?.completeness?.items || []) add(completenessText(item), completenessFixPrompt(item));
   return out;
 }
 function eyeFor(group: any) {
@@ -185,6 +188,7 @@ function view(group: any) {
     mode,
     row,
     sections: sections(row),
+    warnings: row.running ? [] : warningsOf(group),
     response: mode === 'details' ? response : '',
     summaryText,
     publicationPrompt: isPublication

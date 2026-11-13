@@ -2,6 +2,14 @@
 
 Versions follow [semantic versioning](https://semver.org). Each release is tagged `v<version>`.
 
+## 1.4.0
+
+- Warnings with every step (documentation 4.9): folded under "Warnings (N)" with Fix in AI Studio; the completeness warnings of a publication stay with the published step or the new first step "Published version N".
+- First start from variables (deployment): a container with an empty /instance and SITETILLER_ADMIN_PASSWORD creates the instance itself (editor address from SITETILLER_EDIT_ORIGIN or RAILWAY_PUBLIC_DOMAIN); the password is kept only as a hash and the variable is read only then.
+- Settings → Instance data: download the whole instance folder as a ZIP, only after signing in.
+- Settings → Addresses and sharing: the editor address can be changed in the app and applies at once; the installation address stays as a fallback.
+- Settings → Addresses and sharing → Website presentation: switch between internal and external presentation; the instance creates its SSH key as a deploy key, confirms the server fingerprint and saves only after a write check. Without a switch the installed mode applies.
+
 ## 1.3.0
 
 - Completeness check (documentation 4.11): before every publication the AI Studio shows what a finished website is expected to have, as ✓ or ⚠ in six groups – face of the website (icon, titles, descriptions), search engines (one h1, lang, sitemap.xml, robots.txt, canonical, readable addresses), sharing (Open Graph), accessibility (alt, contrast, heading order), EU rules (contact, personal data information for forms, consent to tracking cookies) and function (404 page, image sizes). It only reports and never blocks; Fix in AI Studio prefills the request. An AI part (the Verifier of the default team) judges whether the texts fit the content; the result is kept per commit. Without an AI key only the rules run.

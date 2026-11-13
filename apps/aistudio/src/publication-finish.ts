@@ -84,7 +84,7 @@ export async function finishConfirmedPublication(project: Project, data: string,
     next.draftBaseCommit = release.commit;
     next.lastReviewCommit = release.commit;
     next.reviewedThrough = pending.through;
-    publicationClosing(next, release.commit, pending.through, pending.clearPrevious !== false);
+    publicationClosing(next, release.commit, pending.through, pending.clearPrevious !== false, pending.completeness);
     next.publishedThrough = pending.through;
     nextEvents = closePublishedHistory(next, nextEvents).events;
     const nextJob = {

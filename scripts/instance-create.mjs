@@ -17,12 +17,18 @@ import { prepareInstanceUser } from './instance-user.mjs';
 const exec = promisify(execFile),
   repo = resolve(fileURLToPath(new URL('..', import.meta.url))),
   root = resolve(process.env.SITETILLER_INSTANCE || '/instance'),
-  deployment = JSON.parse(readFileSync(process.argv[2], 'utf8'));
-if (!validEmail(deployment.adminEmail)) throw Error('deployment.adminEmail: the administrator e-mail is required');
+  deployment = JSON.parse(readFileSync(process.argv[2], 'utf8')),
+  // The first start from variables (instance-bootstrap.mjs) passes the password in the environment and prints nothing;
+  // its administrator e-mail is optional (Settings → E-mails shows "!" until it is set).
+  given = process.env.SITETILLER_CREATE_PASSWORD || '';
+delete process.env.SITETILLER_CREATE_PASSWORD;
+if (!(given && deployment.adminEmail === undefined) && !validEmail(deployment.adminEmail))
+  throw Error('deployment.adminEmail: the administrator e-mail is required');
 if (deployment.language !== undefined && !['cs', 'en'].includes(deployment.language))
   throw Error('deployment.language: cs or en');
 await prepareInstanceUser(root);
-const present = await readdir(root).catch(() => []);
+// A freshly formatted volume holds only lost+found; that counts as empty.
+const present = (await readdir(root).catch(() => [])).filter((name) => name !== 'lost+found');
 if (present.length) throw Error('The instance directory is not empty; instance-create never overwrites: ' + root);
 const ports = { shell: 4540, cmstudio: 4510, aistudio: 4520, preview: 4521, publisher: 4523, website: 4512 },
   settings = join(root, 'settings'),
@@ -42,9 +48,9 @@ await atomicJson(join(settings, 'shared.json'), {
   theme: 'light',
   // The interface language of a new installation is English unless the deployment asks for Czech.
   language: deployment.language === 'cs' ? 'cs' : 'en',
-  adminEmail: deployment.adminEmail,
+  ...(deployment.adminEmail ? { adminEmail: deployment.adminEmail } : {}),
 });
-const password = randomBytes(12).toString('base64url');
+const password = given || randomBytes(12).toString('base64url');
 await atomicJson(join(settings, 'auth.json'), { password: passwordHash(password) });
 for (const name of ['gateway.token', 'publish.token'])
   await writeFile(join(settings, name), randomBytes(32).toString('hex'), { mode: 0o600 });
@@ -81,4 +87,4 @@ try {
 } finally {
   await rm(adopt, { force: true });
 }
-console.log('Created ' + root + '. Password (shown only now): ' + password);
+console.log('Created ' + root + (given ? '.' : '. Password (shown only now): ' + password));

@@ -2990,3 +2990,53 @@ aside .studio-header::after {
   font-size: 12px;
   white-space: nowrap;
 }
+/* The warnings of a step, folded under its result (documentation 4.9). */
+.step-warnings {
+  margin-top: 8px;
+  font-size: 12px;
+}
+.step-warnings summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  color: var(--ui-warning);
+  cursor: pointer;
+  list-style: none;
+}
+.step-warnings summary::-webkit-details-marker {
+  display: none;
+}
+.step-warnings-arrow {
+  display: inline-block;
+  transition: transform 0.15s;
+}
+.step-warnings[open] .step-warnings-arrow {
+  transform: rotate(90deg);
+}
+.step-warnings ul {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.step-warnings li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 3px 0;
+}
+.step-warnings li > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.step-warnings .completeness-fix {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ui-accent);
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}

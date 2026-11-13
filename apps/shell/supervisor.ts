@@ -30,6 +30,9 @@ export type Supervisor = {
   wake(name: string): Promise<number>;
   stop(): Promise<void>;
   check(): Promise<void>;
+  // Stops a running service so its next start takes the current environment (a switched presentation); one that never
+  // sleeps starts again at once. sleeps, when given, changes whether it may sleep.
+  restart(name: string, sleeps?: boolean): Promise<void>;
 };
 const freePort = () =>
   new Promise<number>((resolve, reject) => {
@@ -196,6 +199,22 @@ export async function supervise(options: {
     },
     wake: (name) => start(states.get(name)!),
     check,
+    async restart(name, sleeps) {
+      const s = states.get(name);
+      if (!s) return;
+      if (sleeps !== undefined) s.sleeps = sleeps;
+      if (s.starting) await s.starting.catch(() => {});
+      const child = s.child;
+      s.child = null;
+      if (child && child.exitCode === null)
+        await new Promise<void>((resolve) => {
+          child.once('exit', () => resolve());
+          child.kill('SIGTERM');
+          setTimeout(() => (child.kill('SIGKILL'), resolve()), 10000).unref();
+        });
+      await record();
+      if (!s.sleeps) await start(s).catch(() => {});
+    },
     async stop() {
       clearInterval(timer);
       for (const server of servers) server.close();

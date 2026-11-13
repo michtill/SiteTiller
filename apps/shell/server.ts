@@ -28,12 +28,25 @@ import {
 } from './mcp.ts';
 import { appVersion } from '../aistudio/src/app-version.ts';
 import { createShare, sharesFor, allShares, revokeShare, shareUrl } from './shares.ts';
+import { writeInstanceZip, exportName } from './instance-export.ts';
+import {
+  publicKey,
+  createKey,
+  validWebsiteGit,
+  validBranch,
+  sshHost,
+  scanHost,
+  knownHost,
+  trustHost,
+  checkWrite,
+} from './website-git.ts';
+import { websitePresentation } from '../../scripts/instance-env.mjs';
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomBytes, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
 const port = Number(process.env.PORT || 4540),
-  origin = process.env.EDIT_ORIGIN || 'http://127.0.0.1:' + port,
+  installedOrigin = process.env.EDIT_ORIGIN || 'http://127.0.0.1:' + port,
   data = process.env.SITETILLER_INSTANCE_ROOT!,
   secret = process.env.SITETILLER_GATEWAY_TOKEN!;
 if (!data || !secret) throw Error('Configure gateway data and token');
@@ -42,17 +55,31 @@ if (!data || !secret) throw Error('Configure gateway data and token');
 const installedPreviewOrigin = process.env.SITETILLER_PUBLIC_PREVIEW_ORIGIN
   ? new URL(process.env.SITETILLER_PUBLIC_PREVIEW_ORIGIN).origin
   : '';
-if (installedPreviewOrigin && new URL(installedPreviewOrigin).host === new URL(origin).host)
+if (installedPreviewOrigin && new URL(installedPreviewOrigin).host === new URL(installedOrigin).host)
   throw Error('The public preview needs its own address');
-let publicPreviewOrigin = installedPreviewOrigin;
+let publicPreviewOrigin = installedPreviewOrigin,
+  // The editor address set on Settings → Addresses and sharing (documentation 2.4). The Shell answers on it and on the
+  // installation's address, which stays as a fallback, so a wrong or not yet pointed address locks nobody out.
+  chosenEditOrigin = '';
 async function refreshPreviewOrigin() {
-  let chosen = '';
+  let chosen = '',
+    editor = '';
   try {
-    chosen = (await readJson(join(data, 'settings/shared.json'))).publicPreviewOrigin || '';
+    const current = await readJson(join(data, 'settings/shared.json'));
+    chosen = current.publicPreviewOrigin || '';
+    editor = current.editOrigin || '';
   } catch {}
-  publicPreviewOrigin = chosen && new URL(chosen).host !== new URL(origin).host ? chosen : installedPreviewOrigin;
+  const editHosts = [installedOrigin, editor].filter(Boolean).map((o) => new URL(o).host);
+  chosenEditOrigin = editor && new URL(editor).host !== new URL(installedOrigin).host ? editor : '';
+  publicPreviewOrigin = chosen && !editHosts.includes(new URL(chosen).host) ? chosen : installedPreviewOrigin;
+  if (publicPreviewOrigin && chosenEditOrigin && new URL(publicPreviewOrigin).host === new URL(chosenEditOrigin).host)
+    chosenEditOrigin = '';
   return publicPreviewOrigin;
 }
+// Website Gits whose write check passed with the current key and host keys (Settings → Website presentation, 2.4).
+const verifiedWebsiteGits = new Set<string>();
+// The address links in e-mails and the MCP address use: the chosen one, otherwise the installation's.
+const primaryOrigin = () => chosenEditOrigin || installedOrigin;
 // Shared previews (documentation 4.10) live on the public preview address.
 const shareContext = {
   data,
@@ -91,9 +118,8 @@ function persistSessions() {
   sessionWrites = sessionWrites.then(() => atomicJson(sessionsFile, snapshot)).catch(() => {});
   return sessionWrites;
 }
-const cookieName = sessionCookie(origin);
-const valid = (req: http.IncomingMessage) => {
-  const token = req.headers.cookie?.match(new RegExp('(?:^|; *)' + cookieName + '=([a-f0-9]{64})'))?.[1];
+const valid = (req: http.IncomingMessage, origin: string) => {
+  const token = req.headers.cookie?.match(new RegExp('(?:^|; *)' + sessionCookie(origin) + '=([a-f0-9]{64})'))?.[1];
   return token && (sessions.get(hashed(token)) || 0) > Date.now() ? token : null;
 };
 // The website name, theme and interface language of the Shell pages come from the common settings.
@@ -185,10 +211,13 @@ http
           data,
           previewPort: Number(process.env.PREVIEW_PORT),
         });
-      if (req.headers.host !== new URL(origin).host) {
+      // The editor answers on its chosen address and on the installation's; every other host name is refused.
+      const origin = [chosenEditOrigin, installedOrigin].find((o) => o && req.headers.host === new URL(o).host);
+      if (!origin) {
         res.writeHead(403);
         return res.end();
       }
+      const cookieName = sessionCookie(origin);
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('X-Content-Type-Options', 'nosniff');
       const look = await shared(),
@@ -202,7 +231,7 @@ http
         ) => {
           res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });
           // Settings screens mark E-mails in the side band until sending e-mail is set up (documentation 2.8).
-          const settingsScreen = ['settings', 'mail', 'aiapi', 'mcp', 'addresses', 'password'].includes(name);
+          const settingsScreen = ['settings', 'mail', 'aiapi', 'mcp', 'addresses', 'data', 'password'].includes(name);
           res.end(
             // After a save the page shows the saved name and look at once (documentation 2.4).
             await renderPage(name, settingsScreen ? { ...props, mailWarning: !(await resetAvailable()) } : props, {
@@ -228,7 +257,7 @@ http
       // Without next the sign-in leads to the home page with both studios (documentation 2.2).
       const destination =
         next && new RegExp('^/(content|site|preview)(/|$)').test(next) && !next.includes('\\') ? next : '/';
-      const token = valid(req);
+      const token = valid(req, origin);
       const accessMatch = url.pathname.match(/^\/preview\/access\/([a-f0-9]{64})(\/.*)?$/),
         access = accessMatch ? previewAccess.get(hashed(accessMatch[1])) : null,
         hasPreviewAccess = !!access && access.expires > Date.now() && (sessions.get(access.session) || 0) > Date.now(),
@@ -424,7 +453,7 @@ http
         const state = await resetState();
         if (state.sent.length >= 3) return page(429, 'forgot', { available, error: t('reset_link_limit'), notice: '' });
         const secretToken = randomBytes(32).toString('hex'),
-          link = origin + '/reset/' + secretToken;
+          link = primaryOrigin() + '/reset/' + secretToken;
         try {
           await sendMail(settingsDirectory, {
             to: await adminEmail(),
@@ -509,7 +538,7 @@ http
       if (
         req.method === 'GET' &&
         req.headers['sec-fetch-dest'] === 'document' &&
-        /^\/(content\/(structure)?|site\/|settings(\/(mail|addresses|mcp|aiapi))?|password)$/.test(url.pathname)
+        /^\/(content\/(structure)?|site\/|settings(\/(mail|addresses|data|mcp|aiapi))?|password)$/.test(url.pathname)
       ) {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         return res.end(
@@ -691,23 +720,117 @@ http
         let confirmAll = false,
           error = '',
           notice = '',
-          back = url.searchParams.get('returnTo');
+          back = url.searchParams.get('returnTo'),
+          // Website presentation (documentation 2.4, 7.7): what the owner entered, the host keys to confirm, the check.
+          entered: { websiteGit?: string; websiteBranch?: string; presentation?: string } = {},
+          hostKeys: { fingerprint: string }[] = [],
+          checked = '';
+        const instanceFile = await readJson(join(data, 'instance.json')).catch(() => ({})),
+          target = async (git: string, branch: string) =>
+            [
+              git,
+              branch,
+              await publicKey(settingsDirectory),
+              await readFile(join(settingsDirectory, 'website-git.known_hosts'), 'utf8').catch(() => ''),
+            ].join('\n');
         if (req.method === 'POST') {
           const input = await readForm(req);
           back = input.get('returnTo');
+          const action = input.get('action') || '';
           try {
-            if (input.get('action') === 'preview') {
+            if (action.startsWith('presentation')) {
+              const git = (input.get('websiteGit') || '').trim(),
+                branch = (input.get('websiteBranch') || '').trim() || 'main';
+              entered = { websiteGit: git, websiteBranch: branch, presentation: input.get('presentation') || '' };
+              if (action === 'presentationKey') {
+                if ((await publicKey(settingsDirectory)) && input.get('confirm') !== 'yes')
+                  throw Object.assign(Error(t('website_key_replace_confirm')), { status: 409 });
+                await createKey(settingsDirectory, 'sitetiller@' + new URL(primaryOrigin()).hostname);
+                notice = t('website_key_created');
+              } else if (action === 'presentationVerify' || action === 'presentationTrust') {
+                if (!validWebsiteGit(git)) throw Object.assign(Error(t('website_git_invalid')), { status: 422 });
+                if (!validBranch(branch)) throw Object.assign(Error(t('website_branch_invalid')), { status: 422 });
+                const host = sshHost(git);
+                if (host && !(await publicKey(settingsDirectory)))
+                  throw Object.assign(Error(t('website_key_missing')), { status: 422 });
+                if (host && action === 'presentationTrust')
+                  await trustHost(settingsDirectory, host, input.getAll('fingerprint')).catch(() => {
+                    throw Object.assign(Error(t('website_host_changed')), { status: 409 });
+                  });
+                if (host && !(await knownHost(settingsDirectory, host))) {
+                  hostKeys = (await scanHost(host).catch(() => [])).map(({ fingerprint }) => ({ fingerprint }));
+                  if (!hostKeys.length) throw Object.assign(Error(t('website_host_unreachable')), { status: 502 });
+                } else {
+                  await checkWrite(settingsDirectory, git).catch((e: any) => {
+                    throw Object.assign(Error(t('website_git_refused', { detail: e.detail || '' })), { status: 422 });
+                  });
+                  verifiedWebsiteGits.add(await target(git, branch));
+                  checked = t('website_git_checked');
+                }
+              } else if (action === 'presentationSave') {
+                const external = input.get('presentation') === 'external';
+                if (external && !verifiedWebsiteGits.has(await target(git, branch)))
+                  throw Object.assign(Error(t('website_git_not_checked')), { status: 422 });
+                // The services take the new presentation at their next start; not while the AI Studio works.
+                if (supervisor) {
+                  const state = await fetch('http://127.0.0.1:' + process.env.AISTUDIO_PORT + '/api/state', {
+                    headers: { 'x-sitetiller-gateway': secret, origin: 'http://127.0.0.1:' + process.env.AISTUDIO_PORT },
+                    signal: AbortSignal.timeout(10000),
+                  })
+                    .then((r) => (r.ok ? r.json() : { busy: true }))
+                    .catch(() => ({ busy: false }));
+                  if (state.busy) throw Object.assign(Error(t('presentation_busy')), { status: 409 });
+                }
+                await withSharedSettingsSave(sharedPath, async () => {
+                  const current = await readJson(sharedPath);
+                  await updateSettings(
+                    sharedPath,
+                    validateShared(
+                      {
+                        name: current.name,
+                        theme: colourMode(current),
+                        presentation: external ? 'external' : 'internal',
+                        ...(external ? { websiteGit: git, websiteBranch: branch } : {}),
+                      },
+                      { current },
+                    ),
+                    revision(current),
+                  );
+                });
+                if (supervisor)
+                  for (const name of ['aistudio', 'cmstudio', 'publisher', 'website'])
+                    await supervisor.restart(name, name === 'website' ? external : undefined);
+                notice = t('saved');
+                entered = {};
+              }
+            } else if (action === 'preview') {
               const address = (input.get('previewOrigin') || '').trim();
               if (address) {
                 let host = '';
                 try {
                   host = new URL(address).host;
                 } catch {}
-                if (host === new URL(origin).host)
+                if ([installedOrigin, chosenEditOrigin].some((o) => o && host === new URL(o).host))
                   throw Object.assign(Error(t('preview_address_not_editor')), { status: 422 });
               }
               if (input.has('publicPreview') && !address && !installedPreviewOrigin)
                 throw Object.assign(Error(t('preview_address_required')), { status: 422 });
+              // The editor address (documentation 2.4): another than the public preview's.
+              const editor = (input.get('editOrigin') ?? '').trim();
+              if (editor && address) {
+                let same = false;
+                try {
+                  same = new URL(editor).host === new URL(address).host;
+                } catch {}
+                if (same) throw Object.assign(Error(t('editor_address_not_preview')), { status: 422 });
+              }
+              if (editor && installedPreviewOrigin && !address) {
+                let same = false;
+                try {
+                  same = new URL(editor).host === new URL(installedPreviewOrigin).host;
+                } catch {}
+                if (same) throw Object.assign(Error(t('editor_address_not_preview')), { status: 422 });
+              }
               await withSharedSettingsSave(sharedPath, async () => {
                 const current = await readJson(sharedPath);
                 if (input.get('revision') !== revision(current))
@@ -720,6 +843,7 @@ http
                       theme: colourMode(current),
                       publicPreview: input.has('publicPreview'),
                       publicPreviewOrigin: address,
+                      ...(input.has('editOrigin') ? { editOrigin: editor } : {}),
                     },
                     { current },
                   ),
@@ -745,7 +869,21 @@ http
         }
         const current = await readJson(sharedPath);
         await refreshPreviewOrigin();
+        const shown: any = websitePresentation(instanceFile, current),
+          installedShown: any = websitePresentation(instanceFile, {});
         return page(res.statusCode || 200, 'addresses', {
+          presentation: {
+            mode: entered.presentation || (shown.external ? 'external' : 'internal'),
+            installed: installedShown.external ? 'external' : 'internal',
+            websiteGit:
+              entered.websiteGit ??
+              (shown.external ? shown.websiteGit : current.websiteGit || installedShown.websiteGit || ''),
+            websiteBranch:
+              entered.websiteBranch ?? (shown.external ? shown.websiteBranch : current.websiteBranch || 'main'),
+            publicKey: await publicKey(settingsDirectory),
+            hostKeys,
+            checked,
+          },
           error,
           notice,
           confirmAll,
@@ -754,26 +892,17 @@ http
           previewAvailable: true,
           previewOrigin: current.publicPreviewOrigin || '',
           installedPreviewOrigin,
+          editOrigin: current.editOrigin || '',
+          installedOrigin,
           // They come from instance.json at start.
           addresses: [
-            { label: 'address_editor', value: origin, help: 'address_editor_help' },
+            { label: 'address_editor', value: primaryOrigin(), help: 'address_editor_help' },
             { label: 'address_preview', value: publicPreviewOrigin, help: 'address_preview_help' },
             {
               label: 'address_website',
               value: process.env.SITETILLER_SITE_URL || '',
-              help: process.env.SITETILLER_WEBSITE_GIT
-                ? 'address_website_external_help'
-                : 'address_website_internal_help',
+              help: shown.external ? 'address_website_external_help' : 'address_website_internal_help',
             },
-            ...(process.env.SITETILLER_WEBSITE_GIT
-              ? [
-                  {
-                    label: 'address_website_git',
-                    value: process.env.SITETILLER_WEBSITE_GIT,
-                    help: 'address_website_git_help',
-                  },
-                ]
-              : []),
           ],
           shares: shares
             .slice()
@@ -788,6 +917,23 @@ http
             })),
           returnTo: settingsReturnTo(back),
         });
+      }
+      // Instance data (documentation 2.4): the whole instance folder as a ZIP, only after signing in with the password.
+      if (url.pathname === '/settings/data')
+        return page(200, 'data', { returnTo: settingsReturnTo(url.searchParams.get('returnTo')) });
+      if (url.pathname === '/settings/data/download' && req.method === 'GET') {
+        res.writeHead(200, {
+          'Content-Type': 'application/zip',
+          'Content-Disposition': 'attachment; filename="' + exportName(look.site) + '"',
+          'Cache-Control': 'no-store',
+        });
+        try {
+          await writeInstanceZip(data, res);
+          return res.end();
+        } catch (e: any) {
+          console.error('Instance export failed: ' + e.message);
+          return res.destroy(e);
+        }
       }
       // MCP (documentation 2.4, 2.8): access, permissions, checks and the connected assistants.
       if (url.pathname === '/settings/mcp') {
@@ -841,7 +987,7 @@ http
             lastUsed,
           })),
           log: (await mcpLog(data)).slice().reverse(),
-          address: origin + '/mcp',
+          address: primaryOrigin() + '/mcp',
           returnTo: settingsReturnTo(back),
         });
       }

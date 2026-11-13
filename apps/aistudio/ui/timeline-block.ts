@@ -13,6 +13,7 @@ const template = `<article class="progress-group" :class="{'result-complete':blo
 <details v-else-if="block.mode!=='title'" class="progress-row" :class="{working:block.row.running,failed:block.row.error,completed:block.done,'live-progress':block.mode==='live'}" :data-key="block.row.key" :open="block.mode==='live'||undefined"><summary :hidden="block.mode==='live'||undefined" :class="{'response-disclosure':block.mode==='disclosure'}"><span class="summary-label">{{block.mode==='disclosure'?block.summaryText:block.row.label}}<span v-if="block.row.running" class="busy-dots" :aria-label="t('working')">…</span></span><span class="disclosure-arrow" aria-hidden="true" :title="block.mode==='disclosure'?t('show_progress'):undefined">{{block.mode==='disclosure'?'…':'&gt;'}}</span></summary><div class="progress-detail"><template v-for="section in block.sections"><h3>{{section.heading}}<span v-if="section.model" class="meta actor-label">{{section.model}}</span><span v-if="section.running" class="busy-dots" :aria-label="t('working')">…</span></h3><template v-for="item in section.items"><code v-if="item.kind==='code'">{{item.text}}</code><p v-else :class="item.kind==='issue'?'issue':undefined">{{item.text}}</p></template></template></div></details>
 <button v-if="block.eye" type="button" class="show-version" :class="{'preview-pending':state.busy}" :data-commit="block.eye.commit" :data-step-id="block.eye.stepId||undefined" :data-release-id="block.eye.releaseId||undefined" :aria-pressed="String(state.active)" :aria-busy="state.busy?'true':undefined" :aria-label="label" :title="label" @click.stop="eyeTarget(block.eye)"><EyeIcon :state="state.busy?'loading':state.active?'selected':'idle'"/></button>
 </div><p v-if="block.response" class="response-text">{{block.response}}</p></div>
+<details v-if="block.warnings.length" class="step-warnings"><summary><span class="step-warnings-arrow" aria-hidden="true">▸</span>{{t('step_warnings',{count:block.warnings.length})}}</summary><ul><li v-for="warning in block.warnings" :key="warning.text"><span>{{warning.text}}</span><button type="button" class="text-action completeness-fix" @click.stop="fix(warning)">{{t('fix_in_ai_studio')}}</button></li></ul></details>
 </article>`;
 export default {
   template,
@@ -52,10 +53,16 @@ export default {
         toggle();
       }
     }
+    // Fix in AI Studio: the request is prefilled with the warning (as in the publication dialog).
+    function fix(warning: any) {
+      s.workspaceTab = 'edits';
+      s.prompt = warning.prompt;
+      requestAnimationFrame(() => document.getElementById('prompt')?.focus());
+    }
     function selectBlock(event: MouseEvent) {
-      if (!props.block.selectable || interactive(event, ',summary')) return;
+      if (!props.block.selectable || interactive(event, ',summary,.step-warnings')) return;
       toggle();
     }
-    return { t, s, state, pressed, label, hit, hitClick, hitKey, selectBlock, eyeTarget };
+    return { t, s, state, pressed, label, hit, hitClick, hitKey, selectBlock, eyeTarget, fix };
   },
 };

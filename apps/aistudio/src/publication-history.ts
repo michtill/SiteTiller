@@ -100,14 +100,23 @@ export function closeStepsBefore(config: any, events: any[], step: any, saved?: 
 // Which steps a finished publication closes. With "remove previous steps" (documentation 4.9) the published step
 // and the steps before it are replaced by a new first step "Published version N" and discarded; without it the
 // draft's steps do not change.
-export function publicationClosing(config: any, commit: string, through: number, clearPrevious: boolean) {
-  if (!clearPrevious) {
-    config.closedThrough = config.closedThrough ?? config.publishedThrough ?? 0;
-    return;
-  }
+// The warnings of the completeness check before the publication stay with the published step, or with the new first
+// step that replaces it (documentation 4.11).
+export function publicationClosing(
+  config: any,
+  commit: string,
+  through: number,
+  clearPrevious: boolean,
+  completeness: any = null,
+) {
   const step = (config.requests || []).findLast(
     (r: any) => r.commit === commit && ['ready', 'legacy'].includes(r.status) && r.sequence <= through,
   );
+  if (!clearPrevious) {
+    config.closedThrough = config.closedThrough ?? config.publishedThrough ?? 0;
+    if (step && completeness) step.completeness = completeness;
+    return;
+  }
   config.closedThrough = step ? step.sequence - 1 : through;
   // The published step and the steps before it are replaced by a new first step "Published version N".
   const release = (config.releases || []).findLast((r: any) => r.commit === commit);
@@ -118,6 +127,7 @@ export function publicationClosing(config: any, commit: string, through: number,
       releaseDescription: release?.description || '',
       restoredFrom: commit,
     });
+    if (completeness) step.completeness = completeness;
     Object.assign(config, presentationState(config, commit));
   }
   config.discardClosedSteps = true;
@@ -125,7 +135,7 @@ export function publicationClosing(config: any, commit: string, through: number,
 // Turns a step into the new first step of the draft: same commit and place, a new identity without the AI work that
 // made it (it stands for the saved draft or published version), always with its own preview.
 function firstStep(step: any, origin: any) {
-  for (const key of ['finalAnswer', 'plan', 'memory', 'progress', 'tests', 'imageResults', 'resolvedRequest', 'attachments', 'error', 'prompt', 'scope', 'models', 'checks', 'changedPaths'])
+  for (const key of ['finalAnswer', 'plan', 'memory', 'progress', 'tests', 'imageResults', 'resolvedRequest', 'attachments', 'error', 'prompt', 'scope', 'models', 'checks', 'changedPaths', 'completeness'])
     delete step[key];
   Object.assign(step, origin, {
     id: randomBytes(8).toString('hex'),

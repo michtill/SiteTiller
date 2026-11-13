@@ -23,7 +23,32 @@ export function instancePaths(root) {
     settings: join(root, 'settings'),
   };
 }
+// The presentation of the website (documentation 7.7, 2.4): the one switched on Settings → Addresses and sharing
+// (settings/shared.json), otherwise the installation's (instance.json). Its key is settings/website-git.key when it was
+// set in the app, otherwise the installation's production-git.key.
+export function websitePresentation(instance, shared = {}) {
+  const installed = instance.public || {};
+  if (shared.presentation === 'external' && shared.websiteGit)
+    return {
+      external: true,
+      websiteGit: shared.websiteGit,
+      websiteBranch: shared.websiteBranch || 'main',
+      key: 'website-git',
+    };
+  if (shared.presentation === 'internal') return { external: false };
+  return installed.presentation === 'external' && installed.websiteGit
+    ? { external: true, websiteGit: installed.websiteGit, websiteBranch: installed.websiteBranch || 'main', key: 'production-git' }
+    : { external: false };
+}
+export async function readShared(root) {
+  try {
+    return JSON.parse(await readFile(join(root, 'settings', 'shared.json'), 'utf8'));
+  } catch {
+    return {};
+  }
+}
 export async function instanceEnvironment(repo, root, instance) {
+  const shown = websitePresentation(instance, await readShared(root));
   const p = instance.ports,
     paths = instancePaths(root),
     mode = normalizeNetworkMode(instance.networkMode),
@@ -36,8 +61,13 @@ export async function instanceEnvironment(repo, root, instance) {
       ? join(paths.production, 'remote.git')
       : external.productionGit || join(paths.production, 'repository.git'),
     // External presentation (documentation 7.7): only the static website goes to the website's own Git.
-    websiteGit = external.presentation === 'external' ? external.websiteGit || '' : '',
-    sshGit = remote || (remoteGit(websiteGit) ? websiteGit : ''),
+    websiteGit = shown.external ? shown.websiteGit : '',
+    sshWebsite = remoteGit(websiteGit) || /^[^/:]+@[^:]+:/.test(websiteGit),
+    // One ssh command for both Gits: the production history's key and the website Git's key when it has its own.
+    keys = [
+      ...(remote || (sshWebsite && shown.key === 'production-git') ? ['production-git'] : []),
+      ...(sshWebsite && shown.key === 'website-git' ? ['website-git'] : []),
+    ],
     // The public draft preview needs its own host name: locally localhost, on a server its own address.
     previewOrigin = instance.public ? external.previewOrigin || '' : 'http://localhost:' + p.shell;
   return {
@@ -81,17 +111,17 @@ export async function instanceEnvironment(repo, root, instance) {
     SITETILLER_UI_LANGUAGE: 'cs',
     EDIT_HOST: '127.0.0.1',
     ...(websiteGit
-      ? { SITETILLER_WEBSITE_GIT: websiteGit, SITETILLER_WEBSITE_BRANCH: external.websiteBranch || 'main' }
+      ? { SITETILLER_WEBSITE_GIT: websiteGit, SITETILLER_WEBSITE_BRANCH: shown.websiteBranch, SITETILLER_PRESENTATION: 'external' }
       : {}),
     ...(remote ? { SITETILLER_PRODUCTION_REMOTE: remote } : {}),
-    ...(sshGit
+    ...(keys.length
       ? {
           GIT_SSH_COMMAND: [
             'ssh',
-            '-i',
-            JSON.stringify(join(paths.settings, 'production-git.key')),
+            ...keys.flatMap((key) => ['-i', JSON.stringify(join(paths.settings, key + '.key'))]),
             '-o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes',
-            '-o UserKnownHostsFile=' + JSON.stringify(join(paths.settings, 'production-git.known_hosts')),
+            '-o UserKnownHostsFile=' +
+              JSON.stringify(keys.map((key) => join(paths.settings, key + '.known_hosts')).join(' ')),
           ].join(' '),
         }
       : {}),
@@ -115,7 +145,7 @@ export function serviceEnvironment(env, instance, name) {
       : {}),
     ...(name === 'website' ? { HOST: listen } : {}),
     // A website hosted outside the instance (documentation 7.7): the Publisher checks it at its public address.
-    ...(name === 'publisher' && instance.public?.presentation === 'external' && instance.public.siteUrl
+    ...(name === 'publisher' && env.SITETILLER_PRESENTATION === 'external' && instance.public?.siteUrl
       ? { SITETILLER_WWW_URL: instance.public.siteUrl }
       : {}),
     PORT: String(instance.ports[name]),

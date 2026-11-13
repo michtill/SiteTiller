@@ -24,7 +24,11 @@ export async function superviseInstance() {
     logs = process.env.SITETILLER_SERVICE_LOGS;
   const environment = async (name: string) => {
     const current = await readJson(join(root, 'instance.json'));
-    const env = serviceEnvironment(await withSshPasswdEntry(await instanceEnvironment(repo, root, current)), current, name);
+    const env = serviceEnvironment(
+      await withSshPasswdEntry(await instanceEnvironment(repo, root, current)),
+      current,
+      name,
+    );
     // Only the Shell supervises.
     delete env.SITETILLER_SUPERVISE;
     delete env.SITETILLER_SERVICE_LOGS;

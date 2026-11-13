@@ -1,5 +1,5 @@
 import { renderingPages, renderingData, renderWithData, renderCmsPage } from './cms-render.ts';
-import { currentStopSignal, StoppedError } from './run-control.ts';
+import { currentStopSignal, runWithStop, StoppedError } from './run-control.ts';
 import { cmsSnapshotAsset } from './cms-snapshot-asset.ts';
 import { serveForm, formDefinitions } from './contact-forms.ts';
 import { websitePolicy } from './site-policy.ts';
@@ -78,9 +78,37 @@ export function staticChecks(files: Record<string, string>) {
 }
 // Browser for the checks: SITETILLER_BROWSER_EXECUTABLE when set, else Playwright's own Chromium, else the installed
 // Chrome or Edge (Playwright's browser download is optional and disappears with every Playwright update).
+// The start has its own limit, and a stop ends the wait at once (a browser starting in a full container never returned).
 export async function launchBrowser(chromium: any) {
+  const stop = currentStopSignal();
+  if (stop?.aborted) throw new StoppedError();
+  const launching = startBrowser(chromium);
+  if (!stop) return launching;
+  return new Promise((resolve, reject) => {
+    const abort = () => {
+      reject(new StoppedError());
+      launching.then(
+        (browser: any) => browser.close().catch(() => {}),
+        () => {},
+      );
+    };
+    stop.addEventListener('abort', abort, { once: true });
+    launching.then(
+      (browser: any) => {
+        stop.removeEventListener('abort', abort);
+        if (stop.aborted) return void browser.close().catch(() => {});
+        resolve(browser);
+      },
+      (error: any) => {
+        stop.removeEventListener('abort', abort);
+        reject(error);
+      },
+    );
+  });
+}
+async function startBrowser(chromium: any) {
   // A container may have only 64 MB of /dev/shm; Chromium then keeps its shared memory in /tmp.
-  const options = { headless: true, args: ['--disable-dev-shm-usage'] };
+  const options = { headless: true, args: ['--disable-dev-shm-usage'], timeout: 30000 };
   if (process.env.SITETILLER_BROWSER_EXECUTABLE)
     return chromium.launch({ ...options, executablePath: process.env.SITETILLER_BROWSER_EXECUTABLE });
   try {
@@ -156,8 +184,40 @@ export async function siteServer(root: string, files: Record<string, string>) {
   });
   return server;
 }
+// The whole browser check has a time budget: when it is spent the browser closes and the check reports it as an
+// error instead of waiting (a stop by the user still ends the request).
+export const browserCheckBudget = () => Number(process.env.SITETILLER_BROWSER_CHECK_BUDGET) || 180000;
 // Ephemeral isolated preview. Never exposes the studio, credentials or project metadata.
 export async function browserChecks(
+  root: string,
+  files: Record<string, string>,
+  browserTests: any[] = [],
+  preferredImages: string[] = [],
+) {
+  const outer = currentStopSignal(),
+    limit = browserCheckBudget(),
+    budget = AbortSignal.timeout(limit);
+  try {
+    return await runWithStop(outer ? AbortSignal.any([outer, budget]) : budget, () =>
+      runBrowserChecks(root, files, browserTests, preferredImages),
+    );
+  } catch (error) {
+    if (!budget.aborted || outer?.aborted) throw error;
+    const message = 'Technická kontrola v prohlížeči nedoběhla do ' + Math.round(limit / 1000) + ' s.';
+    return {
+      passed: false,
+      errors: [message],
+      warnings: [],
+      checks: [],
+      interactions: [],
+      scenarios: [],
+      imageEvidence: [],
+      screenshots: [],
+      serverRendering: [],
+    };
+  }
+}
+async function runBrowserChecks(
   root: string,
   files: Record<string, string>,
   browserTests: any[] = [],
@@ -461,7 +521,9 @@ export async function browserChecks(
       serverRendering,
     };
   } finally {
-    await browser?.close();
+    // A browser stuck without memory may not close either: the check does not wait for it longer than 5 s.
+    await Promise.race([browser?.close().catch(() => {}), new Promise((resolve) => setTimeout(resolve, 5000).unref())]);
+    server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 }

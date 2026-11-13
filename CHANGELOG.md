@@ -2,6 +2,10 @@
 
 Versions follow [semantic versioning](https://semver.org). Each release is tagged `v<version>`.
 
+## 1.4.4
+
+- Browser check: the browser start has a 30 s limit and a stop ends it at once; the whole check has a 180 s limit, after which it is a failed check with its reason instead of a wait.
+
 ## 1.4.3
 
 - Container defaults at runtime: the instance image sets SITETILLER_LISTEN=0.0.0.0 and SITETILLER_BROWSER_EXECUTABLE=/usr/bin/chromium, so every instance in it is reachable and the technical check finds its browser, also one created before; instance.json still overrides both.

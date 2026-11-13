@@ -37,7 +37,12 @@ export function websitePresentation(instance, shared = {}) {
     };
   if (shared.presentation === 'internal') return { external: false };
   return installed.presentation === 'external' && installed.websiteGit
-    ? { external: true, websiteGit: installed.websiteGit, websiteBranch: installed.websiteBranch || 'main', key: 'production-git' }
+    ? {
+        external: true,
+        websiteGit: installed.websiteGit,
+        websiteBranch: installed.websiteBranch || 'main',
+        key: 'production-git',
+      }
     : { external: false };
 }
 export async function readShared(root) {
@@ -111,7 +116,11 @@ export async function instanceEnvironment(repo, root, instance) {
     SITETILLER_UI_LANGUAGE: 'cs',
     EDIT_HOST: '127.0.0.1',
     ...(websiteGit
-      ? { SITETILLER_WEBSITE_GIT: websiteGit, SITETILLER_WEBSITE_BRANCH: shown.websiteBranch, SITETILLER_PRESENTATION: 'external' }
+      ? {
+          SITETILLER_WEBSITE_GIT: websiteGit,
+          SITETILLER_WEBSITE_BRANCH: shown.websiteBranch,
+          SITETILLER_PRESENTATION: 'external',
+        }
       : {}),
     ...(remote ? { SITETILLER_PRODUCTION_REMOTE: remote } : {}),
     ...(keys.length
@@ -132,7 +141,8 @@ export async function instanceEnvironment(repo, root, instance) {
 // Per-service variables: only the AI controller reaches the providers; the Shell and the Website listen on
 // `instance.public.listen` when the instance sits behind a proxy (a container), otherwise on loopback. The instance
 // image sets SITETILLER_LISTEN=0.0.0.0 as the container's default, so an instance without the field is reachable too.
-export const listenAddress = (instance, env = process.env) => instance.public?.listen || env.SITETILLER_LISTEN || '127.0.0.1';
+export const listenAddress = (instance, env = process.env) =>
+  instance.public?.listen || env.SITETILLER_LISTEN || '127.0.0.1';
 export function serviceEnvironment(env, instance, name) {
   const listen = listenAddress(instance, env);
   return {
@@ -142,7 +152,9 @@ export function serviceEnvironment(env, instance, name) {
       ? {
           EDIT_HOST: listen,
           // A separate port for the public draft preview (a hosting panel maps one port to one host name).
-          ...(instance.ports.publicPreview ? { SITETILLER_PUBLIC_PREVIEW_PORT: String(instance.ports.publicPreview) } : {}),
+          ...(instance.ports.publicPreview
+            ? { SITETILLER_PUBLIC_PREVIEW_PORT: String(instance.ports.publicPreview) }
+            : {}),
         }
       : {}),
     ...(name === 'website' ? { HOST: listen } : {}),

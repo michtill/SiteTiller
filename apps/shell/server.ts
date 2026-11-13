@@ -780,7 +780,10 @@ http
                 // The services take the new presentation at their next start; not while the AI Studio works.
                 if (supervisor) {
                   const state = await fetch('http://127.0.0.1:' + process.env.AISTUDIO_PORT + '/api/state', {
-                    headers: { 'x-sitetiller-gateway': secret, origin: 'http://127.0.0.1:' + process.env.AISTUDIO_PORT },
+                    headers: {
+                      'x-sitetiller-gateway': secret,
+                      origin: 'http://127.0.0.1:' + process.env.AISTUDIO_PORT,
+                    },
                     signal: AbortSignal.timeout(10000),
                   })
                     .then((r) => (r.ok ? r.json() : { busy: true }))

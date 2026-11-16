@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "revision": 5,
-  "date": "2026-11-13",
+  "revision": 6,
+  "date": "2026-11-16",
   "default": "performance",
   "sets": {
     "performance": {
@@ -25,7 +25,7 @@
           },
           {
             "provider": "gemini",
-            "model": "gemini-4-argon"
+            "model": "gemini-4-carbon"
           },
           {
             "provider": "gemini",
@@ -47,7 +47,7 @@
           },
           {
             "provider": "gemini",
-            "model": "gemini-4-argon"
+            "model": "gemini-4-carbon"
           }
         ],
         "verify": [
@@ -76,12 +76,12 @@
           },
           {
             "provider": "anthropic",
-            "model": "claude-fable-5-1",
+            "model": "claude-fable-5-2",
             "effort": "high"
           },
           {
             "provider": "gemini",
-            "model": "gemini-4-argon",
+            "model": "gemini-4-carbon",
             "effort": "high"
           }
         ]
@@ -178,7 +178,7 @@
           },
           {
             "provider": "gemini",
-            "model": "gemini-4-argon",
+            "model": "gemini-4-carbon",
             "effort": "high"
           }
         ]

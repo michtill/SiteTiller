@@ -2,7 +2,7 @@ import { providerIds, providerName, detectProvider, imageModelProvider } from '.
 import { withSharedSettingsSave, sharedLanguage, colourMode } from '../../packages/settings/shared-ui.mjs';
 import { tabTitle } from '../../packages/ui/tab-title.mjs';
 import { renderPage, settingsError, iconLinks, escapeText } from './pages.ts';
-import { translate } from '../../packages/i18n/index.mjs';
+import { translate, translateMessage } from '../../packages/i18n/index.mjs';
 import {
   atomicJson,
   passwordHash,
@@ -670,9 +670,12 @@ http
                 });
                 notice = translate('test_email_sent', language, { email: to });
               } catch (e: any) {
-                throw Object.assign(Error(translate('test_email_failed', language, { detail: e.message })), {
-                  test: true,
-                });
+                throw Object.assign(
+                  Error(translate('test_email_failed', language, { detail: translateMessage(e.message, language) })),
+                  {
+                    test: true,
+                  },
+                );
               }
             }
           } catch (e: any) {

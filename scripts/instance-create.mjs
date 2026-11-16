@@ -58,7 +58,7 @@ for (const name of ['gateway.token', 'publish.token'])
 const { Project } = await import('../apps/aistudio/src/project.ts'),
   { captureCmsPublication } = await import('../apps/aistudio/src/cms-publication.ts');
 const draft = new Project(join(data, 'project'));
-await draft.init(null);
+await draft.init(null, deployment.language === 'cs' ? 'cs' : 'en');
 await captureCmsPublication(draft, root);
 await atomicJson(join(data, 'config.json'), {
   slots: [],

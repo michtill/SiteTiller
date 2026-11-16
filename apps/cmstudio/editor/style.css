@@ -53,7 +53,7 @@ button:hover:not(:disabled) {
 .sidebar {
   width: 255px;
   flex-shrink: 0;
-  background: var(--ui-sidebar);
+  background: var(--ui-page);
   color: var(--ui-muted);
   padding: 34px 22px;
   display: flex;
@@ -1395,7 +1395,7 @@ select {
   justify-content: flex-end;
   gap: 14px;
   font-size: 12px;
-  background: var(--ui-sidebar);
+  background: var(--ui-page);
 }
 .content-toolbar .mode-toggle {
   display: grid;
@@ -1761,17 +1761,17 @@ select {
 }
 .shell > .sidebar {
   scrollbar-width: thin;
-  scrollbar-color: var(--ui-scroll) var(--ui-sidebar);
+  scrollbar-color: var(--ui-scroll) var(--ui-page);
 }
 .shell > .sidebar::-webkit-scrollbar {
   width: 8px;
 }
 .shell > .sidebar::-webkit-scrollbar-track {
-  background: var(--ui-sidebar);
+  background: var(--ui-page);
 }
 .shell > .sidebar::-webkit-scrollbar-thumb {
   background: var(--ui-scroll);
-  border: 2px solid var(--ui-sidebar);
+  border: 2px solid var(--ui-page);
   border-radius: 8px;
 }
 .shell > .sidebar::-webkit-scrollbar-thumb:hover {
@@ -1875,7 +1875,7 @@ select {
   z-index: 200;
   width: 185px;
   padding: 6px;
-  background: var(--ui-sidebar);
+  background: var(--ui-page);
   color: var(--ui-text);
   border: 1px solid var(--ui-border-strong);
   border-radius: 10px;
@@ -2123,7 +2123,7 @@ select {
   overscroll-behavior: contain;
   padding: 0 14px 22px;
   scrollbar-width: thin;
-  scrollbar-color: var(--ui-scroll) var(--ui-sidebar);
+  scrollbar-color: var(--ui-scroll) var(--ui-page);
 }
 .sidebar .studio-brand-row {
   margin: 0;
@@ -2184,7 +2184,7 @@ select {
   display: grid;
   gap: 4px;
   padding: 6px;
-  background: var(--ui-sidebar);
+  background: var(--ui-page);
   border: 1px solid var(--ui-border-strong);
   border-radius: 8px;
   margin: 4px 0 8px;
@@ -2269,7 +2269,7 @@ select {
 /* One surface: the whole Editor takes the navigation colour. The record list has no panel of its own and its items
    follow the navigation look; only the form cards on the right keep their own background. */
 .shell {
-  background: var(--ui-sidebar);
+  background: var(--ui-page);
 }
 .shell .collection-panel,
 .shell .collection-panel .record-list {
@@ -2615,7 +2615,7 @@ select {
 .architect-screen {
   display: flex;
   height: 100dvh;
-  background: var(--ui-sidebar);
+  background: var(--ui-page);
   color: var(--ui-text);
 }
 .structure-band .settings-nav button {
@@ -2698,7 +2698,7 @@ select {
   padding: 0 12px 12px;
   gap: 4px;
   scrollbar-width: thin;
-  scrollbar-color: var(--ui-scroll) var(--ui-sidebar);
+  scrollbar-color: var(--ui-scroll) var(--ui-page);
 }
 .architect-main .structure-list > button {
   margin-bottom: 4px;

@@ -252,7 +252,10 @@ test('OP-07: onto a production Git without SiteTiller versions, adopting publish
     await assert.rejects(adopt(), /createVersion0FromDraft/);
     assert.equal((await exec('git', ['--git-dir=' + git, 'rev-parse', 'main'])).stdout.trim(), main);
     await rm(join(root, '.production'), { recursive: true, force: true });
-    await writeFile(deployment, JSON.stringify({ ...JSON.parse(await readFile(deployment, 'utf8')), createVersion0FromDraft: true }));
+    await writeFile(
+      deployment,
+      JSON.stringify({ ...JSON.parse(await readFile(deployment, 'utf8')), createVersion0FromDraft: true }),
+    );
     await adopt();
     const config = JSON.parse(await readFile(join(root, '.sitetiller/config.json'), 'utf8')),
       instance = JSON.parse(await readFile(join(root, 'instance.json'), 'utf8'));
@@ -295,7 +298,11 @@ test('OP-08: services and adoption run as the owner of the instance; a user with
 });
 test('OP-08: the services get the nss_wrapper passwd entry only for ssh, never for the browser checks', async () => {
   const { withSshPasswdEntry } = await import('../scripts/instance-user.mjs'),
-    wrapped = { LD_PRELOAD: '/usr/lib/x/libnss_wrapper.so', NSS_WRAPPER_PASSWD: '/tmp/p', NSS_WRAPPER_GROUP: '/etc/group' },
+    wrapped = {
+      LD_PRELOAD: '/usr/lib/x/libnss_wrapper.so',
+      NSS_WRAPPER_PASSWD: '/tmp/p',
+      NSS_WRAPPER_GROUP: '/etc/group',
+    },
     env = await withSshPasswdEntry({ GIT_SSH_COMMAND: 'ssh -i key', KEEP: '1' }, wrapped);
   assert.equal(env.LD_PRELOAD, undefined);
   assert.equal(
@@ -305,7 +312,7 @@ test('OP-08: the services get the nss_wrapper passwd entry only for ssh, never f
   assert.deepEqual(await withSshPasswdEntry({ KEEP: '1' }, wrapped), { KEEP: '1' });
   assert.deepEqual(await withSshPasswdEntry({ GIT_SSH_COMMAND: 'ssh' }, {}), { GIT_SSH_COMMAND: 'ssh' });
 });
-test('OP-08: after the switch from root the services get their own writable home, not root\'s', async () => {
+test("OP-08: after the switch from root the services get their own writable home, not root's", async () => {
   const base = await mkdtemp(join(tmpdir(), 'sitetiller-owner-home-'));
   try {
     const { ownerHome } = await import('../scripts/instance-user.mjs'),
@@ -403,6 +410,10 @@ test('OP-09: a new server instance is empty, reaches the providers, shows its pa
     assert.equal(shared.name, 'example.cz');
     // A new installation speaks English unless the deployment asks for Czech (documentation 2.4).
     assert.equal(shared.language, 'en');
+    // The new website's first page speaks the instance's language too.
+    const first = await readFile(join(root, '.sitetiller/project/site/index.html'), 'utf8');
+    assert.match(first, /<html lang="en">/);
+    assert.ok(first.includes('<h1>New website</h1>'));
     assert.deepEqual([Object.keys(schema.lists), Object.keys(schema.folders)], [[], []]);
     assert.deepEqual(
       config.releases.map((r) => r.number),
@@ -411,7 +422,10 @@ test('OP-09: a new server instance is empty, reaches the providers, shows its pa
     // The password is only a hash in the instance and it signs in.
     assert.deepEqual(await readdir(join(root, 'settings')).then((n) => n.filter((x) => /password/.test(x))), []);
     const { passwordMatches } = await import('../packages/settings/index.mjs');
-    assert.equal(passwordMatches(password, JSON.parse(await readFile(join(root, 'settings/auth.json'), 'utf8')).password), true);
+    assert.equal(
+      passwordMatches(password, JSON.parse(await readFile(join(root, 'settings/auth.json'), 'utf8')).password),
+      true,
+    );
     // Never over an existing instance.
     await assert.rejects(create(), /not empty/);
   } finally {

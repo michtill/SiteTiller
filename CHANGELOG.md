@@ -2,6 +2,13 @@
 
 Versions follow [semantic versioning](https://semver.org). Each release is tagged `v<version>`.
 
+## 1.4.5
+
+- E-mails: Settings → E-mails chooses the sending service, the own SMTP server (the default, existing instances keep it), Brevo or Resend. Brevo and Resend send over HTTPS, so e-mail also works where the hosting blocks outgoing SMTP (e.g. Railway); the API key is stored encrypted and never shown, and the network policy lets through only POST to their two fixed API addresses.
+- The first page of a new website is in the instance language ("New website" in English).
+- The Content editor uses the colour of the AI Studio for its left panel and menus.
+- Recommendations from SiteTiller-advice revision 6.
+
 ## 1.4.4
 
 - Browser check: the browser start has a 30 s limit and a stop ends it at once; the whole check has a 180 s limit, after which it is a failed check with its reason instead of a wait.

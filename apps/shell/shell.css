@@ -225,6 +225,7 @@ button.show-password svg {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+.mail-service[hidden],
 button.show-password[hidden],
 button.show-password[aria-pressed='true'] .eye-open,
 button.show-password:not([aria-pressed='true']) .eye-closed {

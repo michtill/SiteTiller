@@ -142,7 +142,8 @@ export class Project {
       console.error('git:done ' + args[0] + ' ' + (Date.now() - started) + 'ms');
     return stdout.trim();
   }
-  async init(seed: string | null) {
+  // A new website's first page is in the instance's language (cs or en).
+  async init(seed: string | null, language: 'cs' | 'en' = 'cs') {
     await mkdir(this.root, { recursive: true });
     try {
       await lstat(join(this.root, '.git'));
@@ -151,7 +152,9 @@ export class Project {
         await this.git(['init', '-b', 'main']);
         await this.write({
           'site/index.html':
-            '<!doctype html><html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nový web</title></head><body><main><h1>Nový web</h1><p>Vytvořte web zadáním požadavku v SiteTiller.</p></main></body></html>',
+            language === 'en'
+              ? '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>New website</title></head><body><main><h1>New website</h1><p>Create the website by entering a request in SiteTiller.</p></main></body></html>'
+              : '<!doctype html><html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nový web</title></head><body><main><h1>Nový web</h1><p>Vytvořte web zadáním požadavku v SiteTiller.</p></main></body></html>',
         });
       } else
         try {
